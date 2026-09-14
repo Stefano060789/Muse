@@ -25,24 +25,97 @@ create index if not exists idx_messages_user_date on messages (user_id, message_
 alter table if exists profiles enable row level security;
 alter table if exists messages enable row level security;
 
-create policy if not exists "profiles_insert_own" on profiles
-  for insert
-  with check ( auth.uid() = id );
+do $$
+begin
+  create policy "profiles_insert_own" on profiles
+    for insert
+    with check ( auth.uid() = id );
+exception
+  when duplicate_object then null;
+end
+$$;
 
-create policy if not exists "profiles_select_update_own" on profiles
-  for select, update
-  using ( auth.uid() = id )
-  with check ( auth.uid() = id );
+do $$
+begin
+  create policy "profiles_select_update_own" on profiles
+    for all
+    using ( auth.uid() = id )
+    with check ( auth.uid() = id );
+exception
+  when duplicate_object then null;
+end
+$$;
 
-create policy if not exists "messages_insert_own" on messages
-  for insert
-  with check ( auth.uid() = user_id );
+do $$
+begin
+  create policy "messages_insert_own" on messages
+    for insert
+    with check ( auth.uid() = user_id );
+exception
+  when duplicate_object then null;
+end
+$$;
 
-create policy if not exists "messages_select_own" on messages
-  for select
-  using ( auth.uid() = user_id );
+do $$
+begin
+  create policy "messages_select_own" on messages
+    for select
+    using ( auth.uid() = user_id );
+exception
+  when duplicate_object then null;
+end
+$$;
 
-create policy if not exists "messages_update_liked_own" on messages
-  for update
-  using ( auth.uid() = user_id )
-  with check ( auth.uid() = user_id );
+do $$
+begin
+  create policy "messages_update_liked_own" on messages
+    for update
+    using ( auth.uid() = user_id )
+    with check ( auth.uid() = user_id );
+exception
+  when duplicate_object then null;
+end
+$$;
+
+insert into storage.buckets (id, name, public)
+values ('tts', 'tts', false)
+on conflict (id) do update set public = excluded.public;
+
+do $$
+begin
+  create policy "tts_select_own" on storage.objects
+    for select
+    using (
+      bucket_id = 'tts'
+      and (storage.foldername(name))[1] = auth.uid()::text
+    );
+exception
+  when duplicate_object then null;
+end
+$$;
+
+do $$
+begin
+  create policy "tts_insert_own" on storage.objects
+    for insert
+    with check (
+      bucket_id = 'tts'
+      and (storage.foldername(name))[1] = auth.uid()::text
+    );
+exception
+  when duplicate_object then null;
+end
+$$;
+
+do $$
+begin
+  create policy "tts_delete_own" on storage.objects
+    for delete
+    using (
+      bucket_id = 'tts'
+      and (storage.foldername(name))[1] = auth.uid()::text
+    );
+exception
+  when duplicate_object then null;
+end
+$$;

@@ -38,3 +38,8 @@ Never commit `.env.local`, service-role keys, or other provider credentials.
 
 Hosted services should be configured only after the target GitHub repository,
 Vercel project, and Supabase project are identified.
+
+## Supabase project
+
+The current development project reference is `owhaqypvmonzdcikipay`.
+Its URL is `https://owhaqypvmonzdcikipay.supabase.co`.
