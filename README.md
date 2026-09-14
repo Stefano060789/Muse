@@ -4,8 +4,14 @@ Muse is a personalized AI emotional-wellness companion for short,
 narrative-driven daily messages, gentle rituals, optional voice, and future
 cycle-aware insights.
 
-The complete product scope and delivery roadmap are documented in
-[docs/project-scope.md](docs/project-scope.md).
+The full product definition lives in four documents:
+
+- [docs/SCOPE.md](docs/SCOPE.md) — exact product scope, what Muse is and is
+  not, and the legal/safety boundaries
+- [docs/PLANNING.md](docs/PLANNING.md) — delivery phases and milestones
+- [docs/TODO.md](docs/TODO.md) — near-term, imminent activities
+- [docs/MARKETING.md](docs/MARKETING.md) — value proposition, competitive
+  comparison, pricing, and go-to-market
 
 ## Local setup
 
