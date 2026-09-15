@@ -6,14 +6,6 @@ or delete items as they're resolved, add new ones as they surface.
 
 ## Blocked / needs a decision
 
-- [ ] **Vercel deployment blocked.** Vercel recognizes
-      `Stefano060789/Muse` and the framework (Next.js) correctly, but the
-      import page's Deploy button stayed disabled and the project/env-var
-      controls weren't reliably interactable in the shared browser session.
-      Next attempt: retry directly from
-      https://vercel.com/new/import?s=https%3A%2F%2Fgithub.com%2FStefano060789%2FMuse,
-      or provide a Vercel access token so deployment can go through the
-      Vercel CLI/API instead of the browser UI.
 - [ ] **Naming decision.** Confirm whether to start a rename now or continue
       building under the "Muse" codename until closer to launch. A proper
       trademark clearance search should happen before public launch either

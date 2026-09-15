@@ -14,8 +14,7 @@ near-term actionable items live in [TODO.md](TODO.md).
 - [x] Supabase project created (`owhaqypvmonzdcikipay`), schema + RLS applied,
       private `tts` storage bucket configured
 - [x] Local `.env.local` configured with Supabase URL/key
-- [ ] Vercel project connected and first deployment live (currently blocked —
-      see [TODO.md](TODO.md))
+- [x] Vercel project connected and first deployment live
 
 ## Phase 1 — Core habit loop (MVP)
 
