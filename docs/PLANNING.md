@@ -35,6 +35,117 @@ and receive one personalized daily message end-to-end, in production.
 taste-personalized daily text is compelling enough to open the app daily —
 before investing in anything else.
 
+## Phase 1A — Shared Story Mode (Couples / long-distance)
+
+**Milestone:** a couple can create and complete a private, asynchronous story
+experience together without relying on external SaaS infrastructure.
+
+This is the first major Muse extension aligned with the "couple while apart"
+use case: it turns daily messages from a solo ritual into a shared narrative
+world. The experience should feel intimate, atmospheric, and low-friction — not
+like a board game and not like a generic chat app.
+
+### Product concept
+
+- One partner creates a short private story arc, called a **Shared Story** or
+  **Love Quest**.
+- The other partner receives the arc in daily or timed instalments.
+- Each instalment contains:
+  - a short atmospheric paragraph
+  - a clue, object, or memory to discover
+  - a question or reflection to answer
+  - optional audio or voice-note layer
+- The story can be themed around a shared memory, a future trip, an imagined
+  place, a mystery, or a personal history together.
+- The discovery logic is intentionally simple: the user is not "fighting" a
+  system; they are uncovering a meaningful hidden narrative.
+
+### Experience design
+
+- **Narrative templates** (v1):
+  - "The Letter in the Drawer"
+  - "The Missing Key"
+  - "The Map to Our Next Place"
+  - "The Memory Garden"
+  - "The Summer We Never Had"
+- Each story has 5-10 beats, each with one clear reveal or emotional payoff.
+- Story state is stored as a structured timeline with unlocks, responses, and
+  collected objects.
+- The archive becomes a living shared "Our Story" record for the couple.
+
+### Core mechanics
+
+- Couple profile: two users linked by invite or local pairing code
+- Story arc creator: one user sets the arc, tone, pacing, and final reveal
+- Story path: read daily, unlock clue, solve small mystery, submit answer or
+  reaction
+- Shared artifact library: saved letters, found items, voice notes, images,
+  place references, memories
+- Final reveal: the story resolves with a personal message, shared plan, or
+  future promise
+
+### MVP rules
+
+- No monster manuals, no combat, no worldbuilding tax
+- No complex inventory system
+- No social feed or public sharing
+- Everything stays private to the couple
+- The narrative should feel like a poetic, low-pressure experience, not a game
+  system
+
+### Local-first implementation approach
+
+**Recommended for the next phase:** keep this local-first, not Supabase-first.
+
+- Use a local SQLite database stored on disk (for example under a project data
+  folder such as `C:\Users\bonomi\Desktop\Muse\data\muse.db`)
+- Use a local app server for the initial prototype, with an app-specific data
+  directory and a simple migration layer
+- Keep user profiles, couple links, story arcs, beats, replies, and saved
+  artifacts local while validating the product
+- Later migrate the same schema to Supabase when the product is more mature and
+  the cloud backend is needed
+
+This avoids paying the cost of a cloud dependency while the story system is
+still being prototyped.
+
+### Suggested technology stack for MVP
+
+- Next.js 14 + TypeScript
+- SQLite (via Prisma or Drizzle)
+- Local filesystem storage for generated assets and user uploads
+- Optional local passkey or simple invite-code pairing for the couple flow
+- AI generation stays optional and focused on the text layer only
+
+### Required external registration / setup for now
+
+**For MVP local-first:** no cloud registration is required beyond normal local
+software installation.
+
+**If we later move to hosted production:**
+- Supabase project for auth, database, and storage
+- Vercel for hosting
+- Stripe only when monetization begins
+- ElevenLabs only when audio narration is added
+
+This keeps the first implementation lean, private, and fast to iterate.
+
+### Migration target after validation
+
+The schema should be designed from the start to map cleanly to Supabase tables
+such as:
+
+- `profiles`
+- `couples`
+- `story_arcs`
+- `story_beats`
+- `story_replies`
+- `story_artifacts`
+- `saved_messages`
+
+That means the local-first prototype can still be migrated later without a
+rewrite of the product model.
+
 ## Phase 2 — Retention layer
 
 **Milestone:** users can build a personal collection and the product has a
@@ -42,6 +153,7 @@ reason to be opened beyond the daily ping.
 
 - Save/favorite → Commonplace Book view
 - One-line reflection reply per message
+- Shared-story archive for couples
 - Basic engagement notification (daily reminder, respecting quiet hours)
 
 ## Phase 3 — Voice and rituals

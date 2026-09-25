@@ -1,47 +1,76 @@
 # Muse — TODO
 
-Near-term, imminent activities only. Longer-term phased work lives in
-[PLANNING.md](PLANNING.md). This file is meant to be edited often — check off
-or delete items as they're resolved, add new ones as they surface.
+## Immediate next steps
 
-## Blocked / needs a decision
+### 1. Local-first couples story MVP
 
-- [ ] **Naming decision.** Confirm whether to start a rename now or continue
-      building under the "Muse" codename until closer to launch. A proper
-      trademark clearance search should happen before public launch either
-      way (see [SCOPE.md](SCOPE.md#naming-risk)).
+- [x] Define the idea and product boundaries for a couple-focused story mode
+- [x] Add a local-first story template model and page prototype
+- [ ] Replace the hardcoded localStorage-only flow with a proper persisted local data layer (SQLite/Prisma or Drizzle)
+- [ ] Add a real couple/invite flow instead of the single-browser mock state
+- [ ] Add a private story archive view after each completed story beat
+- [ ] Add a final reveal / payoff screen for the story arc
 
-## Ready to start (Phase 1 — core habit loop)
+### 2. Data and persistence
 
-- [ ] Design the onboarding data model: how "favorite books/movies/poems" get
-      captured and mapped to inferred themes (tags), without storing raw
-      copyrighted text as prompt fodder
-- [ ] Add `tone_preference`, theme/interest fields, and cycle opt-in fields to
-      the `profiles` table
-- [ ] Create the `reference_quotes` table (text, source, author, theme tags,
-      mood tags, `is_public_domain` flag) and seed it with an initial
-      public-domain quote set
-- [ ] Update [src/lib/ai.ts](../src/lib/ai.ts) to accept `tone` and `themes`
-      parameters and to optionally splice in a reference quote
-- [ ] Build the auth + onboarding UI (Supabase Auth)
-- [ ] Build the daily message screen with the tone selector
-      (funny / motivating / deep)
-- [ ] Add the `/api` generation route wiring the above together
-- [ ] Add basic message history (read-only list)
+- [ ] Decide whether to use SQLite + Prisma or SQLite + Drizzle
+- [ ] Create the schema for:
+  - users
+  - couples
+  - story_arcs
+  - story_beats
+  - story_replies
+  - story_artifacts
+- [ ] Add migrations and seed templates for the first three story archetypes
+- [ ] Keep the schema compatible with a later Supabase migration
 
-## Not started yet (do not begin before Phase 1 is working end-to-end)
+### 3. Story engine
 
-- Commonplace Book (save/favorite + reflection reply) — Phase 2
-- ElevenLabs audio + rituals — Phase 3
-- Cycle-phase tone bias — Phase 4
-- Stripe billing — Phase 5
-- Recommendation coda — Phase 6
-- Annual recap + printed keepsake — Phase 7
-- Narrative arcs — Phase 8
+- [ ] Build a generator for daily beat unlocks based on story state
+- [ ] Add support for sequence progression and beat completion
+- [ ] Add a notion of “discovery” and “reply” for each beat
+- [ ] Store the accumulated story history in a timeline view
+- [ ] Create a simple prompt layer for customized story text from user preferences
 
-## Housekeeping
+### 4. UX improvements
 
-- [ ] Resolve `npm audit` findings (1 high, 1 critical reported at initial
-      `npm install`) — check before adding more dependencies
-- [ ] Keep `.env.local` and all provider secrets out of Git (already
-      `.gitignore`d — verify before every commit that touches env handling)
+- [ ] Add a landing view for “Daily Muse” and “Our Story”
+- [ ] Add a couple onboarding flow with names and invite code
+- [ ] Show story progress as a gentle daily ritual, not a game screen
+- [ ] Add a more romantic visual system without making it too literal or cheesy
+- [ ] Add optional voice-note playback if audio is later enabled
+
+### 5. Validation
+
+- [ ] Run the app locally end-to-end with two simulated users in the same browser
+- [ ] Test multiple story templates and ensure the flow feels emotionally coherent
+- [ ] Decide whether the couple feature is strong enough to become a v1 expansion
+- [ ] Keep the local-first design until the product is validated, then migrate to Supabase
+
+## Suggested order of execution
+
+1. Decide local DB stack
+2. Move the story data out of localStorage into SQLite models
+3. Add couple onboarding and pairing flow
+4. Add story continuation / daily beat engine
+5. Add archive and reveal pages
+6. Validate emotionally, not just technically
+
+## Recommended technical stack for now
+
+- Next.js 14
+- TypeScript
+- SQLite
+- Prisma or Drizzle
+- Local filesystem storage for attachments
+- Keep Supabase out of the first pass unless you explicitly need hosted auth
+
+## Success signal for the feature
+
+The feature is working if a couple can:
+
+- create a shared story arc
+- receive a daily beat
+- answer a prompt or discovery
+- feel a sense of continuity across time and distance
+- leave behind a private, meaningful archive of the relationship

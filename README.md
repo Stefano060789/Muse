@@ -12,6 +12,8 @@ The full product definition lives in four documents:
 - [docs/TODO.md](docs/TODO.md) — near-term, imminent activities
 - [docs/MARKETING.md](docs/MARKETING.md) — value proposition, competitive
   comparison, pricing, and go-to-market
+- [docs/MARKET-ANALYSIS.md](docs/MARKET-ANALYSIS.md) — market differentiation,
+  revenue scenarios, risks, and validation targets
 
 ## Local setup
 

@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String       @id @default(cuid())
+  name      String
+  email     String?      @unique
+  createdAt DateTime     @default(now())
+  coupleA   Couple[]     @relation("CoupleUserA")
+  coupleB   Couple[]     @relation("CoupleUserB")
+  replies   StoryReply[]
+}
+
+model Couple {
+  id        String     @id @default(cuid())
+  name      String?
+  userAId   String
+  userBId   String
+  createdAt DateTime   @default(now())
+  userA     User       @relation("CoupleUserA", fields: [userAId], references: [id])
+  userB     User       @relation("CoupleUserB", fields: [userBId], references: [id])
+  storyArcs StoryArc[]
+}
+
+model StoryArc {
+  id          String         @id @default(cuid())
+  coupleId    String
+  title       String
+  description String
+  templateKey String
+  currentBeat Int            @default(0)
+  createdAt   DateTime       @default(now())
+  couple      Couple         @relation(fields: [coupleId], references: [id])
+  beats       StoryBeat[]
+  replies     StoryReply[]
+  artifacts   StoryArtifact[]
+}
+
+model StoryBeat {
+  id         String      @id @default(cuid())
+  storyArcId String
+  number     Int
+  title      String
+  body       String
+  clue       String
+  tone       String
+  createdAt  DateTime    @default(now())
+  storyArc   StoryArc    @relation(fields: [storyArcId], references: [id])
+  replies    StoryReply[]
+}
+
+model StoryReply {
+  id         String    @id @default(cuid())
+  storyArcId String?
+  beatId     String?
+  userId     String?
+  response   String
+  createdAt  DateTime  @default(now())
+  storyArc   StoryArc? @relation(fields: [storyArcId], references: [id])
+  storyBeat  StoryBeat? @relation(fields: [beatId], references: [id])
+  user       User?     @relation(fields: [userId], references: [id])
+}
+
+model StoryArtifact {
+  id         String   @id @default(cuid())
+  storyArcId String
+  label      String
+  type       String
+  content    String?
+  createdAt  DateTime @default(now())
+  storyArc   StoryArc  @relation(fields: [storyArcId], references: [id])
+}
