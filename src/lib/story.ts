@@ -18,6 +18,7 @@ export type StoryArc = {
   currentBeat: number
   createdAt: string
   responses: Record<string, string>
+  profileKeypoints?: string[]
 }
 
 export type StoryTemplate = {
@@ -114,8 +115,16 @@ export const STORY_TEMPLATES: StoryTemplate[] = [
 
 const STORAGE_KEY = 'muse-story-arc'
 
-export function createStoryArc(templateKey: string, partnerA: string, partnerB: string): StoryArc {
+export function createStoryArc(
+  templateKey: string,
+  partnerA: string,
+  partnerB: string,
+  profileKeypoints: string[] = []
+): StoryArc {
   const template = STORY_TEMPLATES.find((item) => item.key === templateKey) || STORY_TEMPLATES[0]
+  const personalCue = profileKeypoints.length > 0
+    ? ` Threads from your life run quietly through this chapter: ${profileKeypoints.slice(0, 3).join(' ')}.`
+    : ''
 
   return {
     id: `story-${Date.now()}`,
@@ -128,13 +137,14 @@ export function createStoryArc(templateKey: string, partnerA: string, partnerB: 
       id: `${template.key}-${index + 1}`,
       number: index + 1,
       title: beat.title,
-      body: beat.body,
+      body: index === 0 ? `${beat.body}${personalCue}` : beat.body,
       clue: beat.clue,
       tone: beat.tone
     })),
     currentBeat: 0,
     createdAt: new Date().toISOString(),
-    responses: {}
+    responses: {},
+    profileKeypoints
   }
 }
 

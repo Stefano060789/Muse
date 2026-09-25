@@ -1,6 +1,29 @@
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { STORY_TEMPLATES, type StoryArc } from '../lib/story'
+
+type SpeechRecognitionResultEvent = Event & {
+  resultIndex: number
+  results: SpeechRecognitionResultList
+}
+
+type SpeechRecognitionInstance = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onend: (() => void) | null
+  onerror: ((event: Event) => void) | null
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor
+  webkitSpeechRecognition?: SpeechRecognitionConstructor
+}
 
 export default function CouplesStoryPage() {
   const [story, setStory] = useState<StoryArc | null>(null)
@@ -8,7 +31,15 @@ export default function CouplesStoryPage() {
   const [partnerA, setPartnerA] = useState('You')
   const [partnerB, setPartnerB] = useState('Your partner')
   const [response, setResponse] = useState('')
+  const [about, setAbout] = useState('')
+  const [profileKeypoints, setProfileKeypoints] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [isProfileRecording, setIsProfileRecording] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const loadStory = async () => {
     const result = await fetch('/api/story')
@@ -21,8 +52,24 @@ export default function CouplesStoryPage() {
     setPartnerB(data.partnerB)
   }
 
+  const loadProfile = async () => {
+    const result = await fetch('/api/profile')
+    if (!result.ok) return
+    const data = await result.json()
+    if (!data) return
+    setAbout(data.about || '')
+    setProfileKeypoints(data.keypoints || [])
+  }
+
   useEffect(() => {
     loadStory()
+    loadProfile()
+
+    return () => {
+      recognitionRef.current?.stop()
+      audioRef.current?.pause()
+      if (audioRef.current) URL.revokeObjectURL(audioRef.current.src)
+    }
   }, [])
 
   const currentBeat = useMemo(() => {
@@ -32,6 +79,11 @@ export default function CouplesStoryPage() {
 
   const startStory = async () => {
     setError('')
+    if (about.trim()) {
+      const saved = await saveProfile()
+      if (!saved) return
+    }
+
     const res = await fetch('/api/story', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,6 +98,28 @@ export default function CouplesStoryPage() {
     const nextStory = await res.json()
     setStory(nextStory)
     setResponse('')
+  }
+
+  const saveProfile = async () => {
+    if (!about.trim()) {
+      setError('Tell Muse something about yourself before saving your profile.')
+      return false
+    }
+
+    const res = await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ about })
+    })
+
+    if (!res.ok) {
+      setError('Could not save your profile.')
+      return false
+    }
+
+    const profile = await res.json()
+    setProfileKeypoints(profile.keypoints || [])
+    return true
   }
 
   const handleAnswer = async () => {
@@ -68,6 +142,138 @@ export default function CouplesStoryPage() {
     setResponse('')
   }
 
+  const speakText = async (text: string) => {
+    setError('')
+    setIsLoadingAudio(true)
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+
+      if (!res.ok) {
+        if (res.status === 503 && 'speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(text)
+          utterance.onstart = () => setIsSpeaking(true)
+          utterance.onend = () => setIsSpeaking(false)
+          utterance.onerror = () => {
+            setIsSpeaking(false)
+            setError('Audio playback failed.')
+          }
+          window.speechSynthesis.cancel()
+          window.speechSynthesis.speak(utterance)
+          return
+        }
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Could not generate audio.')
+      }
+
+      const audioUrl = URL.createObjectURL(await res.blob())
+      audioRef.current?.pause()
+      if (audioRef.current?.src) URL.revokeObjectURL(audioRef.current.src)
+
+      const audio = new Audio(audioUrl)
+      audioRef.current = audio
+      audio.onplay = () => setIsSpeaking(true)
+      audio.onended = () => {
+        setIsSpeaking(false)
+        URL.revokeObjectURL(audioUrl)
+      }
+      audio.onerror = () => {
+        setIsSpeaking(false)
+        setError('Audio playback failed.')
+        URL.revokeObjectURL(audioUrl)
+      }
+      await audio.play()
+    } catch (audioError) {
+      setError(audioError instanceof Error ? audioError.message : 'Could not play audio.')
+    } finally {
+      setIsLoadingAudio(false)
+    }
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      return
+    }
+
+    const recognitionConstructor = (window as SpeechRecognitionWindow).SpeechRecognition
+      || (window as SpeechRecognitionWindow).webkitSpeechRecognition
+
+    if (!recognitionConstructor) {
+      setError('Voice input is not supported in this browser. Try the latest Chrome or Edge.')
+      return
+    }
+
+    setError('')
+    const recognition = new recognitionConstructor()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript
+      }
+      setResponse(transcript.trim())
+    }
+    recognition.onerror = () => {
+      setIsRecording(false)
+      setError('Could not understand the recording. Please try again.')
+    }
+    recognition.onend = () => {
+      setIsRecording(false)
+      recognitionRef.current = null
+    }
+
+    recognitionRef.current = recognition
+    setIsRecording(true)
+    recognition.start()
+  }
+
+  const toggleProfileRecording = () => {
+    if (isProfileRecording) {
+      recognitionRef.current?.stop()
+      return
+    }
+
+    const recognitionConstructor = (window as SpeechRecognitionWindow).SpeechRecognition
+      || (window as SpeechRecognitionWindow).webkitSpeechRecognition
+
+    if (!recognitionConstructor) {
+      setError('Voice input is not supported in this browser. Try the latest Chrome or Edge.')
+      return
+    }
+
+    setError('')
+    const recognition = new recognitionConstructor()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript
+      }
+      setAbout((current) => `${current}${current ? ' ' : ''}${transcript.trim()}`.trim())
+    }
+    recognition.onerror = () => {
+      setIsProfileRecording(false)
+      setError('Could not understand the recording. Please try again.')
+    }
+    recognition.onend = () => {
+      setIsProfileRecording(false)
+      recognitionRef.current = null
+    }
+
+    recognitionRef.current = recognition
+    setIsProfileRecording(true)
+    recognition.start()
+  }
+
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '2rem', fontFamily: 'Georgia, serif' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -79,6 +285,40 @@ export default function CouplesStoryPage() {
 
       {!story ? (
         <section style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ border: '1px solid #d9cfc5', borderRadius: 16, padding: '1.5rem', background: '#fffaf6' }}>
+            <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.75rem', opacity: 0.7, marginTop: 0 }}>
+              Your Muse profile
+            </p>
+            <h2 style={{ margin: '0.25rem 0 0.75rem' }}>Tell Muse about you</h2>
+            <p style={{ lineHeight: 1.7, marginTop: 0 }}>
+              Share the experiences, people, places, hopes, or needs that should shape your stories. Muse keeps the key points locally and uses them to personalize new story arcs.
+            </p>
+            <textarea
+              value={about}
+              onChange={(event) => setAbout(event.target.value)}
+              rows={5}
+              placeholder="For example: I am rebuilding my routine after moving to a new city. I feel most connected through small rituals, long walks, and honest conversations."
+              style={{ display: 'block', width: '100%', padding: '0.9rem', fontSize: '1rem', resize: 'vertical', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+              <button onClick={toggleProfileRecording} style={{ padding: '0.8rem 1rem', cursor: 'pointer', background: isProfileRecording ? '#a14329' : undefined, color: isProfileRecording ? '#fffaf6' : undefined }}>
+                {isProfileRecording ? 'Stop telling Muse' : 'Tell Muse by voice'}
+              </button>
+              <button onClick={saveProfile} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>
+                Save profile
+              </button>
+            </div>
+            {isProfileRecording ? <p style={{ marginBottom: 0, fontSize: '0.9rem', opacity: 0.7 }}>Listening… speak naturally, then stop recording.</p> : null}
+            {profileKeypoints.length > 0 ? (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Key points Muse will remember:</strong>
+                <ul style={{ marginBottom: 0, lineHeight: 1.7 }}>
+                  {profileKeypoints.map((keypoint) => <li key={keypoint}>{keypoint}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
           <label>
             Story template
             <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} style={{ display: 'block', width: '100%', marginTop: '0.5rem', padding: '0.8rem' }}>
@@ -119,6 +359,25 @@ export default function CouplesStoryPage() {
             <h3 style={{ marginTop: '0.25rem', marginBottom: '0.75rem' }}>{currentBeat?.title}</h3>
             <p style={{ lineHeight: 1.8, marginBottom: '1rem' }}>{currentBeat?.body}</p>
             <p style={{ fontStyle: 'italic', margin: 0 }}><strong>Clue:</strong> {currentBeat?.clue}</p>
+            <button
+              onClick={() => speakText(`${currentBeat?.body || ''} ${currentBeat?.clue || ''}`)}
+              disabled={isLoadingAudio || isSpeaking}
+              style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', cursor: isLoadingAudio || isSpeaking ? 'wait' : 'pointer' }}
+            >
+              {isLoadingAudio ? 'Preparing audio…' : isSpeaking ? 'Muse is speaking…' : 'Listen to this beat'}
+            </button>
+            {isSpeaking ? (
+              <button
+                onClick={() => {
+                  audioRef.current?.pause()
+                  window.speechSynthesis.cancel()
+                  setIsSpeaking(false)
+                }}
+                style={{ marginTop: '1.25rem', marginLeft: '0.5rem', padding: '0.75rem 1rem', cursor: 'pointer' }}
+              >
+                Stop
+              </button>
+            ) : null}
           </div>
 
           <div style={{ border: '1px solid #d9cfc5', borderRadius: 16, padding: '1.5rem' }}>
@@ -132,9 +391,20 @@ export default function CouplesStoryPage() {
               />
             </label>
 
-            <button onClick={handleAnswer} style={{ marginTop: '1rem', padding: '0.9rem 1.2rem', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+              <button
+                onClick={toggleRecording}
+                style={{ padding: '0.9rem 1.2rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}
+              >
+                {isRecording ? 'Stop recording' : 'Answer by voice'}
+              </button>
+              <button onClick={handleAnswer} style={{ padding: '0.9rem 1.2rem', cursor: 'pointer' }}>
               Save discovery
-            </button>
+              </button>
+            </div>
+            <p style={{ marginBottom: 0, fontSize: '0.9rem', opacity: 0.7 }}>
+              {isRecording ? 'Listening… speak your answer, then stop recording.' : 'Your transcript will appear above so you can review it before saving.'}
+            </p>
           </div>
 
           <div style={{ border: '1px solid #d9cfc5', borderRadius: 16, padding: '1.5rem' }}>

@@ -23,6 +23,7 @@
   - story_artifacts
 - [ ] Add migrations and seed templates for the first three story archetypes
 - [ ] Keep the schema compatible with a later Supabase migration
+- [x] Add a local Muse profile with saved key points for story personalization
 
 ### 3. Story engine
 
@@ -38,7 +39,8 @@
 - [ ] Add a couple onboarding flow with names and invite code
 - [ ] Show story progress as a gentle daily ritual, not a game screen
 - [ ] Add a more romantic visual system without making it too literal or cheesy
-- [ ] Add optional voice-note playback if audio is later enabled
+- [x] Add story-beat narration with ElevenLabs (or browser speech fallback)
+- [x] Add browser voice answers with transcript review before saving
 
 ### 5. Validation
 

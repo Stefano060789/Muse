@@ -11,6 +11,7 @@ export type StoryRecord = {
   currentBeat: number
   createdAt: string
   responses: Record<string, string>
+  profileKeypoints?: string[]
   beats: Array<{
     id: string
     number: number
