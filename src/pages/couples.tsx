@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { STORY_TEMPLATES, type StoryArc } from '../lib/story'
 
@@ -69,7 +70,10 @@ export default function CouplesStoryPage() {
 
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '2rem', fontFamily: 'Georgia, serif' }}>
-      <h1 style={{ fontSize: '2.2rem', marginBottom: '1rem' }}>Muse — Shared Story Mode</h1>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: '2.2rem', margin: 0 }}>Muse — Shared Story Mode</h1>
+        <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 600 }}>Back to home</Link>
+      </header>
 
       {error ? <p style={{ color: '#a14329', marginBottom: '1rem' }}>{error}</p> : null}
 
