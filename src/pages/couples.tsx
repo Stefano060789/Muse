@@ -1,3 +1,4 @@
+import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerCurrentBeat, createStoryArc, loadStoryArc, saveStoryArc, STORY_TEMPLATES, type StoryArc } from '../lib/story'
@@ -252,6 +253,10 @@ export default function CouplesStoryPage() {
 
   return (
     <main style={{ minHeight: '100vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
+      <Head>
+        <title>Muse — Shared story</title>
+        <meta name="description" content="Create a meaningful story together, one small discovery at a time." />
+      </Head>
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '1.5rem' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '2.5rem', flexWrap: 'wrap' }}>
           <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700, letterSpacing: '0.08em' }}>MUSE</Link>

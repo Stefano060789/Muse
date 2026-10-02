@@ -7,7 +7,7 @@ const features = [
     description: 'Gentle, personal messages shaped by the moods, memories, and media that matter to you.'
   },
   {
-    title: 'Couples story mode',
+    title: 'Shared story',
     description: 'A shared romantic mystery where each partner discovers clues and builds a story together across time and distance.'
   },
   {
@@ -24,10 +24,10 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Muse — Your daily story</title>
+        <title>Muse — A shared story for two</title>
         <meta
           name="description"
-          content="A personalized daily story shaped by what you love."
+          content="A shared story experience for two people, shaped by memories, moods, and small discoveries."
         />
       </Head>
 
@@ -51,11 +51,10 @@ export default function Home() {
             flexWrap: 'wrap'
           }}
         >
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>Muse</div>
+          <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontSize: '1.4rem', fontWeight: 700 }}>Muse</Link>
           <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <a href="#experience" style={{ color: '#2d2926', textDecoration: 'none' }}>Experience</a>
-            <a href="#couples" style={{ color: '#2d2926', textDecoration: 'none' }}>Couples</a>
-            <Link href="/couples" style={{ color: '#2d2926', textDecoration: 'none' }}>Open story</Link>
+            <a href="#experience" style={{ color: '#2d2926', textDecoration: 'none' }}>How it works</a>
+            <Link href="/couples" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700 }}>Start your story</Link>
           </nav>
         </header>
 
@@ -75,10 +74,10 @@ export default function Home() {
               Muse
             </p>
             <h1 style={{ fontSize: 'clamp(2.8rem, 7vw, 5rem)', margin: '0 0 1rem', lineHeight: 1.05 }}>
-              Your daily story, written for you.
+              A shared story, written for both of you.
             </h1>
             <p style={{ fontSize: '1.25rem', lineHeight: 1.6, maxWidth: 620 }}>
-              A quiet space for personalized messages inspired by the books, films, poetry, and moods that matter to you.
+              A quiet space for two people to create a meaningful story together, one small discovery at a time.
             </p>
 
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
@@ -96,7 +95,7 @@ export default function Home() {
                   fontWeight: 600
                 }}
               >
-                Try the couples story
+                Start your shared story
               </Link>
               <a
                 href="#experience"
@@ -112,7 +111,7 @@ export default function Home() {
                   fontWeight: 600
                 }}
               >
-                Explore the experience
+                See how it works
               </a>
             </div>
           </div>
@@ -126,10 +125,10 @@ export default function Home() {
               boxShadow: '0 12px 30px rgba(45, 41, 38, 0.06)'
             }}
           >
-            <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.7 }}>Current focus</p>
-            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>Shared Story Mode</h2>
+            <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.7 }}>The Muse experience</p>
+            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>A little mystery for two</h2>
             <p style={{ lineHeight: 1.7, margin: 0 }}>
-              A personal mystery built for two people in different time zones: clues, discovery, rituals, and a shared emotional arc.
+              Choose a story, add a little context, and take turns discovering where it leads.
             </p>
           </aside>
         </section>
@@ -155,7 +154,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="couples" style={{ maxWidth: 1200, margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
+        <section style={{ maxWidth: 1200, margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
           <div
             style={{
               background: '#2d2926',
@@ -170,8 +169,8 @@ export default function Home() {
             }}
           >
             <div>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.72rem', opacity: 0.8 }}>Prototype</p>
-              <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem' }}>Launch the shared story experience</h3>
+              <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.72rem', opacity: 0.8 }}>Ready when you are</p>
+              <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem' }}>Start your shared story</h3>
             </div>
             <Link
               href="/couples"
@@ -187,7 +186,7 @@ export default function Home() {
                 fontWeight: 700
               }}
             >
-              Open Couples Story
+              Begin together →
             </Link>
           </div>
         </section>
