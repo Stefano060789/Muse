@@ -130,7 +130,7 @@ export default function CouplesStoryPage() {
       })
 
       if (!res.ok) {
-        if (res.status === 503 && 'speechSynthesis' in window) {
+        if ('speechSynthesis' in window) {
           const utterance = new SpeechSynthesisUtterance(text)
           utterance.onstart = () => setIsSpeaking(true)
           utterance.onend = () => setIsSpeaking(false)

@@ -18,22 +18,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Text is required' })
   }
 
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
-    method: 'POST',
-    headers: {
-      Accept: 'audio/mpeg',
-      'Content-Type': 'application/json',
-      'xi-api-key': apiKey
-    },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.55,
-        similarity_boost: 0.75
-      }
+  let response: Response
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+
+  try {
+    response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.55,
+          similarity_boost: 0.75
+        }
+      }),
+      signal: controller.signal
     })
-  })
+  } catch {
+    return res.status(503).json({ error: 'Text-to-speech provider is unavailable' })
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
     const details = await response.text()
