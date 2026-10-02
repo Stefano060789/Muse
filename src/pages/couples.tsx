@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { STORY_TEMPLATES, type StoryArc } from '../lib/story'
+import { answerCurrentBeat, createStoryArc, loadStoryArc, saveStoryArc, STORY_TEMPLATES, type StoryArc } from '../lib/story'
 
 type SpeechRecognitionResultEvent = Event & {
   resultIndex: number
@@ -25,6 +25,8 @@ type SpeechRecognitionWindow = Window & {
   webkitSpeechRecognition?: SpeechRecognitionConstructor
 }
 
+const PROFILE_STORAGE_KEY = 'muse-profile'
+
 export default function CouplesStoryPage() {
   const [story, setStory] = useState<StoryArc | null>(null)
   const [templateKey, setTemplateKey] = useState(STORY_TEMPLATES[0].key)
@@ -41,29 +43,25 @@ export default function CouplesStoryPage() {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const loadStory = async () => {
-    const result = await fetch('/api/story')
-    if (!result.ok) return
-    const data = await result.json()
-    if (!data) return
-    setStory(data)
-    setTemplateKey(data.templateKey)
-    setPartnerA(data.partnerA)
-    setPartnerB(data.partnerB)
-  }
-
-  const loadProfile = async () => {
-    const result = await fetch('/api/profile')
-    if (!result.ok) return
-    const data = await result.json()
-    if (!data) return
-    setAbout(data.about || '')
-    setProfileKeypoints(data.keypoints || [])
-  }
-
   useEffect(() => {
-    loadStory()
-    loadProfile()
+    const savedStory = loadStoryArc()
+    if (savedStory) {
+      setStory(savedStory)
+      setTemplateKey(savedStory.templateKey)
+      setPartnerA(savedStory.partnerA)
+      setPartnerB(savedStory.partnerB)
+    }
+
+    const savedProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY)
+    if (savedProfile) {
+      try {
+        const profile = JSON.parse(savedProfile) as { about?: string; keypoints?: string[] }
+        setAbout(profile.about || '')
+        setProfileKeypoints(profile.keypoints || [])
+      } catch {
+        window.localStorage.removeItem(PROFILE_STORAGE_KEY)
+      }
+    }
 
     return () => {
       recognitionRef.current?.stop()
@@ -84,18 +82,8 @@ export default function CouplesStoryPage() {
       if (!saved) return
     }
 
-    const res = await fetch('/api/story', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', templateKey, partnerA, partnerB })
-    })
-
-    if (!res.ok) {
-      setError('Could not create the story.')
-      return
-    }
-
-    const nextStory = await res.json()
+    const nextStory = createStoryArc(templateKey, partnerA, partnerB, profileKeypoints)
+    saveStoryArc(nextStory)
     setStory(nextStory)
     setResponse('')
   }
@@ -106,18 +94,16 @@ export default function CouplesStoryPage() {
       return false
     }
 
-    const res = await fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ about })
-    })
-
-    if (!res.ok) {
-      setError('Could not save your profile.')
-      return false
+    const profile = {
+      about: about.trim(),
+      keypoints: about
+        .split(/[.!?]+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean)
+        .slice(0, 8),
+      updatedAt: new Date().toISOString()
     }
-
-    const profile = await res.json()
+    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
     setProfileKeypoints(profile.keypoints || [])
     return true
   }
@@ -126,18 +112,8 @@ export default function CouplesStoryPage() {
     if (!story || !response.trim()) return
     setError('')
 
-    const res = await fetch('/api/story', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'answer', response })
-    })
-
-    if (!res.ok) {
-      setError('Could not save your discovery.')
-      return
-    }
-
-    const nextStory = await res.json()
+    const nextStory = answerCurrentBeat(story, response)
+    saveStoryArc(nextStory)
     setStory(nextStory)
     setResponse('')
   }
