@@ -19,6 +19,12 @@ export type StoryArc = {
   createdAt: string
   responses: Record<string, string>
   profileKeypoints?: string[]
+  difficulty?: 'gentle' | 'clever' | 'challenging'
+  durationMinutes?: number
+  goalType?: 'location' | 'item' | 'letter' | 'puzzle'
+  solution?: string
+  completionMessage?: string
+  solved?: boolean
 }
 
 export type StoryTemplate = {
@@ -214,7 +220,8 @@ export function createStoryArc(
   templateKey: string,
   partnerA: string,
   partnerB: string,
-  profileKeypoints: string[] = []
+  profileKeypoints: string[] = [],
+  options: Pick<StoryArc, 'difficulty' | 'durationMinutes' | 'goalType' | 'solution' | 'completionMessage'> = {}
 ): StoryArc {
   const template = STORY_TEMPLATES.find((item) => item.key === templateKey) || STORY_TEMPLATES[0]
   const personalCue = profileKeypoints.length > 0
@@ -239,7 +246,13 @@ export function createStoryArc(
     currentBeat: 0,
     createdAt: new Date().toISOString(),
     responses: {},
-    profileKeypoints
+    profileKeypoints,
+    difficulty: options.difficulty || 'gentle',
+    durationMinutes: options.durationMinutes || 15,
+    goalType: options.goalType || 'puzzle',
+    solution: options.solution?.trim() || undefined,
+    completionMessage: options.completionMessage?.trim() || 'You solved the story.',
+    solved: false
   }
 }
 
@@ -268,6 +281,22 @@ export function answerCurrentBeat(story: StoryArc, response: string): StoryArc {
 
   const nextBeatIndex = Math.min(story.currentBeat + 1, story.beats.length - 1)
   nextStory.currentBeat = nextBeatIndex
+  if (story.solution && trimmed.toLowerCase().includes(story.solution.toLowerCase())) {
+    nextStory.solved = true
+  }
 
   return nextStory
+}
+
+export function encodeSharedStory(story: StoryArc) {
+  if (typeof window === 'undefined') return ''
+  return window.btoa(unescape(encodeURIComponent(JSON.stringify(story))))
+}
+
+export function decodeSharedStory(value: string): StoryArc | null {
+  try {
+    return JSON.parse(decodeURIComponent(escape(window.atob(value)))) as StoryArc
+  } catch {
+    return null
+  }
 }

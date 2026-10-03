@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { answerCurrentBeat, createStoryArc, loadStoryArc, saveStoryArc, STORY_TEMPLATES, type StoryArc } from '../lib/story'
+import { answerCurrentBeat, createStoryArc, decodeSharedStory, encodeSharedStory, loadStoryArc, saveStoryArc, STORY_TEMPLATES, type StoryArc } from '../lib/story'
 import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 
 type SpeechRecognitionResultEvent = Event & {
@@ -32,6 +32,12 @@ export default function CouplesStoryPage() {
   const [templateKey, setTemplateKey] = useState(STORY_TEMPLATES[0].key)
   const [partnerA, setPartnerA] = useState('You')
   const [partnerB, setPartnerB] = useState('Your partner')
+  const [difficulty, setDifficulty] = useState<StoryArc['difficulty']>('gentle')
+  const [durationMinutes, setDurationMinutes] = useState(15)
+  const [goalType, setGoalType] = useState<StoryArc['goalType']>('puzzle')
+  const [solution, setSolution] = useState('')
+  const [completionMessage, setCompletionMessage] = useState('')
+  const [shareMessage, setShareMessage] = useState('')
   const [response, setResponse] = useState('')
   const [about, setAbout] = useState('')
   const [profileKeypoints, setProfileKeypoints] = useState<string[]>([])
@@ -44,12 +50,18 @@ export default function CouplesStoryPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
-    const savedStory = loadStoryArc()
+    const sharedValue = new URLSearchParams(window.location.search).get('share')
+    const savedStory = sharedValue ? decodeSharedStory(sharedValue) : loadStoryArc()
     if (savedStory) {
       setStory(savedStory)
       setTemplateKey(savedStory.templateKey)
       setPartnerA(savedStory.partnerA)
       setPartnerB(savedStory.partnerB)
+      setDifficulty(savedStory.difficulty || 'gentle')
+      setDurationMinutes(savedStory.durationMinutes || 15)
+      setGoalType(savedStory.goalType || 'puzzle')
+      setSolution(savedStory.solution || '')
+      setCompletionMessage(savedStory.completionMessage || '')
     }
 
     const savedProfile = loadMuseProfile()
@@ -77,7 +89,13 @@ export default function CouplesStoryPage() {
       if (!saved) return
     }
 
-    const nextStory = createStoryArc(templateKey, partnerA, partnerB, profileKeypoints)
+    const nextStory = createStoryArc(templateKey, partnerA, partnerB, profileKeypoints, {
+      difficulty,
+      durationMinutes,
+      goalType,
+      solution,
+      completionMessage
+    })
     saveStoryArc(nextStory)
     setStory(nextStory)
     setResponse('')
@@ -102,6 +120,17 @@ export default function CouplesStoryPage() {
     saveStoryArc(nextStory)
     setStory(nextStory)
     setResponse('')
+  }
+
+  const shareStory = async () => {
+    if (!story) return
+    const shareUrl = `${window.location.origin}/couples?share=${encodeURIComponent(encodeSharedStory(story))}`
+    if (!navigator.clipboard) {
+      setShareMessage(`Copy this link to share: ${shareUrl}`)
+      return
+    }
+    await navigator.clipboard.writeText(shareUrl)
+    setShareMessage('Share link copied. The recipient can open it to play.')
   }
 
   const speakText = async (text: string) => {
@@ -220,7 +249,7 @@ export default function CouplesStoryPage() {
       for (let index = event.resultIndex || 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript
       }
-      setAbout((current) => `${current}${current ? ' ' : ''}${transcript.trim()}`.trim())
+      setAbout(transcript.trim())
     }
     recognition.onerror = () => {
       setIsProfileRecording(false)
@@ -284,6 +313,15 @@ export default function CouplesStoryPage() {
                   <label>Your name<input value={partnerA} onChange={(e) => setPartnerA(e.target.value)} style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem', boxSizing: 'border-box' }} /></label>
                   <label>Your partner's name<input value={partnerB} onChange={(e) => setPartnerB(e.target.value)} style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem', boxSizing: 'border-box' }} /></label>
                 </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                  <label>Difficulty<select value={difficulty} onChange={(e) => setDifficulty(e.target.value as StoryArc['difficulty'])} style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem' }}><option value="gentle">Gentle</option><option value="clever">Clever</option><option value="challenging">Challenging</option></select></label>
+                  <label>Approximate time<select value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value))} style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem' }}><option value={10}>10 minutes</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>About an hour</option></select></label>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                  <label>How should it conclude?<select value={goalType} onChange={(e) => setGoalType(e.target.value as StoryArc['goalType'])} style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem' }}><option value="puzzle">Solve a puzzle</option><option value="location">Reach a location</option><option value="item">Find an item</option><option value="letter">Find a letter</option></select></label>
+                  <label>Secret answer or solution<input value={solution} onChange={(e) => setSolution(e.target.value)} placeholder="Only the solver should know" style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem', boxSizing: 'border-box' }} /></label>
+                </div>
+                <label style={{ display: 'block', marginTop: '1rem' }}>Message when solved<input value={completionMessage} onChange={(e) => setCompletionMessage(e.target.value)} placeholder="You found it. Meet me at the place we love." style={{ display: 'block', width: '100%', marginTop: '0.45rem', padding: '0.8rem', fontSize: '1rem', boxSizing: 'border-box' }} /></label>
               </div>
 
               <button onClick={startStory} style={{ padding: '1rem 1.2rem', fontSize: '1.05rem', cursor: 'pointer', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', fontWeight: 700 }}>Begin the story →</button>
@@ -296,6 +334,8 @@ export default function CouplesStoryPage() {
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.75rem', opacity: 0.65, margin: 0 }}>{story.partnerA} + {story.partnerB} · Beat {story.currentBeat + 1} of {story.beats.length}</p>
               <h1 style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)', lineHeight: 1.05, margin: '0.55rem 0 0.75rem' }}>{story.title}</h1>
               <p style={{ lineHeight: 1.7, margin: 0 }}>{story.description}</p>
+              <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: 0 }}>{story.difficulty || 'gentle'} · about {story.durationMinutes || 15} minutes · solve to reveal the ending</p>
+              {story.solved ? <p role="status" style={{ background: '#e8eee3', borderRadius: 12, padding: '0.9rem 1rem', marginBottom: 0 }}>{story.completionMessage || 'The story is solved.'}</p> : null}
             </div>
 
             <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', marginBottom: '1.25rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${((story.currentBeat + 1) / story.beats.length) * 100}%` }} /></div>
@@ -326,6 +366,10 @@ export default function CouplesStoryPage() {
               <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Earlier discoveries ({Object.keys(story.responses).length})</summary>
               {Object.keys(story.responses).length > 0 ? <ul style={{ paddingLeft: '1.2rem', lineHeight: 1.8, marginBottom: 0 }}>{Object.entries(story.responses).map(([beat, answer]) => <li key={beat}><strong>Beat {beat}:</strong> {answer}</li>)}</ul> : <p style={{ marginBottom: 0 }}>Your saved discoveries will appear here.</p>}
             </details>
+            <div style={{ marginTop: '1rem' }}>
+              <button onClick={shareStory} style={{ padding: '0.8rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: 'pointer', fontWeight: 700 }}>Share this story →</button>
+              {shareMessage ? <p role="status" style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{shareMessage}</p> : null}
+            </div>
           </section>
         )}
       </div>

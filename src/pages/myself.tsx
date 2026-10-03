@@ -60,7 +60,7 @@ export default function MyselfPage() {
     recognition.onresult = (event) => {
       let transcript = ''
       for (let index = event.resultIndex || 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
-      setAbout((current) => `${current}${current ? ' ' : ''}${transcript.trim()}`.trim())
+      setAbout(transcript.trim())
     }
     recognition.onerror = () => {
       setIsRecording(false)

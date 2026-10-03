@@ -1,8 +1,22 @@
 import Head from 'next/head'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerPersonalStory, createPersonalStory, inferPersonalStoryMood, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
 import { loadMuseProfile } from '../lib/profile'
+
+type RecognitionEvent = Event & { resultIndex: number; results: SpeechRecognitionResultList }
+type Recognition = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  onresult: ((event: RecognitionEvent) => void) | null
+  start: () => void
+  stop: () => void
+}
+type RecognitionConstructor = new () => Recognition
+type RecognitionWindow = Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }
 
 const moods: Array<{ key: PersonalStoryMood; title: string; description: string }> = [
   { key: 'adventure', title: 'Adventure', description: 'I want movement, courage, and something new.' },
@@ -16,10 +30,14 @@ export default function StoryPage() {
   const [need, setNeed] = useState('')
   const [selectedMood, setSelectedMood] = useState<PersonalStoryMood>('curious')
   const [profileReady, setProfileReady] = useState(false)
+  const [responseDraft, setResponseDraft] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef<Recognition | null>(null)
 
   useEffect(() => {
     setStory(loadPersonalStory())
     setProfileReady(Boolean(loadMuseProfile()))
+    return () => recognitionRef.current?.stop()
   }, [])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
@@ -31,6 +49,7 @@ export default function StoryPage() {
     savePersonalStory(nextStory)
     setStory(nextStory)
     setNeed('')
+    setResponseDraft('')
   }
 
   const choose = (choice: string) => {
@@ -38,6 +57,37 @@ export default function StoryPage() {
     const nextStory = answerPersonalStory(story, choice)
     savePersonalStory(nextStory)
     setStory(nextStory)
+    setResponseDraft('')
+  }
+
+  const submitResponse = () => {
+    if (responseDraft.trim()) choose(responseDraft)
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
+    if (!Constructor) return
+    const recognition = new Constructor()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
+      setResponseDraft(transcript.trim())
+    }
+    recognition.onerror = () => setIsRecording(false)
+    recognition.onend = () => {
+      setIsRecording(false)
+      recognitionRef.current = null
+    }
+    recognitionRef.current = recognition
+    setIsRecording(true)
+    recognition.start()
   }
 
   return (
@@ -74,6 +124,12 @@ export default function StoryPage() {
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
                 <p style={{ fontSize: '1.15rem', lineHeight: 1.85 }}>{scene?.body}</p>
                 <h3 style={{ marginTop: '2rem' }}>{scene?.question}</h3>
+                <textarea value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} rows={3} placeholder="Write or speak your answer…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
+                  <button onClick={submitResponse} disabled={!responseDraft.trim()} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>Continue with my answer →</button>
+                  <button onClick={toggleRecording} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak your answer'}</button>
+                </div>
+                <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction:</p>
                 <div style={{ display: 'grid', gap: '0.7rem' }}>{scene?.choices.map((choice) => <button key={choice} onClick={() => choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', cursor: 'pointer', font: 'inherit' }}>{choice} →</button>)}</div>
               </article>
               {story.currentStep === story.scenes.length - 1 && story.responses.length >= story.scenes.length ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>You have reached the end of this chapter. Start a new story whenever your needs change.</div> : null}

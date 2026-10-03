@@ -11,7 +11,8 @@ export function extractProfileKeypoints(about: string) {
     .split(/[.!?]+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean)
-    .slice(0, 8)
+    .map((sentence) => sentence.length > 180 ? `${sentence.slice(0, 177).trimEnd()}...` : sentence)
+    .slice(0, 5)
 }
 
 export function loadMuseProfile(): MuseProfile | null {
@@ -28,9 +29,10 @@ export function loadMuseProfile(): MuseProfile | null {
 }
 
 export function saveMuseProfile(about: string) {
+  const keypoints = extractProfileKeypoints(about)
   const profile: MuseProfile = {
-    about: about.trim(),
-    keypoints: extractProfileKeypoints(about),
+    about: keypoints.join('. '),
+    keypoints,
     updatedAt: new Date().toISOString()
   }
   window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
