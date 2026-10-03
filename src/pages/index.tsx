@@ -3,20 +3,19 @@ import Link from 'next/link'
 
 const features = [
   {
-    title: 'Daily story',
-    description: 'Gentle, personal messages shaped by the moods, memories, and media that matter to you.'
+    title: 'Myself',
+    description: 'Tell Muse what matters to you. Your key points stay in this browser and help every interaction feel more personal.',
+    href: '/myself'
   },
   {
-    title: 'Shared story',
-    description: 'A shared romantic mystery where each partner discovers clues and builds a story together across time and distance.'
+    title: 'My Story',
+    description: 'Choose what you need today and receive an interactive story that changes through your answers.',
+    href: '/story'
   },
   {
-    title: 'Rituals',
-    description: 'Soft prompts for reflection, reconnection, and slower daily rituals that feel intimate instead of performative.'
-  },
-  {
-    title: 'Voice and warmth',
-    description: 'A future layer for narration and audio that turns the experience into something more emotional and less transactional.'
+    title: 'Shared Story',
+    description: 'A story for two people with clues, discovery, and a shared emotional arc.',
+    href: '/couples'
   }
 ]
 
@@ -24,10 +23,10 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Muse — A shared story for two</title>
+        <title>Muse — Stories that meet you where you are</title>
         <meta
           name="description"
-          content="A shared story experience for two people, shaped by memories, moods, and small discoveries."
+          content="Muse creates personalized, interactive stories shaped by what matters to you."
         />
       </Head>
 
@@ -54,7 +53,9 @@ export default function Home() {
           <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontSize: '1.4rem', fontWeight: 700 }}>Muse</Link>
           <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <a href="#experience" style={{ color: '#2d2926', textDecoration: 'none' }}>How it works</a>
-            <Link href="/couples" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700 }}>Start your story</Link>
+            <Link href="/myself" style={{ color: '#2d2926', textDecoration: 'none' }}>Myself</Link>
+            <Link href="/story" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700 }}>My Story</Link>
+            <Link href="/couples" style={{ color: '#2d2926', textDecoration: 'none' }}>Shared Story</Link>
           </nav>
         </header>
 
@@ -74,15 +75,15 @@ export default function Home() {
               Muse
             </p>
             <h1 style={{ fontSize: 'clamp(2.8rem, 7vw, 5rem)', margin: '0 0 1rem', lineHeight: 1.05 }}>
-              A shared story, written for both of you.
+              Stories that meet you where you are.
             </h1>
             <p style={{ fontSize: '1.25rem', lineHeight: 1.6, maxWidth: 620 }}>
-              A quiet space for two people to create a meaningful story together, one small discovery at a time.
+              A quiet space where Muse remembers what matters, understands what you need, and creates stories you can shape.
             </p>
 
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
               <Link
-                href="/couples"
+                href="/story"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -95,7 +96,7 @@ export default function Home() {
                   fontWeight: 600
                 }}
               >
-                Start your shared story
+                Create My Story
               </Link>
               <a
                 href="#experience"
@@ -128,13 +129,13 @@ export default function Home() {
             <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.7 }}>The Muse experience</p>
             <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>A little mystery for two</h2>
             <p style={{ lineHeight: 1.7, margin: 0 }}>
-              Choose a story, add a little context, and take turns discovering where it leads.
+              Start with Myself, choose a mood in My Story, or invite someone into a Shared Story.
             </p>
           </aside>
         </section>
 
         <section id="experience" style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem 1rem' }}>
-          <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.75rem', marginBottom: '1rem' }}>What Muse does</p>
+          <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.75rem', marginBottom: '1rem' }}>Choose your space</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
             {features.map((feature) => (
               <article
@@ -147,7 +148,7 @@ export default function Home() {
                   minHeight: 180
                 }}
               >
-                <h3 style={{ marginTop: 0, marginBottom: '0.6rem', fontSize: '1.4rem' }}>{feature.title}</h3>
+                <h3 style={{ marginTop: 0, marginBottom: '0.6rem', fontSize: '1.4rem' }}><Link href={feature.href} style={{ color: '#2d2926', textDecoration: 'none' }}>{feature.title} →</Link></h3>
                 <p style={{ margin: 0, lineHeight: 1.7 }}>{feature.description}</p>
               </article>
             ))}

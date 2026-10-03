@@ -34,6 +34,101 @@ export type StoryTemplate = {
   }>
 }
 
+export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
+
+export type PersonalStory = {
+  id: string
+  mood: PersonalStoryMood
+  title: string
+  description: string
+  currentStep: number
+  createdAt: string
+  responses: string[]
+  scenes: Array<{
+    title: string
+    body: string
+    question: string
+    choices: string[]
+  }>
+}
+
+const PERSONAL_STORY_STORAGE_KEY = 'muse-personal-story'
+
+const PERSONAL_STORY_SCENES: Record<PersonalStoryMood, PersonalStory['scenes']> = {
+  adventure: [
+    { title: 'The open road', body: 'The day gives you a small invitation: a path you have not taken, a door that is not locked, and enough courage for one first step.', question: 'What kind of next step feels right?', choices: ['Something bold and unfamiliar', 'A small change with room to grow', 'I want to wander without a plan'] },
+    { title: 'A useful detour', body: 'The path turns away from the map. Instead of losing the way, you notice that the detour has been waiting for your attention.', question: 'What will you make space for?', choices: ['A new possibility', 'A conversation I have postponed', 'Rest before I continue'] },
+    { title: 'Your own compass', body: 'By evening, the road is no longer asking you to prove anything. It is simply showing you that you can choose your direction again.', question: 'What do you want to carry forward?', choices: ['Curiosity', 'Courage', 'A gentler pace'] }
+  ],
+  relaxed: [
+    { title: 'A softer hour', body: 'Nothing is asking to be solved immediately. The room grows quieter, and your attention returns to the small things that make you feel held.', question: 'What would help you soften today?', choices: ['Quiet and no expectations', 'A familiar ritual', 'Being close to someone I trust'] },
+    { title: 'The pause', body: 'In the pause between one thought and the next, you remember that rest is not a reward. It is part of how you keep going.', question: 'What can wait until tomorrow?', choices: ['My unfinished list', 'The need to have an answer', 'The pressure to be available'] },
+    { title: 'A little more room', body: 'The day ends with more room inside it. You do not need to fill every corner; some space can simply belong to you.', question: 'What feeling is staying with you?', choices: ['Relief', 'Warmth', 'Quiet hope'] }
+  ],
+  curious: [
+    { title: 'The unusual detail', body: 'Something ordinary refuses to stay ordinary: a phrase, a pattern, or a question that keeps returning at the edge of your attention.', question: 'What would you like to understand better?', choices: ['A feeling I keep returning to', 'A possibility I have ignored', 'The story behind a familiar thing'] },
+    { title: 'Follow the question', body: 'You follow the question without demanding an immediate answer. Each turn reveals another detail, and the uncertainty begins to feel alive.', question: 'Where should your attention go next?', choices: ['Toward learning', 'Toward another person', 'Toward my own imagination'] },
+    { title: 'A new perspective', body: 'The answer is not a conclusion. It is a window: a way to see the same life with slightly more room for surprise.', question: 'What will you look at differently?', choices: ['My current challenge', 'A relationship', 'My next season'] }
+  ],
+  hopeful: [
+    { title: 'A small light', body: 'Hope does not arrive loudly. It appears as one small thing that still feels possible, even after a difficult day.', question: 'What feels possible right now?', choices: ['Starting again', 'Asking for help', 'Making one small promise to myself'] },
+    { title: 'The next kind thing', body: 'You do not need a perfect plan. The next kind thing is enough to give the future somewhere to begin.', question: 'Who deserves your care today?', choices: ['Myself', 'Someone I love', 'The part of me that is still learning'] },
+    { title: 'A beginning', body: 'The story does not finish here. It leaves you with a beginning you can return to whenever you need to remember that change can be gentle.', question: 'What would you like this story to remind you?', choices: ['I am allowed to begin again', 'I can move at my own pace', 'There is more ahead'] }
+  ]
+}
+
+export function inferPersonalStoryMood(response: string): PersonalStoryMood {
+  const text = response.toLowerCase()
+  if (/(tired|rest|calm|relax|overwhel|quiet|slow)/.test(text)) return 'relaxed'
+  if (/(curious|wonder|learn|question|understand|explore)/.test(text)) return 'curious'
+  if (/(hope|future|heal|start|stuck|difficult|sad)/.test(text)) return 'hopeful'
+  return 'adventure'
+}
+
+export function createPersonalStory(mood: PersonalStoryMood, profileKeypoints: string[] = []): PersonalStory {
+  const scenes = PERSONAL_STORY_SCENES[mood]
+  const personalDetail = profileKeypoints[0] ? ` It carries a quiet trace of ${profileKeypoints[0].toLowerCase()}.` : ''
+  return {
+    id: `personal-${Date.now()}`,
+    mood,
+    title: mood === 'relaxed' ? 'The Soft Place' : mood === 'curious' ? 'The Question That Stayed' : mood === 'hopeful' ? 'A Small Light' : 'The Unmapped Day',
+    description: `A personalized ${mood} story shaped by what you need today.${personalDetail}`,
+    currentStep: 0,
+    createdAt: new Date().toISOString(),
+    responses: [],
+    scenes
+  }
+}
+
+export function loadPersonalStory(): PersonalStory | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(PERSONAL_STORY_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as PersonalStory
+  } catch {
+    window.localStorage.removeItem(PERSONAL_STORY_STORAGE_KEY)
+    return null
+  }
+}
+
+export function savePersonalStory(story: PersonalStory) {
+  window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
+}
+
+export function answerPersonalStory(story: PersonalStory, answer: string) {
+  const nextStory = { ...story, responses: [...story.responses, answer.trim()] }
+  nextStory.currentStep = Math.min(story.currentStep + 1, story.scenes.length - 1)
+  if (nextStory.currentStep !== story.currentStep) {
+    nextStory.scenes = nextStory.scenes.map((scene, index) => (
+      index === nextStory.currentStep
+        ? { ...scene, body: `${scene.body} Your choice to ${answer.trim().toLowerCase()} gives this moment its direction.` }
+        : scene
+    ))
+  }
+  return nextStory
+}
+
 export const STORY_TEMPLATES: StoryTemplate[] = [
   {
     key: 'letter-in-the-drawer',

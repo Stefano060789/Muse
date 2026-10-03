@@ -2,6 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerCurrentBeat, createStoryArc, loadStoryArc, saveStoryArc, STORY_TEMPLATES, type StoryArc } from '../lib/story'
+import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 
 type SpeechRecognitionResultEvent = Event & {
   resultIndex: number
@@ -25,8 +26,6 @@ type SpeechRecognitionWindow = Window & {
   SpeechRecognition?: SpeechRecognitionConstructor
   webkitSpeechRecognition?: SpeechRecognitionConstructor
 }
-
-const PROFILE_STORAGE_KEY = 'muse-profile'
 
 export default function CouplesStoryPage() {
   const [story, setStory] = useState<StoryArc | null>(null)
@@ -53,15 +52,10 @@ export default function CouplesStoryPage() {
       setPartnerB(savedStory.partnerB)
     }
 
-    const savedProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY)
+    const savedProfile = loadMuseProfile()
     if (savedProfile) {
-      try {
-        const profile = JSON.parse(savedProfile) as { about?: string; keypoints?: string[] }
-        setAbout(profile.about || '')
-        setProfileKeypoints(profile.keypoints || [])
-      } catch {
-        window.localStorage.removeItem(PROFILE_STORAGE_KEY)
-      }
+      setAbout(savedProfile.about)
+      setProfileKeypoints(savedProfile.keypoints)
     }
 
     return () => {
@@ -95,17 +89,8 @@ export default function CouplesStoryPage() {
       return false
     }
 
-    const profile = {
-      about: about.trim(),
-      keypoints: about
-        .split(/[.!?]+/)
-        .map((sentence) => sentence.trim())
-        .filter(Boolean)
-        .slice(0, 8),
-      updatedAt: new Date().toISOString()
-    }
-    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
-    setProfileKeypoints(profile.keypoints || [])
+    const profile = saveMuseProfile(about)
+    setProfileKeypoints(profile.keypoints)
     return true
   }
 
