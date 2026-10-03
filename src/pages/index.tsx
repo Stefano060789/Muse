@@ -60,6 +60,7 @@ export default function Home() {
         </header>
 
         <section
+          data-responsive-grid="hero"
           style={{
             maxWidth: 1200,
             margin: '0 auto',

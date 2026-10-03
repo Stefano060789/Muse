@@ -1,0 +1,65 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 640px) {
+  main {
+    overflow-x: hidden;
+  }
+
+  main > div {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  header {
+    margin-bottom: 2rem !important;
+  }
+
+  header nav {
+    width: 100%;
+    gap: 0.7rem !important;
+    justify-content: space-between;
+    font-size: 0.9rem;
+  }
+
+  [data-responsive-grid="hero"],
+  [data-responsive-grid="moods"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  h1 {
+    overflow-wrap: anywhere;
+  }
+
+  button,
+  a {
+    min-height: 44px;
+  }
+
+  textarea,
+  input,
+  select {
+    max-width: 100%;
+  }
+}
