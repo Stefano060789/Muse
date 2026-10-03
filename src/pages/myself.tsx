@@ -107,10 +107,10 @@ export default function MyselfPage() {
             </div>
             {message ? <p role="status" style={{ lineHeight: 1.6, marginBottom: 0 }}>{message}</p> : null}
           </section>
-          {keypoints.length > 0 ? <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
+          <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
             <h2 style={{ marginTop: 0 }}>Muse is keeping these key points</h2>
-            <ul style={{ lineHeight: 1.8 }}>{keypoints.map((keypoint) => <li key={keypoint}>{keypoint}</li>)}</ul>
-          </section> : null}
+            {keypoints.length > 0 ? <ul style={{ lineHeight: 1.8 }}>{keypoints.map((keypoint) => <li key={keypoint}>{keypoint}</li>)}</ul> : <p style={{ marginBottom: 0, opacity: 0.7 }}>Save something about yourself and Muse will keep the important points here.</p>}
+          </section>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
             <Link href="/story" style={{ background: '#2d2926', color: '#fffaf6', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none', fontWeight: 700 }}>Create My Story →</Link>
             <Link href="/couples" style={{ color: '#2d2926', border: '1px solid #2d2926', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none' }}>Shared story for two</Link>

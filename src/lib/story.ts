@@ -97,7 +97,7 @@ export function createPersonalStory(mood: PersonalStoryMood, profileKeypoints: s
   return {
     id: `personal-${Date.now()}`,
     mood,
-    title: mood === 'relaxed' ? 'The Soft Place' : mood === 'curious' ? 'The Question That Stayed' : mood === 'hopeful' ? 'A Small Light' : 'The Unmapped Day',
+    title: mood === 'relaxed' ? 'The Soft Place' : mood === 'curious' ? 'The Question That Stayed' : mood === 'hopeful' ? 'A Small Light' : 'The Open Road',
     description: `A personalized ${mood} story shaped by what you need today.${personalDetail}`,
     currentStep: 0,
     createdAt: new Date().toISOString(),
@@ -111,7 +111,12 @@ export function loadPersonalStory(): PersonalStory | null {
   const raw = window.localStorage.getItem(PERSONAL_STORY_STORAGE_KEY)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as PersonalStory
+    const story = JSON.parse(raw) as PersonalStory
+    if (story.title === 'The Unmapped Day') {
+      story.title = 'The Open Road'
+      window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
+    }
+    return story
   } catch {
     window.localStorage.removeItem(PERSONAL_STORY_STORAGE_KEY)
     return null

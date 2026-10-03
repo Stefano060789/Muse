@@ -29,7 +29,11 @@ export function loadMuseProfile(): MuseProfile | null {
 }
 
 export function saveMuseProfile(about: string) {
-  const keypoints = extractProfileKeypoints(about)
+  const previous = loadMuseProfile()
+  const nextKeypoints = extractProfileKeypoints(about)
+  const keypoints = [...(previous?.keypoints || []), ...nextKeypoints]
+    .filter((point, index, points) => points.findIndex((candidate) => candidate.toLowerCase() === point.toLowerCase()) === index)
+    .slice(-20)
   const profile: MuseProfile = {
     about: keypoints.join('. '),
     keypoints,

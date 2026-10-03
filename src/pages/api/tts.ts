@@ -9,6 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const apiKey = process.env.ELEVEN_API_KEY
   const voiceId = process.env.ELEVEN_VOICE_ID
   const text = String(req.body?.text || '').trim()
+  const mood = String(req.body?.mood || '').trim()
 
   if (!apiKey || !voiceId) {
     return res.status(503).json({ error: 'Text-to-speech is not configured' })
@@ -34,8 +35,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         text,
         model_id: 'eleven_multilingual_v2',
         voice_settings: {
-          stability: 0.55,
-          similarity_boost: 0.75
+          stability: mood === 'relaxed' ? 0.75 : mood === 'adventure' ? 0.4 : 0.55,
+          similarity_boost: 0.75,
+          style: mood === 'adventure' ? 0.35 : mood === 'curious' ? 0.2 : 0.1,
+          use_speaker_boost: true
         }
       }),
       signal: controller.signal

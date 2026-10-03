@@ -84,6 +84,10 @@ export default function CouplesStoryPage() {
 
   const startStory = async () => {
     setError('')
+    if (!solution.trim()) {
+      setError('Add the secret answer or solution so the other person can complete this story.')
+      return
+    }
     if (about.trim()) {
       const saved = await saveProfile()
       if (!saved) return
@@ -374,7 +378,7 @@ export default function CouplesStoryPage() {
               <h2 style={{ margin: '0.5rem 0 0.75rem' }}>What does this bring to mind?</h2>
               <textarea aria-label="Your answer / discovery" value={response} onChange={(e) => setResponse(e.target.value)} rows={4} placeholder="Write a memory, guess, or feeling…" style={{ display: 'block', width: '100%', padding: '0.9rem', fontSize: '1rem', resize: 'vertical', boxSizing: 'border-box' }} />
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.9rem' }}>
-                <button onClick={handleAnswer} style={{ padding: '0.8rem 1.1rem', cursor: 'pointer', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', fontWeight: 700 }}>Save and continue →</button>
+                <button onClick={handleAnswer} disabled={!response.trim()} style={{ padding: '0.8rem 1.1rem', cursor: response.trim() ? 'pointer' : 'not-allowed', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', fontWeight: 700, opacity: response.trim() ? 1 : 0.55 }}>Save and continue →</button>
                 <button onClick={toggleRecording} style={{ padding: '0.8rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Answer by voice'}</button>
               </div>
               <p style={{ marginBottom: 0, fontSize: '0.9rem', opacity: 0.65 }}>{isRecording ? 'Listening… speak your answer, then stop.' : 'You can review your answer before continuing.'}</p>

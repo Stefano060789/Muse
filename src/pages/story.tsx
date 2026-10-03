@@ -32,12 +32,20 @@ export default function StoryPage() {
   const [profileReady, setProfileReady] = useState(false)
   const [responseDraft, setResponseDraft] = useState('')
   const [isRecording, setIsRecording] = useState(false)
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [audioError, setAudioError] = useState('')
   const recognitionRef = useRef<Recognition | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     setStory(loadPersonalStory())
     setProfileReady(Boolean(loadMuseProfile()))
-    return () => recognitionRef.current?.stop()
+    return () => {
+      recognitionRef.current?.stop()
+      audioRef.current?.pause()
+      window.speechSynthesis?.cancel()
+    }
   }, [])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
@@ -62,6 +70,66 @@ export default function StoryPage() {
 
   const submitResponse = () => {
     if (responseDraft.trim()) choose(responseDraft)
+  }
+
+  const speakScene = async () => {
+    if (!scene || !story) return
+    const text = `${scene.title}. ${scene.body} ${scene.question}`
+    setAudioError('')
+    setIsLoadingAudio(true)
+
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, mood: story.mood })
+      })
+
+      if (!response.ok) {
+        if (!('speechSynthesis' in window)) throw new Error('Audio is not supported in this browser.')
+        const utterance = new SpeechSynthesisUtterance(text)
+        const voiceSettings = {
+          adventure: { rate: 1.05, pitch: 1.08 },
+          relaxed: { rate: 0.82, pitch: 0.9 },
+          curious: { rate: 0.95, pitch: 1.08 },
+          hopeful: { rate: 0.9, pitch: 1.02 }
+        }[story.mood]
+        utterance.rate = voiceSettings.rate
+        utterance.pitch = voiceSettings.pitch
+        utterance.onstart = () => setIsSpeaking(true)
+        utterance.onend = () => setIsSpeaking(false)
+        utterance.onerror = () => {
+          setIsSpeaking(false)
+          setAudioError('Audio playback failed. You can still read the scene and continue.')
+        }
+        window.speechSynthesis.cancel()
+        window.speechSynthesis.speak(utterance)
+        return
+      }
+
+      const audioUrl = URL.createObjectURL(await response.blob())
+      audioRef.current?.pause()
+      if (audioRef.current?.src) URL.revokeObjectURL(audioRef.current.src)
+      const audio = new Audio(audioUrl)
+      audioRef.current = audio
+      audio.onplay = () => setIsSpeaking(true)
+      audio.onended = () => {
+        setIsSpeaking(false)
+        URL.revokeObjectURL(audioUrl)
+      }
+      audio.onerror = () => setIsSpeaking(false)
+      await audio.play()
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : 'Could not play audio.')
+    } finally {
+      setIsLoadingAudio(false)
+    }
+  }
+
+  const stopSpeaking = () => {
+    audioRef.current?.pause()
+    window.speechSynthesis?.cancel()
+    setIsSpeaking(false)
   }
 
   const toggleRecording = () => {
@@ -126,6 +194,7 @@ export default function StoryPage() {
             </section>
           ) : (
             <section>
+              {audioError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{audioError}</p> : null}
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
               <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
               <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
@@ -134,7 +203,11 @@ export default function StoryPage() {
                 <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>Scene {story.currentStep + 1} of {story.scenes.length}</p>
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
                 <p style={{ fontSize: '1.15rem', lineHeight: 1.85 }}>{scene?.body}</p>
-                <h3 style={{ marginTop: '2rem' }}>{scene?.question}</h3>
+                <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '1rem 0 1.5rem' }}>
+                  <button onClick={speakScene} disabled={isLoadingAudio || isSpeaking} style={{ padding: '0.7rem 0.9rem', cursor: isLoadingAudio || isSpeaking ? 'wait' : 'pointer' }}>{isLoadingAudio ? 'Preparing audio…' : isSpeaking ? 'Muse is speaking…' : 'Listen to this scene'}</button>
+                  {isSpeaking ? <button onClick={stopSpeaking} style={{ padding: '0.7rem 0.9rem', cursor: 'pointer' }}>Stop audio</button> : null}
+                </div>
+                <h3  style={{ marginTop: '2rem' }}>{scene?.question}</h3>
                 <textarea value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} rows={3} placeholder="Write or speak your answer…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={!responseDraft.trim()} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>Continue with my answer →</button>
