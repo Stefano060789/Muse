@@ -45,7 +45,9 @@ export default function MyselfPage() {
 
   const toggleRecording = () => {
     if (isRecording) {
-      recognitionRef.current?.stop()
+      const recognition = recognitionRef.current
+      recognitionRef.current = null
+      recognition?.stop()
       return
     }
     const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
@@ -54,21 +56,28 @@ export default function MyselfPage() {
       return
     }
     const recognition = new Constructor()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
     recognition.onresult = (event) => {
       let transcript = ''
-      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
+      for (let index = 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
       setAbout(transcript.trim())
     }
     recognition.onerror = () => {
       setIsRecording(false)
+      recognitionRef.current = null
       setMessage('I could not understand that. Please try again or type instead.')
     }
     recognition.onend = () => {
-      setIsRecording(false)
-      recognitionRef.current = null
+      if (recognitionRef.current === recognition) {
+        try {
+          recognition.start()
+        } catch {
+          setIsRecording(false)
+          recognitionRef.current = null
+        }
+      }
     }
     recognitionRef.current = recognition
     setMessage('')

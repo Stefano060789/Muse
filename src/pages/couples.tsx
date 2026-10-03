@@ -187,7 +187,9 @@ export default function CouplesStoryPage() {
 
   const toggleRecording = () => {
     if (isRecording) {
-      recognitionRef.current?.stop()
+      const recognition = recognitionRef.current
+      recognitionRef.current = null
+      recognition?.stop()
       return
     }
 
@@ -201,23 +203,30 @@ export default function CouplesStoryPage() {
 
     setError('')
     const recognition = new recognitionConstructor()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
     recognition.onresult = (event) => {
       let transcript = ''
-      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) {
+      for (let index = 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript
       }
       setResponse(transcript.trim())
     }
     recognition.onerror = () => {
       setIsRecording(false)
+      recognitionRef.current = null
       setError('Could not understand the recording. Please try again.')
     }
     recognition.onend = () => {
-      setIsRecording(false)
-      recognitionRef.current = null
+      if (recognitionRef.current === recognition) {
+        try {
+          recognition.start()
+        } catch {
+          setIsRecording(false)
+          recognitionRef.current = null
+        }
+      }
     }
 
     recognitionRef.current = recognition
@@ -227,7 +236,9 @@ export default function CouplesStoryPage() {
 
   const toggleProfileRecording = () => {
     if (isProfileRecording) {
-      recognitionRef.current?.stop()
+      const recognition = recognitionRef.current
+      recognitionRef.current = null
+      recognition?.stop()
       return
     }
 
@@ -241,23 +252,30 @@ export default function CouplesStoryPage() {
 
     setError('')
     const recognition = new recognitionConstructor()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
     recognition.onresult = (event) => {
       let transcript = ''
-      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) {
+      for (let index = 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript
       }
       setAbout(transcript.trim())
     }
     recognition.onerror = () => {
       setIsProfileRecording(false)
+      recognitionRef.current = null
       setError('Could not understand the recording. Please try again.')
     }
     recognition.onend = () => {
-      setIsProfileRecording(false)
-      recognitionRef.current = null
+      if (recognitionRef.current === recognition) {
+        try {
+          recognition.start()
+        } catch {
+          setIsProfileRecording(false)
+          recognitionRef.current = null
+        }
+      }
     }
 
     recognitionRef.current = recognition

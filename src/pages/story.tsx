@@ -66,24 +66,35 @@ export default function StoryPage() {
 
   const toggleRecording = () => {
     if (isRecording) {
-      recognitionRef.current?.stop()
+      const recognition = recognitionRef.current
+      recognitionRef.current = null
+      recognition?.stop()
       return
     }
     const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
     if (!Constructor) return
     const recognition = new Constructor()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
     recognition.onresult = (event) => {
       let transcript = ''
-      for (let index = event.resultIndex || 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
+      for (let index = 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
       setResponseDraft(transcript.trim())
     }
-    recognition.onerror = () => setIsRecording(false)
-    recognition.onend = () => {
+    recognition.onerror = () => {
       setIsRecording(false)
       recognitionRef.current = null
+    }
+    recognition.onend = () => {
+      if (recognitionRef.current === recognition) {
+        try {
+          recognition.start()
+        } catch {
+          setIsRecording(false)
+          recognitionRef.current = null
+        }
+      }
     }
     recognitionRef.current = recognition
     setIsRecording(true)
