@@ -93,7 +93,7 @@ export function inferPersonalStoryMood(response: string): PersonalStoryMood {
 
 export function createPersonalStory(mood: PersonalStoryMood, profileKeypoints: string[] = []): PersonalStory {
   const scenes = PERSONAL_STORY_SCENES[mood]
-  const personalDetail = profileKeypoints[0] ? ` It carries a quiet trace of ${profileKeypoints[0].toLowerCase()}.` : ''
+  const personalDetail = profileKeypoints.length > 0 ? ' It carries a quiet trace of what matters to you.' : ''
   return {
     id: `personal-${Date.now()}`,
     mood,
@@ -112,6 +112,10 @@ export function loadPersonalStory(): PersonalStory | null {
   if (!raw) return null
   try {
     const story = JSON.parse(raw) as PersonalStory
+    if (story.description.includes('It carries a quiet trace of ')) {
+      story.description = story.description.replace(/ It carries a quiet trace of .*\.?$/, ' It carries a quiet trace of what matters to you.')
+      window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
+    }
     if (story.title === 'The Unmapped Day') {
       story.title = 'The Open Road'
       window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
