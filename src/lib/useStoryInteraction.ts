@@ -6,7 +6,8 @@ type Recognition = {
   interimResults: boolean
   lang: string
   onend: (() => void) | null
-  onerror: (() => void) | null
+  onaudiostart: (() => void) | null
+  onerror: ((event: { error: string }) => void) | null
   onresult: ((event: RecognitionEvent) => void) | null
   start: () => void
   stop: () => void
@@ -16,9 +17,10 @@ type RecognitionWindow = Window & {
   webkitSpeechRecognition?: new () => Recognition
 }
 
-export function useStoryInteraction(beforeDictate?: () => void) {
+export function useStoryInteraction(beforeDictate?: () => void, language = 'en-US') {
   const [recordingTarget, setRecordingTarget] = useState('')
   const [error, setError] = useState('')
+  const [ready, setReady] = useState(false)
   const recognitionRef = useRef<Recognition | null>(null)
 
   const stopRecording = () => {
@@ -26,6 +28,7 @@ export function useStoryInteraction(beforeDictate?: () => void) {
     recognitionRef.current = null
     recognition?.stop()
     setRecordingTarget('')
+    setReady(false)
   }
 
   useEffect(() => () => {
@@ -34,8 +37,8 @@ export function useStoryInteraction(beforeDictate?: () => void) {
     recognition?.stop()
   }, [])
 
-  const dictate = (target: string, onTranscript: (value: string) => void) => {
-    const wasRecording = recordingTarget === target
+  const dictate = (target: string, onTranscript: (value: string) => void, singlePhrase = false) => {
+    const wasRecording = recognitionRef.current !== null && recordingTarget === target
     stopRecording()
     if (wasRecording) return
     beforeDictate?.()
@@ -46,24 +49,44 @@ export function useStoryInteraction(beforeDictate?: () => void) {
     }
     setError('')
     const recognition = new Constructor()
-    recognition.continuous = true
+    recognition.continuous = !singlePhrase
     recognition.interimResults = true
-    recognition.lang = 'en-US'
+    recognition.lang = language
+    recognition.onaudiostart = () => {
+      if (recognitionRef.current === recognition) setReady(true)
+    }
+    let receivedText = false
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return
       let transcript = ''
       for (let index = 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
-      onTranscript(transcript.trim())
+      if (transcript.trim()) {
+        receivedText = true
+        onTranscript(transcript.trim())
+      }
     }
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       if (recognitionRef.current !== recognition) return
       recognitionRef.current = null
       setRecordingTarget('')
-      setError('Voice recording failed. Please check microphone access or type your text.')
+      setReady(false)
+      const errors: Record<string, string> = {
+        network: 'The browser speech-recognition service could not connect. In the VS Code browser, open this same address in regular Microsoft Edge or Google Chrome and try again. Check your internet connection; you can also type instead.',
+        'not-allowed': 'Microphone access was denied. Allow microphone access for this site in your browser and Windows privacy settings, or type instead.',
+        'service-not-allowed': 'This browser does not allow its speech-recognition service. Open this page in regular Microsoft Edge or Google Chrome, or type instead.',
+        'audio-capture': 'No working microphone was available. Check the selected microphone and Windows microphone settings, or type instead.',
+        'no-speech': 'No speech was detected. Use the microphone input test below, check the dictation language, then wait for "Listening - speak now" before speaking. You can also type instead.',
+        'language-not-supported': 'The selected dictation language is unavailable in this browser. Select another language, try Edge or Chrome, or type instead.',
+        aborted: 'Voice input was interrupted. Try again or type instead.'
+      }
+      setError(errors[event.error] || 'Voice recording failed. Please check microphone access or type your text.')
     }
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) return
       recognitionRef.current = null
       setRecordingTarget('')
+      setReady(false)
+      if (!receivedText) setError('No words were received. Try again, check your microphone, or type instead.')
     }
     recognitionRef.current = recognition
     try {
@@ -75,5 +98,5 @@ export function useStoryInteraction(beforeDictate?: () => void) {
     }
   }
 
-  return { recordingTarget, error, dictate, stopRecording }
+  return { recordingTarget, ready, error, dictate, stopRecording }
 }

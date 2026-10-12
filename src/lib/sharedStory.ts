@@ -16,7 +16,15 @@ export type SharedStoryBrief = {
   alternativeAnswers?: string[]
 }
 
-export type SharedStoryScene = { title: string; body: string; clue: string }
+export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[] }
+
+export function parseSharedSceneChoices(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length !== 3) throw new SharedStoryError('Scene actions must contain exactly three choices.', 502)
+  const choices = value.map(choice => text(choice, 'Scene action', 160))
+  if (new Set(choices.map(choice => choice.toLowerCase())).size !== choices.length) throw new SharedStoryError('Scene actions must be distinct.', 502)
+  return choices
+}
 export type SharedStoryContent = NarrationMetadata & { title: string; description: string; scenes: SharedStoryScene[] }
 export type SharedStoryPlayer = NarrationMetadata & {
   title: string
@@ -112,10 +120,11 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
     return {
       title: text(scene.title, 'Scene title', 160),
       body: text(scene.body, 'Scene narration', 6000),
-      clue: text(scene.clue, 'Scene clue', 600)
+      clue: text(scene.clue, 'Scene clue', 600),
+      ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) })
     }
   })
-  const publicText = normalizeSharedAnswer([title, description, ...scenes.flatMap((scene) => [scene.title, scene.body, scene.clue])].join(' '))
+  const publicText = normalizeSharedAnswer([title, description, ...scenes.flatMap((scene) => [scene.title, scene.body, scene.clue, ...(scene.choices || [])])].join(' '))
   const solutions = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer)
   const message = normalizeSharedAnswer(brief.message)
   if (solutions.some(solution => !solution) || !message) throw new SharedStoryError('The answer and message must contain letters or numbers.')

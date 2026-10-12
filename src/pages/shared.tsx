@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { SHARED_STORY_DURATIONS, type SharedStoryBrief, type SharedStoryPlayer } from '../lib/sharedStory'
 import { latestCreatorStory, loadStoryLibrary, removeLibraryEntry, saveLibraryCreatorStory, type CreatorStory } from '../lib/storyLibrary'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
+import MicrophoneCheck from '../components/MicrophoneCheck'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
@@ -43,8 +44,10 @@ export default function SharedStoryPage() {
   const [origin, setOrigin] = useState('')
   const [canDeviceShare, setCanDeviceShare] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [dictationLanguage, setDictationLanguage] = useState('en-US')
+  const [experience, setExperience] = useState<'read' | 'listen'>('read')
   const narrator = useNarration(player || creator?.content || {})
-  const interaction = useStoryInteraction(narrator.stop)
+  const interaction = useStoryInteraction(narrator.stop, dictationLanguage)
 
   useEffect(() => {
     let active = true
@@ -206,9 +209,10 @@ export default function SharedStoryPage() {
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => setBrief({ ...brief, [key]: event.target.value })} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
-      <button type="button" disabled={busy} onClick={() => interaction.dictate(key, (value) => setBrief((current) => ({ ...current, [key]: value.slice(0, max) })))} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
-        {interaction.recordingTarget === key ? 'Stop listening' : `Speak: ${label}`}
+      <button type="button" disabled={busy} onClick={() => interaction.dictate(key, (value) => setBrief((current) => ({ ...current, [key]: value.slice(0, max) })), key === 'creatorName' || key === 'recipientName')} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
+        {interaction.recordingTarget === key ? 'Stop dictation' : `Dictate: ${label}`}
       </button>
+      {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening - speak now. Your words will fill this field; review them before submitting.' : 'Starting microphone - wait for the listening message.'}</p> : null}
     </div>
   )
 
@@ -260,37 +264,61 @@ export default function SharedStoryPage() {
       <div style={{ maxWidth: 850, margin: '0 auto', padding: '1.5rem' }}>
         <header style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: '2.5rem' }}>
           <Link href="/" style={{ color: 'inherit', fontWeight: 700 }}>MUSE</Link>
-          <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          {!playToken ? <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <Link href="/myself" style={{ color: 'inherit' }}>Myself</Link>
             <Link href="/story" style={{ color: 'inherit' }}>My Story</Link>
             <Link href="/shared" style={{ color: 'inherit' }}>Shared Story</Link>
             <Link href="/library" style={{ color: 'inherit' }}>Story Library</Link>
-          </nav>
+          </nav> : null}
         </header>
         {error || interaction.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
-        <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
+        <details open={!playToken} style={{ marginBottom: '1rem' }}>
+          <summary>Audio and microphone settings</summary>
+          <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
+          <section aria-label="Voice input settings">
+          <p><strong>Listen</strong> reads text aloud through your speakers. <strong>Dictate</strong> listens through your microphone and fills a text field; it does not save an audio recording.</p>
+          <label>Dictation language <select value={dictationLanguage} onChange={event => { interaction.stopRecording(); setDictationLanguage(event.target.value) }}>
+            <option value="en-US">English</option><option value="it-IT">Italian</option><option value="de-DE">German</option><option value="fr-FR">French</option><option value="es-ES">Spanish</option>
+          </select></label>
+          <MicrophoneCheck stopSignal={interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
+          </section>
+        </details>
         {loading ? <p role="status">Opening your private story...</p> : playToken ? player ? (
           <section>
             <p>A story from {player.creatorName} for {player.recipientName}</p>
             <h1 style={{ fontSize: '2.5rem' }}>{player.title}</h1>
             <p style={{ lineHeight: 1.7 }}>{player.description}</p>
-            <p>About {player.durationMinutes} minutes including time to think. Read or listen; type or speak your guesses.</p>
+            <p>About {player.durationMinutes} minutes including time to think. Choose how to experience your story, then select an action to follow the clues.</p>
+            <div role="group" aria-label="Story experience" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+              <button aria-pressed={experience === 'read'} onClick={() => { narrator.stop(); setExperience('read') }} style={experience === 'read' ? primaryStyle : buttonStyle}>Read the story</button>
+              <button aria-pressed={experience === 'listen'} onClick={() => { narrator.stop(); setExperience('listen') }} style={experience === 'listen' ? primaryStyle : buttonStyle}>Listen to the story</button>
+            </div>
+            {experience === 'listen' ? <p>Tap Play to start audio. Choose an action after listening to move forward. Audio never starts automatically.</p> : null}
             {player.solved ? (
               <article style={cardStyle}>
                 <h2>You found it. Here is your message.</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.message}</p>
-                {audioButton(player.message || '')}
+                <NarrationButton narrator={narrator} text={player.message || ''} label="Play the final message" beforeSpeak={interaction.stopRecording} />
               </article>
             ) : (
               <>
                 <article style={cardStyle}>
                   <p>Scene {player.sceneIndex + 1} of {player.sceneCount}</p>
                   <h2>{player.scene.title}</h2>
-                  <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
-                  <p style={{ lineHeight: 1.7 }}><strong>Clue:</strong> {player.scene.clue}</p>
-                  {audioButton(`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`)}
-                  <button disabled={busy || player.sceneIndex + 1 >= player.sceneCount} onClick={() => act('next')} style={{ ...buttonStyle, marginTop: '1rem' }}>Explore the next clue</button>
+                  {experience === 'read' ? <>
+                    <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
+                    <p style={{ lineHeight: 1.7 }}><strong>Clue:</strong> {player.scene.clue}</p>
+                  </> : <details><summary>Show scene transcript and clue</summary><p style={{ lineHeight: 1.8 }}>{player.scene.body}</p><p><strong>Clue:</strong> {player.scene.clue}</p></details>}
+                  <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label="Play this scene" beforeSpeak={interaction.stopRecording} />
+                  {player.sceneIndex + 1 < player.sceneCount ? <>
+                    <h3>What would you like to do next?</h3>
+                    <p>Each action continues the same clue trail. These are exploration choices, not guesses at the secret answer.</p>
+                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                      {(player.scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <button key={choice} disabled={busy} onClick={() => void act('next')} style={{ ...buttonStyle, textAlign: 'left' }}>{busy ? 'Opening the next scene...' : choice}</button>)}
+                    </div>
+                    {!player.scene.choices ? <p>This older story uses standard navigation actions; they do not create new branches.</p> : null}
+                  </> : <p>You have reached the final clue. Type your secret answer below to discover the message.</p>}
                 </article>
                 {player.discoveries.length > 0 ? (
                   <details style={cardStyle}>
@@ -310,9 +338,10 @@ export default function SharedStoryPage() {
                   <p>The exact answer or an alternative explicitly approved by the creator unlocks the message. Capitalization, punctuation and extra spacing do not matter. AI does not judge your answer.</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !guess.trim()} style={primaryStyle}>{busy ? 'Checking...' : 'Try this answer'}</button>
-                    <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? 'Stop listening' : 'Speak your answer'}</button>
+                    <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? 'Stop dictation' : 'Dictate your answer'}</button>
                   </div>
                   <p>Review the transcript before submitting. Up to 30 guesses per player session.</p>
+                  {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? 'Listening - speak now.' : 'Starting microphone - please wait.'}</p> : null}
                 </form>
               </>
             )}
@@ -346,6 +375,11 @@ export default function SharedStoryPage() {
                 <summary style={{ cursor: 'pointer' }}>Scene {index + 1}: {scene.title}</summary>
                 <p style={{ lineHeight: 1.8 }}>{scene.body}</p>
                 <p><strong>Clue:</strong> {scene.clue}</p>
+                {index + 1 < creator.content.scenes.length ? <>
+                  <h3>Recipient exploration actions</h3>
+                  <ul>{(scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <li key={choice}>{choice}</li>)}</ul>
+                  <p>All actions continue to the same next scene.</p>
+                </> : <p>The recipient types the final answer after this clue.</p>}
                 {audioButton(`${scene.body} ${scene.clue}`)}
               </details>
             ))}
@@ -365,7 +399,14 @@ export default function SharedStoryPage() {
             <article style={cardStyle}>
               <h2>Send the recipient their story</h2>
               <p>Anyone with the recipient link can play. Keep the management link to yourself. Links expire on {new Date(creator.expiresAt).toLocaleDateString()}.</p>
-              {playerLink ? <><label>Recipient link<input readOnly value={playerLink} style={fieldStyle} onFocus={(event) => event.target.select()} /></label><button onClick={() => copy(playerLink)} style={{ ...primaryStyle, marginTop: '0.75rem' }}>Copy recipient link</button></> : null}
+              {playerLink ? <>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
+                  <a href={playerLink} target="_blank" rel="noopener noreferrer" onClick={narrator.stop} style={{ ...primaryStyle, textDecoration: 'none' }}>Open recipient story</a>
+                  <button onClick={() => copy(playerLink)} style={buttonStyle}>Copy recipient link</button>
+                </div>
+                <p>Open the recipient experience in a new tab with one click. This uses this browser's saved player progress; use a private window to test as a new recipient.</p>
+                <label>Recipient link<input readOnly value={playerLink} style={fieldStyle} onFocus={(event) => event.target.select()} /></label>
+              </> : null}
               {shareDetails ? (
                 <>
                   {shareDetails.localOnly ? (

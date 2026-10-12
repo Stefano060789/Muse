@@ -10,6 +10,7 @@
     "test:sqlite:production": "node scripts/sqlite-production.test.cjs",
     "test:narration": "node scripts/narration.test.cjs",
     "test:core": "node scripts/core-fixes.test.cjs",
+    "test:dictation": "node scripts/dictation.test.cjs",
     "test:library": "node scripts/library.test.cjs",
     "typecheck": "tsc --noEmit",
     "start": "next start",

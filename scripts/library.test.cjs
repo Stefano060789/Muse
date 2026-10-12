@@ -186,12 +186,14 @@ try {
     story.brief.alternativeAnswers = ['the blue book']
     story.content.narrationStyle = 'warm'
     story.content.narrationLanguage = 'en-US'
+    story.content.scenes[0].choices = ['Follow the clue', 'Continue exploring', 'Look for a detail']
     const store = memory()
     lib.saveLibraryCreatorStory(story, store)
     const restored = lib.latestCreatorStory(read(store))
     assert.deepEqual(restored.brief.assistanceHints, story.brief.assistanceHints)
     assert.deepEqual(restored.brief.alternativeAnswers, story.brief.alternativeAnswers)
     assert.equal(restored.content.narrationLanguage, 'en-US')
+    assert.deepEqual(restored.content.scenes[0].choices, story.content.scenes[0].choices)
   })
   check('library UI keeps private details out of cards and confirms browser-only deletion', () => {
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')

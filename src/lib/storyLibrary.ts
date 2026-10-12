@@ -1,5 +1,5 @@
 import type { PersonalStory } from './story'
-import { parseSharedStoryBrief, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
+import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
@@ -75,7 +75,7 @@ export function validateCreatorStory(value: unknown): CreatorStory {
   const content = record(input.content)
   const scenes = list(content.scenes).map(value => {
     const scene = record(value)
-    return { title: text(scene.title), body: text(scene.body), clue: text(scene.clue) }
+    return { title: text(scene.title), body: text(scene.body), clue: text(scene.clue), ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) }) }
   })
   if (!scenes.length) throw new Error('Missing shared story scenes.')
   return {

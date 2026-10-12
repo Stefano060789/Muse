@@ -241,6 +241,26 @@ selector is bounded to the screen width, including narrow phone layouts.
 Unavailable speech input and microphone failures are reported explicitly;
 users can continue by typing.
 
+Shared Story name dictation uses a single phrase rather than continuous
+recording. Browser recognition requires its speech service as well as
+microphone access; VS Code's embedded browser can expose the API and grant
+microphone permission yet return a `network` error. In that case open the
+same local address in regular Edge or Chrome. Network, denied permissions,
+missing microphone and no-speech errors have specific guidance; speech
+recognition is not an offline transcription feature.
+
+On Shared Story, **Dictate** means microphone-to-text input, whereas **Listen**
+means speaker playback. Select the dictation language independently from the
+narration language and wait for the listening indicator before speaking.
+The expandable microphone input test shows the active default input label and
+a live level meter for ten seconds. It only analyses audio on the device,
+without saving or uploading it; testing cannot verify transcription.
+The test releases the microphone on timeout, Stop, dictation start or unmount.
+If no level appears when speaking, check the default input device, mute and
+volume. If levels move but no words arrive, investigate the browser recognition
+service/language instead. The recognition API cannot choose a microphone;
+change the default in browser/Windows settings.
+
 These are narration presets, not six newly installed voice models.
 Available voice identities and supported languages depend on the browser
 and operating system. The checked Windows browser already has David,
@@ -267,7 +287,10 @@ Listening does not advance recipient progress or send anything.
 
 Copy the **recipient link**, or use **Share on WhatsApp** on a reachable
 hosted installation. Supported browsers also offer **Share with another app**
-through the device share sheet. Choose the contact and confirm sending in
+through the device share sheet. Creators can choose **Open recipient story** to open the play link directly
+in a new tab with one click. This retains this browser's saved player progress;
+use a private window to test a fresh recipient session.
+Choose the contact and confirm sending in
 that app; Muse does not automatically send messages. Share payloads include
 only a generic invitation and the recipient capability link, not the
 management link, secret answer, or final message. Anyone with the link,
@@ -282,6 +305,14 @@ the local SQLite setup to Vercel. Sharing sends a link, not an audio file:
 recipients listen with voices available on their own devices.
 
 ### Optional puzzle assistance
+
+Recipient links open a focused story player directly, without a sign-in step.
+Choose Read or Listen; audio starts only after tapping Play. Listen mode
+keeps the transcript available in a disclosure. Exploratory action choices
+advance through the same linear clue trail (not branching or paid AI
+continuations). The final secret answer remains typed or dictated, never
+listed as a selectable choice. New AI stories include three safe actions
+per scene; older stories use disclosed standard navigation actions.
 
 Creators can supply up to three progressively stronger assistance hints and
 up to five approved alternative answers, one per line. Hints are optional
@@ -305,6 +336,7 @@ progress schema/RPC before using puzzle assistance.
   and progress persistence across a server restart, with external calls blocked.
 - `npm run test:narration` - adaptive styles, voice matching, playback lifecycle and sharing payloads.
 - `npm run test:core` - profile memory CRUD/storage failures and complete personal-story AI response schemas.
+- `npm run test:dictation` - name dictation, readiness, language and recognition error handling.
 - `npm run test:library` - browser library persistence, migration and validation.
 - `npx --no-install tsc --noEmit` - TypeScript.
 - `npm run build` - production build.

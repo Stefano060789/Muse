@@ -98,6 +98,14 @@ async function main() {
     assert.equal(sharedStoryPlayerView(brief, legacy, { current_scene: 0, solved: false }).narrationStyle, undefined)
     assert.throws(() => parseGeneratedStory({ ...content, narrationStyle: 'wrong' }, brief), /narrationStyle/)
   })
+  await check('shared exploratory choices survive projection and reject private-answer leakage', () => {
+    const scenes = content.scenes.map(scene => ({ ...scene, choices: ['Follow the clue', 'Continue investigating', 'Explore the room'] }))
+    const generated = parseGeneratedStory({ ...content, scenes }, brief)
+    assert.deepEqual(sharedStoryPlayerView(brief, generated, { current_scene: 0, solved: false }).scene.choices, scenes[0].choices)
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: ['One', 'One', 'Two'] })) }, brief), /distinct/)
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: [brief.solution, 'Follow', 'Continue'] })) }, brief), /exposed/)
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: ['Only one'] })) }, brief), /three choices/)
+  })
   await check('personal generation and continuation validate/rechoose metadata in the existing AI call', async () => {
     process.env.LLM_PROVIDER = 'GROQ'
     process.env.LLM_API_KEY = 'fake-test-key'
