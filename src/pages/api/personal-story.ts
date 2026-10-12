@@ -13,9 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  if (!requireCreatorAccess(req, res)) return
   if (req.headers.origin) {
     try {
-      if (!requireCreatorAccess(req, res)) return
       if (new URL(req.headers.origin).host !== req.headers.host) {
         return res.status(403).json({ error: 'Cross-origin story requests are not allowed.' })
       }

@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process')
 const root = path.resolve(__dirname, '..')
 const output = fs.mkdtempSync(path.join(__dirname, '.creator-access-tests-'))
 const original = { ...process.env }
+async function main() {
 try {
   execFileSync(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
     'src/lib/creatorAccess.ts', '--outDir', output, '--module', 'commonjs', '--target', 'es2020',
@@ -31,8 +32,27 @@ try {
   for (const name of ['personal-story', 'story', 'profile', 'tts']) {
     assert.ok(fs.readFileSync(path.join(root, 'src', 'pages', 'api', `${name}.ts`), 'utf8').includes('if (!requireCreatorAccess(req, res)) return'))
   }
+  const ts = require('typescript')
+  const vm = require('node:vm')
+  const source = fs.readFileSync(path.join(root, 'src', 'pages', 'api', 'personal-story.ts'), 'utf8')
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  const exports = {}
+  vm.runInNewContext(compiled, {
+    exports,
+    require(name) {
+      if (name.endsWith('/creatorAccess')) return { requireCreatorAccess }
+      return new Proxy({}, { get() { throw new Error('Unauthorized request reached generation dependencies') } })
+    }
+  })
+  for (const origin of [undefined, 'https://muse.example']) {
+    const res = { statusCode: 0, setHeader() {}, status(code) { this.statusCode = code; return this }, json() {} }
+    await exports.default({ method: 'POST', headers: { host: 'muse.example', ...(origin ? { origin } : {}) }, body: {} }, res)
+    assert.equal(res.statusCode, 401, 'Personal generation must require creator access with or without Origin')
+  }
   console.log('PASS creator gate: local compatibility, hosted fail-closed configuration, invalid codes rejected, valid code accepted, public player remains ungated')
 } finally {
   process.env = original
   fs.rmSync(output, { recursive: true, force: true })
 }
+}
+main().catch(error => { console.error(error); process.exitCode = 1 })
