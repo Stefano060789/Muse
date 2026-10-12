@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { legacyNarrationStyle, parseNarrationMetadata } from '../../lib/narration'
+import { requireCreatorAccess } from '../../lib/creatorAccess'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store')
@@ -11,6 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER !== 'elevenlabs') {
     return res.status(503).json({ error: 'Provider narration is disabled. Use browser narration.' })
   }
+  if (!requireCreatorAccess(req, res)) return
   const apiKey = process.env.ELEVEN_API_KEY
   const voiceId = process.env.ELEVEN_VOICE_ID
   const text = String(req.body?.text || '').trim()

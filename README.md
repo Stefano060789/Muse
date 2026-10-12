@@ -36,6 +36,49 @@ The full product definition lives in four documents:
 
 Never commit `.env.local`, service-role keys, or other provider credentials.
 
+### Hosted shared-story test on Vercel
+
+Use Node.js 24, the Next.js application preset, and the repository root.
+SQLite is intentionally rejected on Vercel because its filesystem is not
+persistent story storage. Apply `supabase/shared-stories.sql` only after
+checking its table and function names do not conflict with existing apps.
+Sharing a Supabase project shares capacity and the service-role trust
+boundary; the key can access other tables in that project and must stay
+server-only. Do not expose it to the browser or paste it into chat.
+
+Configure these Vercel environment variables privately before deploying:
+
+- `STORY_STORAGE=supabase`
+- `NEXT_PUBLIC_SUPABASE_URL` for the chosen project
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+- `LLM_PROVIDER=ANTHROPIC`
+- `LLM_MODEL=claude-haiku-5-5`
+- `ANTHROPIC_API_KEY` (server-only)
+- `NEXT_PUBLIC_NARRATION_PROVIDER=browser`
+- `MUSE_CREATOR_ACCESS_CODE`: a private random code of 16 to 512 characters
+- `NEXT_PUBLIC_MUSE_CREATOR_LOCKED=true`
+
+The hosted test focuses on Shared Story. Its creator page accepts the code
+in memory only and includes it in creation/management requests; refresh
+requires entering it again. Other paid/legacy APIs are also gated, but
+their existing pages do not yet have an access-code workflow. Local use
+without the gate configuration remains unchanged. This code is a temporary
+creator gate, not account registration or recipient identity verification.
+Keep it separate from management and recipient link capabilities. Vercel
+fails closed for private APIs if no usable creator code is configured.
+Recipients need only their recipient link; browser narration needs no key.
+
+Create new non-sensitive test stories on the hosted address. Existing
+local SQLite stories are not automatically uploaded. Keep production
+recipient pages publicly accessible rather than behind Vercel team login.
+Never disable the in-app creator gate. Check the hosting plan's permitted
+use and quotas before commercial use; no paid plan is required or approved
+by these instructions.
+
+Validate with `npm run test:creator-access` and the shared-story suites.
+The patched Next.js 15 release retains the Pages Router and React 18;
+PostCSS is pinned via an override to resolve its transitive advisories.
+
 ### Local SQLite testing (no database registration)
 
 `STORY_STORAGE=sqlite` explicitly selects a server-side SQLite database.
@@ -63,6 +106,36 @@ and firewall access; do not expose the test server publicly.
 Claude still needs internet access and consumes your API credits. SQLite
 does not make the AI run offline. Optional provider narration is a separate
 paid request. The database itself has no service subscription.
+
+### Temporary recipient-only HTTPS sharing
+
+Use non-sensitive test stories only. Cloudflare carries tunnel traffic.
+This is not permanent hosting; the computer must remain awake, connected,
+and running Muse. Never tunnel the main Muse port directly.
+
+1. Run Muse locally on port 3102.
+2. Run `npm run share:gateway`. It listens on loopback port 3104 and
+   forwards only the recipient page, static assets, and the `open`,
+   `next`, `guess`, and `hint` Shared Story actions. Creation, management,
+   deletion, link rotation, other APIs and other pages are blocked.
+3. Install the official Cloudflare `cloudflared` Windows tool and run
+   `cloudflared tunnel --url http://127.0.0.1:3104`.
+4. Keep the creator page open at its original local address. Under
+   "Send the recipient their story", expand "Temporary HTTPS sharing",
+   paste the printed `https://...trycloudflare.com` address and apply it.
+5. Open the recipient link to check it, then use Share on WhatsApp.
+   Only the recipient link uses the public address; management stays local.
+
+No registration or new database is needed. Narration uses recipient-device
+browser voices; provider TTS is deliberately blocked by the gateway.
+Anyone possessing the recipient capability can play, including after
+forwarding. The gateway shares the local request budget across recipients.
+Restarting the tunnel changes its address: reapply it and send a new URL;
+the story capability and database do not change. Stop the tunnel to end
+public access. No tunnel address is persisted by the creator UI.
+
+Run `npm run test:gateway` to verify the gateway's allowlist and rejection
+of owner actions, unrelated APIs, cross-origin and oversized requests.
 
 This mode is for a local persistent machine, not Vercel's ephemeral
 filesystem. SQLite mode is explicitly rejected on Vercel. Before hosting,

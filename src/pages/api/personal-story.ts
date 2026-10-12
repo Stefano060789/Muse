@@ -3,6 +3,7 @@ import { parsePersonalStoryRequest, generatePersonalStory } from '../../lib/pers
 import { SharedStoryError } from '../../lib/sharedStory'
 import { storyProviderConfig } from '../../lib/storyProvider'
 import { storyDatabase, reserveStoryRequest } from '../../lib/storyRequestLimits'
+import { requireCreatorAccess } from '../../lib/creatorAccess'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -14,6 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   if (req.headers.origin) {
     try {
+      if (!requireCreatorAccess(req, res)) return
       if (new URL(req.headers.origin).host !== req.headers.host) {
         return res.status(403).json({ error: 'Cross-origin story requests are not allowed.' })
       }

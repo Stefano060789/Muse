@@ -1,7 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { extractProfileKeypoints, readMuseProfile, writeMuseProfile } from '../../lib/profileStorage'
+import { requireCreatorAccess } from '../../lib/creatorAccess'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!requireCreatorAccess(req, res)) return
   if (req.method === 'GET') {
     return res.status(200).json(await readMuseProfile())
   }

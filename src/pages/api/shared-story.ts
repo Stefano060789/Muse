@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { generateSharedStory, sharedStoryProviderConfig } from '../../lib/sharedStoryGenerator'
 import { normalizeSharedAnswer, parseSharedStoryBrief, sharedStoryPlayerView, SharedStoryError } from '../../lib/sharedStory'
 import { storyDatabase as database, reserveStoryRequest as reserveRequest } from '../../lib/storyRequestLimits'
+import { requireCreatorAccess } from '../../lib/creatorAccess'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -50,6 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!['create', 'manage', 'share', 'delete', 'open', 'next', 'guess', 'hint'].includes(String(action))) {
       throw new SharedStoryError('Unsupported story action.')
     }
+    if (!['open', 'next', 'guess', 'hint'].includes(String(action)) && !requireCreatorAccess(req, res)) return
     if (action === 'create') {
       const brief = parseSharedStoryBrief(body.brief)
       sharedStoryProviderConfig()

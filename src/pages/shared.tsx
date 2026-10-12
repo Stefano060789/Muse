@@ -19,9 +19,9 @@ const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narra
 type AssistanceField = 'assistanceHints' | 'alternativeAnswers'
 const assistanceLines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 
-async function request<T>(body: Record<string, unknown>): Promise<T> {
+async function request<T>(body: Record<string, unknown>, creatorCode = ''): Promise<T> {
   const response = await fetch('/api/shared-story', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) }, body: JSON.stringify(body)
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data.error || 'Could not complete the story request.')
@@ -42,10 +42,15 @@ export default function SharedStoryPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [origin, setOrigin] = useState('')
+  const [tunnelAddress, setTunnelAddress] = useState('')
+  const [publicOrigin, setPublicOrigin] = useState('')
   const [canDeviceShare, setCanDeviceShare] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [dictationLanguage, setDictationLanguage] = useState('en-US')
   const [experience, setExperience] = useState<'read' | 'listen'>('read')
+  const [creatorCodeInput, setCreatorCodeInput] = useState('')
+  const [creatorCode, setCreatorCode] = useState('')
+  const creatorLocked = process.env.NEXT_PUBLIC_MUSE_CREATOR_LOCKED === 'true'
   const narrator = useNarration(player || creator?.content || {})
   const interaction = useStoryInteraction(narrator.stop, dictationLanguage)
 
@@ -79,6 +84,7 @@ export default function SharedStoryPage() {
           }
           return
         }
+        if (creatorLocked && !creatorCode) return
         const libraryResult = loadStoryLibrary()
         if (libraryResult.error) setNotice(libraryResult.error)
         const requestedOwner = fragment.get('manage')
@@ -86,7 +92,7 @@ export default function SharedStoryPage() {
         const saved = matching?.kind === 'shared' ? matching.story : latestCreatorStory(libraryResult)
         const ownerToken = fragment.get('manage') || (fragment.has('new') ? null : saved?.ownerToken)
         if (ownerToken) {
-          const result = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'>>({ action: 'manage', token: ownerToken })
+          const result = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'>>({ action: 'manage', token: ownerToken }, creatorCode)
           if (!active) return
           const restored = { ...result, ownerToken, ...(saved?.ownerToken === ownerToken ? { playToken: saved.playToken } : {}) }
           setCreator(restored)
@@ -107,7 +113,7 @@ export default function SharedStoryPage() {
     }
     void initialize()
     return () => { active = false }
-  }, [])
+  }, [creatorCode, creatorLocked])
 
   const storeCreator = (story: CreatorStory) => {
     setCreator(story)
@@ -137,7 +143,7 @@ export default function SharedStoryPage() {
         throw new Error('Enter up to 5 approved alternative answers, with at most 200 characters each.')
       }
       const preparedBrief = { ...brief, assistanceHints, alternativeAnswers }
-      const story = await request<CreatorStory>({ action: 'create', brief: preparedBrief })
+      const story = await request<CreatorStory>({ action: 'create', brief: preparedBrief }, creatorCode)
       setBrief(story.brief)
       setAssistanceHintsText((story.brief.assistanceHints ?? []).join('\n'))
       setAlternativeAnswersText((story.brief.alternativeAnswers ?? []).join('\n'))
@@ -184,11 +190,11 @@ export default function SharedStoryPage() {
     narrator.stop()
     try {
       if (action === 'share') {
-        const result = await request<{ playToken: string }>({ action, token: creator.ownerToken })
+        const result = await request<{ playToken: string }>({ action, token: creator.ownerToken }, creatorCode)
         const saved = storeCreator({ ...creator, playToken: result.playToken })
         if (saved) setNotice('New recipient link created. Any previous recipient link no longer works.')
       } else {
-        await request({ action, token: creator.ownerToken })
+        await request({ action, token: creator.ownerToken }, creatorCode)
         setCreator(null)
         window.history.replaceState(null, '', '/shared#new')
         setNotice('Story deleted. Both private links have stopped working.')
@@ -230,7 +236,7 @@ export default function SharedStoryPage() {
 
   const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} beforeSpeak={interaction.stopRecording} />
 
-  const shareDetails = origin && creator?.playToken ? recipientShareDetails(origin, creator.playToken) : null
+  const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const playerLink = shareDetails?.url || ''
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
 
@@ -273,6 +279,18 @@ export default function SharedStoryPage() {
         </header>
         {error || interaction.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
+        {creatorLocked && !playToken ? <section style={cardStyle} aria-label="Private creator access">
+          <h2>Private creator access</h2>
+          <p>Enter your access code to create or manage a story. It stays in this page's memory only; reopening or refreshing requires it again. Never share it or your management link with the recipient.</p>
+          <label>Creator access code<input type="password" autoComplete="off" value={creatorCodeInput} onChange={event => setCreatorCodeInput(event.target.value)} style={fieldStyle} /></label>
+          <button style={{ ...buttonStyle, marginTop: '0.75rem' }} onClick={() => {
+            if (creatorCodeInput.length < 16 || creatorCodeInput.length > 512) { setError('Enter a creator access code of 16 to 512 characters.'); return }
+            setError('')
+            setCreatorCode(creatorCodeInput)
+            setCreatorCodeInput('')
+          }}>Use creator access code</button>
+          {creatorCode ? <p role="status">Code entered. The server checks it when you create or manage a story.</p> : null}
+        </section> : null}
         <details open={!playToken} style={{ marginBottom: '1rem' }}>
           <summary>Audio and microphone settings</summary>
           <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
@@ -284,7 +302,7 @@ export default function SharedStoryPage() {
           <MicrophoneCheck stopSignal={interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
         </details>
-        {loading ? <p role="status">Opening your private story...</p> : playToken ? player ? (
+        {loading ? <p role="status">Opening your private story...</p> : creatorLocked && !playToken && !creatorCode ? <p>Enter your private creator access code above to continue. Recipients should use their story link instead.</p> : playToken ? player ? (
           <section>
             <p>A story from {player.creatorName} for {player.recipientName}</p>
             <h1 style={{ fontSize: '2.5rem' }}>{player.title}</h1>
@@ -399,12 +417,31 @@ export default function SharedStoryPage() {
             <article style={cardStyle}>
               <h2>Send the recipient their story</h2>
               <p>Anyone with the recipient link can play. Keep the management link to yourself. Links expire on {new Date(creator.expiresAt).toLocaleDateString()}.</p>
+              <details style={{ marginBottom: '1rem' }}>
+                <summary>Temporary HTTPS sharing for local testing</summary>
+                <p>Start the recipient-only gateway and Cloudflare Quick Tunnel first. Paste the generated HTTPS address here. Use non-sensitive test stories: traffic passes through the tunnel provider. Keep this computer awake and Muse running. The address changes when the tunnel restarts and is not saved here.</p>
+                <label>Temporary tunnel address<input type="url" value={tunnelAddress} placeholder="https://your-tunnel.trycloudflare.com" onChange={event => setTunnelAddress(event.target.value)} style={fieldStyle} /></label>
+                <button style={{ ...buttonStyle, marginTop: '0.75rem' }} onClick={() => {
+                  try {
+                    const url = new URL(tunnelAddress.trim())
+                    if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+                      throw new Error('Paste only the HTTPS trycloudflare.com address printed by your running tunnel.')
+                    }
+                    setPublicOrigin(url.origin)
+                    setError('')
+                    setNotice('Recipient sharing now uses the temporary public address. Management stays local. Check the link before sending.')
+                  } catch (error) {
+                    setError(error instanceof Error ? error.message : 'Invalid tunnel address.')
+                  }
+                }}>Use tunnel for recipient links</button>
+                {publicOrigin ? <><p role="status">Temporary recipient address: {publicOrigin}</p><button style={buttonStyle} onClick={() => { setPublicOrigin(''); setTunnelAddress(''); setNotice('Recipient links now use the local address again.') }}>Return to local links</button></> : null}
+              </details>
               {playerLink ? <>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <a href={playerLink} target="_blank" rel="noopener noreferrer" onClick={narrator.stop} style={{ ...primaryStyle, textDecoration: 'none' }}>Open recipient story</a>
                   <button onClick={() => copy(playerLink)} style={buttonStyle}>Copy recipient link</button>
                 </div>
-                <p>Open the recipient experience in a new tab with one click. This uses this browser's saved player progress; use a private window to test as a new recipient.</p>
+                <p>Open the recipient experience in a new tab with one click. Progress is saved per browser and address; use a private window to test as a new recipient.</p>
                 <label>Recipient link<input readOnly value={playerLink} style={fieldStyle} onFocus={(event) => event.target.select()} /></label>
               </> : null}
               {shareDetails ? (
