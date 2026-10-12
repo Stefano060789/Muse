@@ -14,8 +14,8 @@ const features = [
   },
   {
     title: 'Shared Story',
-    description: 'A story for two people with clues, discovery, and a shared emotional arc.',
-    href: '/couples'
+    description: 'Give Muse your idea, setting, personal clues, and a hidden message. AI prepares a mystery for someone else to solve.',
+    href: '/shared'
   }
 ]
 
@@ -55,7 +55,8 @@ export default function Home() {
             <a href="#experience" style={{ color: '#2d2926', textDecoration: 'none' }}>How it works</a>
             <Link href="/myself" style={{ color: '#2d2926', textDecoration: 'none' }}>Myself</Link>
             <Link href="/story" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700 }}>My Story</Link>
-            <Link href="/couples" style={{ color: '#2d2926', textDecoration: 'none' }}>Shared Story</Link>
+            <Link href="/shared" style={{ color: '#2d2926', textDecoration: 'none' }}>Shared Story</Link>
+            <Link href="/library" style={{ color: '#2d2926', textDecoration: 'none' }}>Story Library</Link>
           </nav>
         </header>
 
@@ -128,9 +129,9 @@ export default function Home() {
             }}
           >
             <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.7 }}>The Muse experience</p>
-            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>A little mystery for two</h2>
+            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>Three spaces. Your way to interact.</h2>
             <p style={{ lineHeight: 1.7, margin: 0 }}>
-              Start with Myself, choose a mood in My Story, or invite someone into a Shared Story.
+              Start with Myself, choose a mood in My Story, or create a Shared Story for someone else to solve. Type or speak, read or listen.
             </p>
           </aside>
         </section>
@@ -175,7 +176,7 @@ export default function Home() {
               <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem' }}>Start your shared story</h3>
             </div>
             <Link
-              href="/couples"
+              href="/shared"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -188,7 +189,7 @@ export default function Home() {
                 fontWeight: 700
               }}
             >
-              Begin together →
+              Create for someone →
             </Link>
           </div>
         </section>

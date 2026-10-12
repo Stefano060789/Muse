@@ -6,6 +6,24 @@
 
 ## One-line description
 
+> **Current MVP direction (October 2026):** three areas: Myself (local
+> profile), My Story (personal interactive stories), and Shared Story
+> (one creator's idea/background/personal clues become an AI-generated
+> mystery for a recipient to solve). The creator chooses an approximate
+> 5/10/15/20-minute duration, a private answer and a final message. Separate
+> private management/play links replace mutual couple onboarding. Text and
+> audio are interaction modes inside all three areas, not a fourth area.
+> Claude Haiku 5.5 is the default text provider. My Story uses one initial
+> generation plus up to two answer-driven continuations; Shared Story is
+> generated once. Profile key points are sent only with opt-in in My Story.
+> Browser-local story history supports reopening personal and shared stories.
+> Profile memories have edit/remove/forget controls. Shared puzzles can use
+> creator-provided progressive hints and approved alternative answers.
+> Narration offers pause/resume and locally remembered style/voice preferences.
+> The daily-wellness scope below is retained as earlier research, not the
+> active MVP. See [TODO.md](TODO.md) and [../README.md](../README.md) for
+> implementation and hosting status.
+
 A daily companion that writes to you in the voice of what you already love —
 personalized to your favorite books, films, and poetry, with an optional tone
 of voice and an optional nod to your cycle — instead of the generic

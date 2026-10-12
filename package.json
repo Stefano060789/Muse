@@ -5,6 +5,13 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "test:shared": "node scripts/shared-story.test.cjs",
+    "test:sqlite": "node scripts/sqlite-story.test.cjs",
+    "test:sqlite:production": "node scripts/sqlite-production.test.cjs",
+    "test:narration": "node scripts/narration.test.cjs",
+    "test:core": "node scripts/core-fixes.test.cjs",
+    "test:library": "node scripts/library.test.cjs",
+    "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "next lint"
   },

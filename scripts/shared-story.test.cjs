@@ -1,0 +1,417 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const { execFileSync } = require('node:child_process')
+
+const root = path.resolve(__dirname, '..')
+const output = fs.mkdtempSync(path.join(__dirname, '.shared-story-tests-'))
+const originalFetch = global.fetch
+const originalEnv = { ...process.env }
+let passed = 0
+
+async function check(name, run) {
+  await run()
+  passed += 1
+  console.log(`PASS ${name}`)
+}
+
+async function main() {
+  execFileSync(process.execPath, [
+    path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
+    'src/lib/sharedStory.ts', 'src/lib/sharedStoryGenerator.ts', 'src/pages/api/shared-story.ts',
+    'src/lib/personalStoryGenerator.ts', 'src/pages/api/personal-story.ts',
+    '--outDir', output, '--module', 'commonjs', '--target', 'es2020',
+    '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'
+  ], { cwd: root, stdio: 'inherit' })
+  const { parseSharedStoryBrief, parseGeneratedStory, normalizeSharedAnswer, sceneCountForDuration, sharedStoryPlayerView } = require(path.join(output, 'lib', 'sharedStory.js'))
+  const { generateSharedStory } = require(path.join(output, 'lib', 'sharedStoryGenerator.js'))
+  const handler = require(path.join(output, 'pages', 'api', 'shared-story.js')).default
+  const personalHandler = require(path.join(output, 'pages', 'api', 'personal-story.js')).default
+  const { parsePersonalStoryRequest, generatePersonalStory } = require(path.join(output, 'lib', 'personalStoryGenerator.js'))
+  process.env.STORY_STORAGE = 'supabase'
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.OPENAI_API_KEY
+  const brief = {
+    creatorName: 'Alex', recipientName: 'Sam', narration: 'Playful detective narration',
+    setting: 'A room with a desk, notebook and stars painted on the ceiling.',
+    recipientHints: 'Sam likes astronomy.', goal: 'Find the hidden letter.',
+    solution: 'behind the blue notebook', message: 'Meet me tomorrow at our favourite cafe.',
+    durationMinutes: 5
+  }
+  const contentFor = (minutes) => {
+    const count = sceneCountForDuration(minutes)
+    const words = Math.ceil(minutes * 70 / count)
+    return {
+      title: 'The Room of Stars', description: 'Find the hidden letter using familiar clues.',
+      narrationStyle: 'suspenseful', narrationLanguage: 'en-US',
+      scenes: Array.from({ length: count }, (_, index) => ({
+        title: `Discovery ${index + 1}`, body: Array(words).fill('wonder').join(' '),
+        clue: 'Look where your favourite constellations were once drawn.'
+      }))
+    }
+  }
+  const content = contentFor(5)
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  let providerRequest
+  const providerMock = async (_url, options) => {
+    providerRequest = JSON.parse(options.body)
+    return json({ choices: [{ message: { content: JSON.stringify(content) } }] })
+  }
+
+  await check('brief preserves the creator setting, recipient hints and private payoff', () => {
+    assert.deepEqual(parseSharedStoryBrief(brief), { ...brief, assistanceHints: [], alternativeAnswers: [] })
+  })
+  await check('optional puzzle help validates bounded creator-only lists', () => {
+    const assistanceHints = ['Look beneath the paper cover.', 'Remember the colour of the sea.']
+    const alternativeAnswers = ['under the azure journal']
+    assert.deepEqual(parseSharedStoryBrief({ ...brief, assistanceHints, alternativeAnswers }).assistanceHints, assistanceHints)
+    for (const update of [
+      { assistanceHints: 'not a list' }, { assistanceHints: Array(4).fill('hint') },
+      { assistanceHints: [''] }, { assistanceHints: ['x'.repeat(601)] },
+      { alternativeAnswers: Array(6).fill('answer') }, { alternativeAnswers: ['!!!'] },
+      { alternativeAnswers: ['x'.repeat(201)] }, { alternativeAnswers: null }
+    ]) assert.throws(() => parseSharedStoryBrief({ ...brief, ...update }))
+  })
+  await check('private alternatives and on-demand hints cannot leak into generated public content', () => {
+    const assisted = { ...brief, assistanceHints: ['Look beneath the paper cover.'], alternativeAnswers: ['under the azure journal'] }
+    for (const description of [...assisted.assistanceHints, ...assisted.alternativeAnswers]) {
+      assert.throws(() => parseGeneratedStory({ ...content, description }, assisted), /exposed/)
+    }
+    const view = sharedStoryPlayerView(assisted, content, { current_scene: 0, solved: false, revealed_hints: 1 })
+    assert.deepEqual(view.revealedHints, assisted.assistanceHints)
+    assert.equal(view.hintsRemaining, 0)
+    assert.equal(view.alternativeAnswers, undefined)
+    assert.deepEqual(sharedStoryPlayerView(assisted, content, { current_scene: 0, solved: false }).revealedHints, [])
+  })
+  await check('invalid durations, missing setting and oversized answers are rejected', () => {
+    for (const update of [{ durationMinutes: 7 }, { durationMinutes: '5' }, { setting: '' }, { solution: 'x'.repeat(201) }, { solution: '!!!' }]) {
+      assert.throws(() => parseSharedStoryBrief({ ...brief, ...update }))
+    }
+    assert.throws(() => parseSharedStoryBrief(null))
+  })
+  await check('5/10/15/20 minutes scale scene count and validated narration length', () => {
+    for (const minutes of [5, 10, 15, 20]) {
+      assert.equal(parseGeneratedStory(contentFor(minutes), { ...brief, durationMinutes: minutes }).scenes.length, sceneCountForDuration(minutes))
+    }
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: content.scenes.slice(0, 1) }, brief))
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: content.scenes.map((scene) => ({ ...scene, body: 'Too short.' })) }, brief))
+  })
+  await check('AI output exposing the secret answer or reveal is rejected', () => {
+    for (const leaked of [brief.solution, brief.message]) {
+      assert.throws(() => parseGeneratedStory({ ...content, description: leaked }, brief))
+    }
+  })
+  await check('answer normalization ignores case, punctuation and spacing, not meaning', () => {
+    assert.equal(normalizeSharedAnswer(' BEHIND the blue notebook! '), normalizeSharedAnswer(brief.solution))
+    assert.notEqual(normalizeSharedAnswer(`not ${brief.solution}`), normalizeSharedAnswer(brief.solution))
+    assert.notEqual(normalizeSharedAnswer('notebook'), normalizeSharedAnswer(brief.solution))
+    assert.equal(normalizeSharedAnswer('Café — étoile'), 'café étoile')
+  })
+  await check('unsolved recipient projection omits the answer, brief, hints and message', () => {
+    const view = sharedStoryPlayerView(brief, content, { current_scene: 1, solved: false })
+    assert.equal(view.sceneIndex, 1)
+    const serialized = JSON.stringify(view)
+    for (const secret of [brief.solution, brief.message, brief.recipientHints]) assert.ok(!serialized.includes(secret))
+    assert.equal(view.message, undefined)
+    assert.equal(view.scenes, undefined)
+  })
+  await check('only solved projection reveals the exact creator message', () => {
+    const view = sharedStoryPlayerView(brief, content, { current_scene: 0, solved: true })
+    assert.equal(view.message, brief.message)
+    assert.equal(view.solution, undefined)
+  })
+  await check('generation sends a structured brief to the actual Groq chat API', async () => {
+    process.env.LLM_API_KEY = 'test-key'
+    process.env.LLM_PROVIDER = 'GROQ'
+    delete process.env.LLM_MODEL
+    global.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions')
+      return providerMock(url, options)
+    }
+    assert.deepEqual(await generateSharedStory(brief), content)
+    assert.equal(providerRequest.model, 'llama-3.3-70b-versatile')
+    assert.deepEqual(JSON.parse(providerRequest.messages[1].content), brief)
+    assert.match(providerRequest.messages[0].content, /assistanceHints are private/)
+    assert.match(providerRequest.messages[0].content, /alternativeAnswers are private/)
+    const schemaExample = JSON.parse(providerRequest.messages[0].content.match(/Return JSON only, without markdown: (\{.*\})\./)[1])
+    assert.equal(schemaExample.narrationStyle, 'suspenseful')
+    assert.equal(schemaExample.narrationLanguage, 'en-US')
+    assert.ok(Array.isArray(schemaExample.scenes))
+    assert.equal(providerRequest.response_format.type, 'json_object')
+  })
+  await check('explicit OpenAI selection preserves its key, endpoint and model', async () => {
+    process.env.LLM_PROVIDER = 'OPENAI'
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    global.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.openai.com/v1/chat/completions')
+      assert.equal(options.headers.Authorization, 'Bearer test-openai-key')
+      return providerMock(url, options)
+    }
+    assert.deepEqual(await generateSharedStory(brief), content)
+    assert.equal(providerRequest.model, 'gpt-4.1-mini')
+    process.env.LLM_MODEL = 'gpt-4.1'
+    await generateSharedStory(brief)
+    assert.equal(providerRequest.model, 'gpt-4.1')
+    delete process.env.LLM_MODEL
+    delete process.env.OPENAI_API_KEY
+    process.env.LLM_PROVIDER = 'GROQ'
+  })
+  await check('missing key, unsupported provider and upstream errors are explicit', async () => {
+    delete process.env.LLM_API_KEY
+    await assert.rejects(() => generateSharedStory(brief), /not configured/)
+    process.env.LLM_API_KEY = 'test-key'
+    process.env.LLM_PROVIDER = 'INVALID'
+    await assert.rejects(() => generateSharedStory(brief), /Choose ANTHROPIC, OPENAI or GROQ/)
+    process.env.LLM_PROVIDER = 'GROQ'
+    global.fetch = async () => json({ error: 'private provider detail' }, 401)
+    await assert.rejects(() => generateSharedStory(brief), (error) => error.status === 502 && !error.message.includes('private provider detail'))
+    global.fetch = async () => json({ choices: [{ message: { content: 'not JSON' } }] })
+    await assert.rejects(() => generateSharedStory(brief), /invalid story JSON/)
+  })
+  const anthropicResponse = (value, stop = 'end_turn') => json({
+    content: [{ type: 'thinking', thinking: 'not story text' }, { type: 'text', text: JSON.stringify(value) }],
+    stop_reason: stop
+  })
+  await check('Claude Haiku is the default with native Messages headers and low effort', async () => {
+    delete process.env.LLM_PROVIDER
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+    global.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.anthropic.com/v1/messages')
+      assert.equal(options.headers['x-api-key'], 'test-anthropic-key')
+      assert.equal(options.headers['anthropic-version'], '2023-06-01')
+      assert.equal(options.headers.Authorization, undefined)
+      providerRequest = JSON.parse(options.body)
+      return anthropicResponse(content)
+    }
+    assert.deepEqual(await generateSharedStory(brief), content)
+    assert.equal(providerRequest.model, 'claude-haiku-5-5')
+    assert.equal(providerRequest.output_config.effort, 'low')
+    assert.equal(providerRequest.temperature, undefined)
+    assert.equal(providerRequest.response_format, undefined)
+    assert.ok(providerRequest.system.includes('solution and final message are private'))
+    assert.equal(providerRequest.messages.length, 1)
+    assert.deepEqual(JSON.parse(providerRequest.messages[0].content), brief)
+    process.env.LLM_MODEL = 'claude-haiku-5-5'
+    await generateSharedStory(brief)
+    delete process.env.LLM_MODEL
+  })
+  await check('Claude refusals, truncation, malformed JSON and missing text are explicit', async () => {
+    for (const [stop, status] of [['refusal', 422], ['max_tokens', 502], ['model_context_window_exceeded', 502]]) {
+      global.fetch = async () => anthropicResponse(content, stop)
+      await assert.rejects(() => generateSharedStory(brief), (error) => error.status === status)
+    }
+    global.fetch = async () => json({ content: [{ type: 'text', text: '```json\n{}\n```' }], stop_reason: 'end_turn' })
+    await assert.rejects(() => generateSharedStory(brief), /invalid story JSON/)
+    global.fetch = async () => json({ content: [{ type: 'thinking', thinking: 'no text' }], stop_reason: 'end_turn' })
+    await assert.rejects(() => generateSharedStory(brief), /returned no story/)
+    global.fetch = async () => json({ error: 'secret provider detail' }, 429)
+    await assert.rejects(() => generateSharedStory(brief), (error) => error.status === 429 && !error.message.includes('secret provider detail'))
+  })
+  await check('Claude never silently uses an OpenAI or Groq key', async () => {
+    delete process.env.ANTHROPIC_API_KEY
+    process.env.OPENAI_API_KEY = 'other-provider-key'
+    await assert.rejects(() => generateSharedStory(brief), /ANTHROPIC_API_KEY/)
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+    delete process.env.OPENAI_API_KEY
+  })
+  const personalContent = {
+    title: 'The Small Observatory', description: 'A curious journey shaped by your choices.',
+    narrationStyle: 'curious', narrationLanguage: 'en-US',
+    scenes: Array.from({ length: 3 }, (_, index) => ({
+      title: `Scene ${index + 1}`, body: 'An unfamiliar star invites you to explore.',
+      question: 'What will you explore?', choices: ['The telescope', 'The garden', 'The notebook']
+    }))
+  }
+  let personal
+  await check('My Story generates with Haiku using only opted-in profile keypoints', async () => {
+    global.fetch = async (_url, options) => {
+      providerRequest = JSON.parse(options.body)
+      return anthropicResponse(personalContent)
+    }
+    const input = parsePersonalStoryRequest({ action: 'create', mood: 'curious', need: 'I want to explore', profileKeypoints: [] })
+    personal = await generatePersonalStory(input)
+    assert.equal(personal.generation, 'ai')
+    assert.equal(personal.scenes.length, 3)
+    assert.deepEqual(JSON.parse(providerRequest.messages[0].content).profileKeypoints, [])
+    await generatePersonalStory(parsePersonalStoryRequest({ ...input, profileKeypoints: ['I love stars'] }))
+    assert.deepEqual(JSON.parse(providerRequest.messages[0].content).profileKeypoints, ['I love stars'])
+  })
+  await check('My Story continuations respond to answers and preserve previous scenes', async () => {
+    const changed = { ...personalContent.scenes[1], body: 'Your choice of the garden leads to a new constellation.' }
+    global.fetch = async (_url, options) => {
+      providerRequest = JSON.parse(options.body)
+      return anthropicResponse({ scene: changed, narrationStyle: 'warm', narrationLanguage: 'en-US' })
+    }
+    const continued = await generatePersonalStory(parsePersonalStoryRequest({ action: 'continue', story: personal, answer: 'The garden' }))
+    assert.equal(continued.currentStep, 1)
+    assert.deepEqual(continued.responses, ['The garden'])
+    assert.deepEqual(continued.scenes[0], personal.scenes[0])
+    assert.deepEqual(continued.scenes[1], changed)
+    assert.deepEqual(JSON.parse(providerRequest.messages[0].content).responses, ['The garden'])
+    const final = await generatePersonalStory(parsePersonalStoryRequest({ action: 'continue', story: continued, answer: 'The telescope' }))
+    assert.equal(final.currentStep, 2)
+    assert.throws(() => parsePersonalStoryRequest({ action: 'continue', story: final, answer: 'extra turn' }))
+  })
+  await check('personal input bounds and malformed AI scenes are rejected', async () => {
+    const base = { action: 'create', mood: 'curious', need: '', profileKeypoints: [] }
+    for (const update of [{ mood: 'bad' }, { need: 'x'.repeat(1001) }, { profileKeypoints: Array(6).fill('detail') }]) {
+      assert.throws(() => parsePersonalStoryRequest({ ...base, ...update }))
+    }
+    assert.throws(() => parsePersonalStoryRequest({ action: 'continue', story: { ...personal, currentStep: 1 }, answer: 'bad state' }))
+    global.fetch = async () => anthropicResponse({ ...personalContent, scenes: [] })
+    await assert.rejects(() => generatePersonalStory(parsePersonalStoryRequest(base)), (error) => error.status === 502)
+  })
+
+  let stored
+  let allowRequest = true
+  let legacyRpc = false
+  let state = { current_scene: 0, solved: false, revealed_hints: 0 }
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
+  delete process.env.VERCEL
+  global.fetch = async (url, options) => {
+    if (String(url).includes('api.anthropic.com')) {
+      providerRequest = JSON.parse(options.body)
+      return anthropicResponse(JSON.parse(providerRequest.messages[0].content).action === 'create' ? personalContent : content)
+    }
+    const location = new URL(String(url))
+    assert.equal(location.hostname, 'muse-test.supabase.co')
+    const body = options?.body ? JSON.parse(options.body) : null
+    if (location.pathname.endsWith('/rpc/reserve_shared_story_request')) return json(allowRequest)
+    if (location.pathname.endsWith('/rpc/advance_shared_story')) {
+      assert.equal(body.expected_play_hash, stored.play_hash)
+      if (body.action_name === 'next') state.current_scene = Math.min(state.current_scene + 1, content.scenes.length - 1)
+      if (body.action_name === 'guess') state.solved = body.guess_normalized === stored.answer_normalized || stored.alternative_answers_normalized.includes(body.guess_normalized)
+      if (body.action_name === 'hint') state.revealed_hints = Math.min(state.revealed_hints + 1, stored.brief.assistanceHints.length)
+      return json(legacyRpc ? { current_scene: state.current_scene, solved: state.solved } : state)
+    }
+    assert.equal(location.pathname, '/rest/v1/shared_stories')
+    if (options.method === 'POST') {
+      stored = body
+      return new Response(null, { status: 201 })
+    }
+    if (options.method === 'PATCH') {
+      stored = { ...stored, ...body }
+      return new Response(null, { status: 204 })
+    }
+    if (options.method === 'DELETE') {
+      stored = null
+      return new Response(null, { status: 204 })
+    }
+    return json(stored ? [stored] : [])
+  }
+  const api = async (body, method = 'POST', headers = {}, selectedHandler = handler) => {
+    let status = 200
+    let result
+    const responseHeaders = {}
+    const res = {
+      setHeader: (key, value) => { responseHeaders[key] = value },
+      status: (value) => { status = value; return res },
+      json: (value) => { result = value; return res }
+    }
+    await selectedHandler({ method, body, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
+    assert.equal(responseHeaders['Cache-Control'], 'no-store')
+    return { status, body: result }
+  }
+  let created
+  let playerSession
+  await check('API creates separate owner/play capabilities and stores only hashes', async () => {
+    created = await api({ action: 'create', brief })
+    assert.equal(created.status, 201)
+    assert.notEqual(created.body.ownerToken, created.body.playToken)
+    assert.ok(!JSON.stringify(stored).includes(created.body.ownerToken.split('.')[1]))
+    assert.ok(!JSON.stringify(stored).includes(created.body.playToken.split('.')[1]))
+    assert.deepEqual(created.body.content, content)
+  })
+  await check('recipient cannot access management and owner cannot play with the owner token', async () => {
+    assert.equal((await api({ action: 'manage', token: created.body.playToken })).status, 404)
+    assert.equal((await api({ action: 'open', token: created.body.ownerToken })).status, 404)
+    assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.brief.message, brief.message)
+  })
+  await check('recipient open, clues and wrong guesses never receive private data', async () => {
+    const opened = await api({ action: 'open', token: created.body.playToken })
+    assert.equal(opened.status, 200)
+    playerSession = opened.body.sessionToken
+    assert.match(playerSession, /^[a-f0-9]{64}$/)
+    const wrong = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: `not ${brief.solution}` })
+    const next = await api({ action: 'next', token: created.body.playToken, sessionToken: playerSession })
+    for (const result of [opened, wrong, next]) {
+      assert.equal(result.status, 200)
+      assert.ok(!JSON.stringify(result.body).includes(brief.message))
+      assert.ok(!JSON.stringify(result.body).includes(brief.solution))
+    }
+    assert.equal(wrong.body.player.solved, false)
+    assert.equal(next.body.player.sceneIndex, 1)
+  })
+  await check('a correct normalized guess reveals the final message through the API', async () => {
+    const solved = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: 'BEHIND THE BLUE NOTEBOOK!' })
+    assert.equal(solved.status, 200)
+    assert.equal(solved.body.player.solved, true)
+    assert.equal(solved.body.player.message, brief.message)
+    assert.ok(!JSON.stringify(solved.body).includes(brief.solution))
+  })
+  await check('recipient cannot delete or replace the creator link', async () => {
+    for (const action of ['delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)
+  })
+  await check('owner can rotate the recipient token, invalidating the old link', async () => {
+    const replaced = await api({ action: 'share', token: created.body.ownerToken })
+    assert.equal(replaced.status, 200)
+    assert.notEqual(replaced.body.playToken, created.body.playToken)
+    assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 404)
+    assert.equal((await api({ action: 'open', token: replaced.body.playToken })).status, 200)
+    created.body.playToken = replaced.body.playToken
+  })
+  await check('invalid methods, cross-origin requests, unknown actions and malformed tokens fail', async () => {
+    assert.equal((await api({}, 'GET')).status, 405)
+    assert.equal((await api({ action: 'create', brief }, 'POST', { origin: 'https://evil.example' })).status, 403)
+    assert.equal((await api({ action: 'unknown' })).status, 400)
+    assert.equal((await api({ action: 'open', token: 'old-base64-payload' })).status, 404)
+    assert.equal((await api({ action: 'guess', token: created.body.playToken, sessionToken: 'bad', guess: 'answer' })).status, 400)
+  })
+  await check('durable request cap blocks provider calls and guessing', async () => {
+    allowRequest = false
+    assert.equal((await api({ action: 'create', brief })).status, 429)
+    assert.equal((await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: 'answer' })).status, 429)
+    allowRequest = true
+  })
+  await check('missing hosted credentials produces an explicit 503, not insecure fallback', async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 503)
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
+  })
+  await check('unmigrated hosted RPC fails explicitly rather than silently discarding hint progress', async () => {
+    legacyRpc = true
+    assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 503)
+    legacyRpc = false
+  })
+  await check('creator deletion disables both capabilities', async () => {
+    assert.equal((await api({ action: 'delete', token: created.body.ownerToken })).status, 200)
+    assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).status, 404)
+    assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 404)
+  })
+  await check('My Story API uses the same durable generation budget and explicit failures', async () => {
+    const input = { action: 'create', mood: 'curious', need: '', profileKeypoints: [] }
+    const run = (body = input, method = 'POST', headers = {}) => api(body, method, headers, personalHandler)
+    assert.equal((await run()).body.generation, 'ai')
+    allowRequest = false
+    assert.equal((await run()).status, 429)
+    allowRequest = true
+    assert.equal((await run({ ...input, mood: 'bad' })).status, 400)
+    assert.equal((await run(input, 'GET')).status, 405)
+    assert.equal((await run(input, 'POST', { origin: 'https://evil.example' })).status, 403)
+    delete process.env.ANTHROPIC_API_KEY
+    assert.equal((await run()).status, 503)
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+  })
+  console.log(`\n${passed} Shared Story checks passed.`)
+}
+
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+}).finally(() => {
+  global.fetch = originalFetch
+  for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key]
+  Object.assign(process.env, originalEnv)
+  fs.rmSync(output, { recursive: true, force: true })
+})

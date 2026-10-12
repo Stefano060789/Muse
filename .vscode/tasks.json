@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Muse: preview on 3102",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"exec",
+				"--",
+				"next",
+				"start",
+				"-p",
+				"3102"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

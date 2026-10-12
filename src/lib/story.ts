@@ -1,3 +1,6 @@
+import type { NarrationMetadata } from './narration'
+import { latestPersonalStory, loadStoryLibrary, saveLibraryPersonalStory } from './storyLibrary'
+
 export type StoryBeat = {
   id: string
   number: number
@@ -42,7 +45,10 @@ export type StoryTemplate = {
 
 export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
 
-export type PersonalStory = {
+export type PersonalStory = NarrationMetadata & {
+  generation?: 'ai'
+  need?: string
+  profileKeypoints?: string[]
   id: string
   mood: PersonalStoryMood
   title: string
@@ -57,8 +63,6 @@ export type PersonalStory = {
     choices: string[]
   }>
 }
-
-const PERSONAL_STORY_STORAGE_KEY = 'muse-personal-story'
 
 const PERSONAL_STORY_SCENES: Record<PersonalStoryMood, PersonalStory['scenes']> = {
   adventure: [
@@ -108,27 +112,22 @@ export function createPersonalStory(mood: PersonalStoryMood, profileKeypoints: s
 
 export function loadPersonalStory(): PersonalStory | null {
   if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(PERSONAL_STORY_STORAGE_KEY)
-  if (!raw) return null
-  try {
-    const story = JSON.parse(raw) as PersonalStory
+  const result = loadStoryLibrary()
+  if (result.error) throw new Error(result.error)
+  const story = latestPersonalStory(result)
+  if (story) {
     if (story.description.includes('It carries a quiet trace of ')) {
       story.description = story.description.replace(/ It carries a quiet trace of .*\.?$/, ' It carries a quiet trace of what matters to you.')
-      window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
     }
     if (story.title === 'The Unmapped Day') {
       story.title = 'The Open Road'
-      window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
     }
-    return story
-  } catch {
-    window.localStorage.removeItem(PERSONAL_STORY_STORAGE_KEY)
-    return null
   }
+  return story
 }
 
 export function savePersonalStory(story: PersonalStory) {
-  window.localStorage.setItem(PERSONAL_STORY_STORAGE_KEY, JSON.stringify(story))
+  saveLibraryPersonalStory(story)
 }
 
 export function answerPersonalStory(story: PersonalStory, answer: string) {

@@ -1,0 +1,62 @@
+import Head from 'next/head'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { loadStoryLibrary, removeLibraryEntry, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
+
+export default function LibraryPage() {
+  const [entries, setEntries] = useState<LibraryEntry[]>([])
+  const [error, setError] = useState('')
+  const [ready, setReady] = useState(false)
+  const refresh = () => {
+    const result = loadStoryLibrary()
+    setEntries(result.library.entries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
+    setError(result.error || '')
+    setReady(true)
+  }
+  useEffect(() => {
+    refresh()
+    window.addEventListener('storage', refresh)
+    window.addEventListener('focus', refresh)
+    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh) }
+  }, [])
+  const remove = (entry: LibraryEntry) => {
+    if (!window.confirm('Remove this browser entry only? This does not delete a shared story from the server or invalidate its links.')) return
+    try { removeLibraryEntry(entry.kind, entry.id); refresh() }
+    catch (error) { setError(error instanceof Error ? error.message : 'Could not remove this browser entry.') }
+  }
+  const openPersonal = (id: string) => {
+    try { selectPersonalStory(id); window.location.assign('/story') }
+    catch (error) { setError(error instanceof Error ? error.message : 'Could not reopen this story.') }
+  }
+  return (
+    <>
+      <Head><title>Muse — Story Library</title><meta name="description" content="Reopen your personal stories and shared story management links saved in this browser." /></Head>
+      <main style={{ minHeight: '100vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif', padding: '1.5rem' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}><Link href="/">Muse</Link><Link href="/story">My Story</Link><Link href="/shared#new">New Shared Story</Link></nav>
+          <h1>Story Library</h1>
+          <p>Saved in this browser only — not an account or cloud backup. Personal stories include your answers and progress. Shared entries include private management tokens, story details, and secrets in browser storage; anyone with access to this browser may access them.</p>
+          <p>Shared stories live on the server and may expire or be deleted remotely. Removing a browser entry does not delete the remote story. Use its management page to delete it remotely.</p>
+          {error && <div role="alert"><p>{error} No entries are shown when saved data cannot be read; this does not mean it was deleted.</p><button onClick={refresh}>Retry loading browser library</button></div>}
+          {!ready && <p role="status">Loading this browser&apos;s library…</p>}
+          {ready && !error && !entries.length && <p>No stories saved here yet. <Link href="/story">Create a personal story</Link> or <Link href="/shared#new">create a shared story</Link>.</p>}
+          {entries.map(entry => (
+            <article key={`${entry.kind}:${entry.id}`} style={{ padding: '1.5rem', margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 18, background: '#fffaf6' }}>
+              <h2>{entry.kind === 'personal' ? entry.story.title : entry.story.content.title}</h2>
+              <p>{entry.kind === 'personal'
+                ? `Personal · ${entry.story.responses.length >= entry.story.scenes.length ? 'Completed' : `Scene ${entry.story.currentStep + 1} of ${entry.story.scenes.length}`}`
+                : `Shared · ${Date.parse(entry.story.expiresAt) <= Date.now() ? 'Expiry date passed' : `Expires ${new Date(entry.story.expiresAt).toLocaleDateString()}`} · Remote availability not checked`}</p>
+              <p>Saved {new Date(entry.updatedAt).toLocaleString()}</p>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {entry.kind === 'personal'
+                  ? <button onClick={() => openPersonal(entry.id)}>Continue personal story</button>
+                  : <Link href={`/shared#manage=${encodeURIComponent(entry.story.ownerToken)}`}>Open private management page</Link>}
+                <button onClick={() => remove(entry)}>Remove browser entry only</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </main>
+    </>
+  )
+}

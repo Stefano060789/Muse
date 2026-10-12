@@ -1,78 +1,77 @@
-# Muse — TODO
+# Muse - TODO
 
-## Immediate next steps
+## Current product direction
 
-### 1. Local-first couples story MVP
+Exactly three areas: **Myself**, **My Story**, **Shared Story**.
+Written and audio interaction belong inside these areas; audio is not a
+fourth area. Older daily wellness and daily couple-beat plans are not the
+current MVP.
 
-- [x] Define the idea and product boundaries for a couple-focused story mode
-- [x] Add a local-first story template model and page prototype
-- [ ] Replace the hardcoded localStorage-only flow with a proper persisted local data layer (SQLite/Prisma or Drizzle)
-- [ ] Add a real couple/invite flow instead of the single-browser mock state
-- [ ] Add a private story archive view after each completed story beat
-- [ ] Add a final reveal / payoff screen for the story arc
+## Shared Story: creator to recipient
 
-### 2. Data and persistence
+- [x] Replace mutual couple storytelling with a creator brief and recipient mystery
+- [x] Capture names, narration style, setting, recipient-specific hints and goal
+- [x] Capture an exact private answer and the message revealed after solving
+- [x] Offer approximate durations of 5, 10, 15 and 20 minutes
+- [x] Implement Claude Haiku 5.5 generation (OpenAI/Groq optional) with validated scene count and narration length
+- [x] Separate creator preview/management from recipient play
+- [x] Add private server storage, separate random link capabilities and RLS migration
+- [x] Return the final message only after server-side correct-answer verification
+- [x] Support editable dictation and optional narration within Shared Story
+- [x] Add durable generation/guess rate limits and explicit provider/storage errors
+- [x] Allow recipient-link replacement and permanent creator deletion
+- [ ] Later hosted setup only: create/confirm Muse Supabase and apply the SQL migration
+- [x] Change local LLM_PROVIDER to ANTHROPIC without touching existing secrets
+- [x] User added ANTHROPIC_API_KEY locally (key not printed or committed)
+- [x] Select STORY_STORAGE=sqlite locally to avoid database registration for testing
+- [x] Verify real SQLite persistence after restarting the built Next server
+- [x] Verify one real Claude Haiku My Story generation locally (HTTP 200, three scenes)
+- [ ] Later hosted setup only: configure Supabase service-role and ANTHROPIC_API_KEY in Vercel, STORY_STORAGE=supabase and LLM_PROVIDER=ANTHROPIC
+- [x] Validate a real AI-generated story and private share with two browser sessions
+- [ ] Validate actual 5/10-minute experiences with people; estimates are not timers
+- [ ] Review clue solvability, answer wording and recipient comprehension
 
-- [ ] Decide whether to use SQLite + Prisma or SQLite + Drizzle
-- [ ] Create the schema for:
-  - users
-  - couples
-  - story_arcs
-  - story_beats
-  - story_replies
-  - story_artifacts
-- [ ] Add migrations and seed templates for the first three story archetypes
-- [ ] Keep the schema compatible with a later Supabase migration
-- [x] Add a local Muse profile with saved key points for story personalization
+## Myself and My Story
 
-### 3. Story engine
+- [x] Preserve local profile/key points and voice input in Myself
+- [x] Preserve My Story mood selection, narration and existing saved template stories
+- [x] Generate new My Story scenes and answer-driven continuations with Haiku
+- [x] Bound My Story to three scenes and at most three paid requests without automatic retries
+- [x] Require opt-in before forwarding up to five Myself key points
+- [x] Specify complete narration metadata in My Story generation/continuation output schemas
+- [x] Report storage failures instead of crashing Myself saving
+- [x] Edit/remove individual profile memories and forget the local profile
+- [x] Report unavailable/failed personal-story voice input explicitly
+- [x] Verify live My Story creation and both Claude continuations (HTTP 200), final reflection and reload
+- [x] Verify library migration/local deletion in automated checks and live personal/shared reopening
+- [x] Verify live creator-assisted hint persistence and approved alternative answer reveal in a separate recipient browser
+- [x] Verify bounded narration selectors at 320/390px, actual browser pause/resume and preference persistence
+- [x] Verify blocked profile storage and unsupported personal dictation show errors without uncaught exceptions
+- [ ] Consider cross-device profile/story storage only after the prototype is validated
 
-- [ ] Build a generator for daily beat unlocks based on story state
-- [ ] Add support for sequence progression and beat completion
-- [ ] Add a notion of “discovery” and “reply” for each beat
-- [ ] Store the accumulated story history in a timeline view
-- [ ] Create a simple prompt layer for customized story text from user preferences
+## Before public launch
 
-### 4. UX improvements
+- [x] Select explicit browser narration mode locally (no cloud narration calls)
+- [x] Automated narration metadata/voice selection regression checks and production build/restart smoke
+- [x] Browser verification: six style overrides, language-matched installed voices, preview/stop and no cloud TTS requests
+- [x] Live Claude narration metadata check: relaxed English story returned calm/en-US and three scenes (HTTP 200)
+- [ ] User listening evaluation: calm/warm/curious/adventurous/playful/suspenseful presets
+- [ ] Optional later: repair ElevenLabs key (catalog check returned HTTP 401) before using cloud narration
 
-- [ ] Add a landing view for “Daily Muse” and “Our Story”
-- [ ] Add a couple onboarding flow with names and invite code
-- [ ] Show story progress as a gentle daily ritual, not a game screen
-- [ ] Add a more romantic visual system without making it too literal or cheesy
-- [x] Add story-beat narration with ElevenLabs (or browser speech fallback)
-- [x] Add browser voice answers with transcript review before saving
+- [ ] Add scheduled expired-story/session cleanup (current cleanup is request-triggered)
+- [ ] Add stronger abuse protection and provider spending alerts
+- [ ] Review capability-link privacy, speech-provider processing and consent
+- [ ] Add identity/invitations only if user validation demonstrates the need
+- [ ] Decide whether a completed private archive is useful; do not assume a daily couple ritual
+- [ ] Clear the public product name (Muse remains an internal codename)
 
-### 5. Validation
+## Validation
 
-- [ ] Run the app locally end-to-end with two simulated users in the same browser
-- [ ] Test multiple story templates and ensure the flow feels emotionally coherent
-- [ ] Decide whether the couple feature is strong enough to become a v1 expansion
-- [ ] Keep the local-first design until the product is validated, then migrate to Supabase
+- [x] October 12 improvements: 83 automated checks across core/library/shared/SQLite/narration, TypeScript, production build and restart smoke
+- [x] Live profile memory save/edit/remove/forget browser flow
 
-## Suggested order of execution
-
-1. Decide local DB stack
-2. Move the story data out of localStorage into SQLite models
-3. Add couple onboarding and pairing flow
-4. Add story continuation / daily beat engine
-5. Add archive and reveal pages
-6. Validate emotionally, not just technically
-
-## Recommended technical stack for now
-
-- Next.js 14
-- TypeScript
-- SQLite
-- Prisma or Drizzle
-- Local filesystem storage for attachments
-- Keep Supabase out of the first pass unless you explicitly need hosted auth
-
-## Success signal for the feature
-
-The feature is working if a couple can:
-
-- create a shared story arc
-- receive a daily beat
-- answer a prompt or discovery
-- feel a sense of continuity across time and distance
-- leave behind a private, meaningful archive of the relationship
+- [x] Run 27 mocked regression checks and TypeScript/production build for the Haiku integration
+- [x] Run nine real SQLite checks and built-server restart/persistence smoke
+- [x] Verify a real Haiku call after credentials are configured
+- [ ] Evaluate narrative quality and clue solvability with real users
+- [x] Verify live creator generation/preview, separate recipient progress, wrong/correct answers, link replacement and deletion in the browser
