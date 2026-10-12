@@ -37,6 +37,7 @@ export default function LibraryPage() {
           <h1>Story Library</h1>
           <p>Saved in this browser only — not an account or cloud backup. Personal stories include your answers and progress. Shared entries include private management tokens, story details, and secrets in browser storage; anyone with access to this browser may access them.</p>
           <p>Shared stories live on the server and may expire or be deleted remotely. Removing a browser entry does not delete the remote story. Use its management page to delete it remotely.</p>
+          <p>Personal journeys also keep authoritative progress on the server for 30 days. Their saved capability is private; reopening requires the creator access code (never saved). Reopening reconciles progress without an AI call. Removing a browser entry does not reset its server allowance.</p>
           {error && <div role="alert"><p>{error} No entries are shown when saved data cannot be read; this does not mean it was deleted.</p><button onClick={refresh}>Retry loading browser library</button></div>}
           {!ready && <p role="status">Loading this browser&apos;s library…</p>}
           {ready && !error && !entries.length && <p>No stories saved here yet. <Link href="/story">Create a personal story</Link> or <Link href="/shared#new">create a shared story</Link>.</p>}
@@ -44,9 +45,12 @@ export default function LibraryPage() {
             <article key={`${entry.kind}:${entry.id}`} style={{ padding: '1.5rem', margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 18, background: '#fffaf6' }}>
               <h2>{entry.kind === 'personal' ? entry.story.title : entry.story.content.title}</h2>
               <p>{entry.kind === 'personal'
-                ? `Personal · ${entry.story.responses.length >= entry.story.scenes.length ? 'Completed' : `Scene ${entry.story.currentStep + 1} of ${entry.story.scenes.length}`}`
+                ? entry.story.journey
+                  ? `Personal journey · about ${entry.story.journey.duration} minutes · ${entry.story.journey.revision}/${entry.story.journey.maxTurns} attempts · ${entry.story.journey.status} · Reconcile on reopening`
+                  : `Personal · ${entry.story.responses.length >= entry.story.scenes.length ? 'Completed' : `Scene ${entry.story.currentStep + 1} of ${entry.story.scenes.length}`}`
                 : `Shared · ${Date.parse(entry.story.expiresAt) <= Date.now() ? 'Expiry date passed' : `Expires ${new Date(entry.story.expiresAt).toLocaleDateString()}`} · Remote availability not checked`}</p>
               <p>Saved {new Date(entry.updatedAt).toLocaleString()}</p>
+              {entry.kind === 'shared' && entry.story.brief.adventure ? <p>Live adventure · 12 actions per playthrough · {entry.story.brief.adventure.actionBudget} total AI attempts approved (including failures). Remaining budget is checked when playing.</p> : null}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 {entry.kind === 'personal'
                   ? <button onClick={() => openPersonal(entry.id)}>Continue personal story</button>

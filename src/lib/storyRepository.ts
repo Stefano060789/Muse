@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import type { SharedStoryBrief, SharedStoryContent } from './sharedStory'
 import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import { storyStorageError } from './storyStorageErrors'
+import type { AdventureRequest, AdventureResult } from './sharedAdventure'
+import type { JourneyOperation, JourneyResult } from './personalJourney'
 export { storyStorageError } from './storyStorageErrors'
 
 export type StoredStory = {
@@ -23,6 +25,8 @@ export interface StoryRepository {
   rotate(id: string, playHash: string): Promise<void>
   advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint', guess: string, playHash?: string): Promise<PlayerState>
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
+  adventure(request: AdventureRequest): Promise<AdventureResult>
+  personalJourney(request: JourneyOperation): Promise<JourneyResult>
 }
 
 export function storyStorageMode(): 'supabase' | 'sqlite' {
@@ -57,6 +61,27 @@ export function storyRepository(): StoryRepository {
     }
   })()
   return {
+    async personalJourney(request) {
+      const { data, error } = await db.rpc('muse_personal_journey', { input: request })
+      if (error) {
+        const message = error.message ?? ''
+        if (message.startsWith('Journey:')) throw new SharedStoryError(message, message.includes('unavailable') ? 404 : message.includes('daily cap') ? 429 : 409)
+        throw new SharedStoryError('Personal journey storage is unavailable. Apply supabase/personal-journeys.sql before enabling hosted journeys.', 503)
+      }
+      if (data?.unavailable === true) throw new SharedStoryError('Journey: session unavailable', 404)
+      if (!data?.record || !data?.snapshot || !Number.isInteger(data.snapshot.revision)) throw new SharedStoryError('Personal journey storage returned invalid state.', 503)
+      return data as JourneyResult
+    },
+    async adventure(request) {
+      const { data, error } = await db.rpc('muse_shared_adventure', { input: request })
+      if (error) {
+        const message = error.message ?? ''
+        if (message.startsWith('Adventure:')) throw new SharedStoryError(message, message.includes('unavailable') ? 404 : message.includes('AI budget reached') ? 429 : 409)
+        throw new SharedStoryError('Adventure storage is unavailable. Apply supabase/shared-adventures.sql before enabling hosted adventures.', 503)
+      }
+      if (!data?.view || !Number.isInteger(data.view.revision)) throw new SharedStoryError('Adventure storage returned invalid state.', 503)
+      return data as AdventureResult
+    },
     async insert(story) {
       const { error } = await db.from('shared_stories').insert({
         ...story, alternative_answers_normalized: (story.brief.alternativeAnswers ?? []).map(normalizeSharedAnswer)

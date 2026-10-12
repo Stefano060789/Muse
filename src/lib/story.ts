@@ -1,4 +1,5 @@
 import type { NarrationMetadata } from './narration'
+import type { JourneySnapshot } from './personalJourney'
 import { latestPersonalStory, loadStoryLibrary, saveLibraryPersonalStory } from './storyLibrary'
 
 export type StoryBeat = {
@@ -46,6 +47,7 @@ export type StoryTemplate = {
 export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
 
 export type PersonalStory = NarrationMetadata & {
+  journey?: JourneySnapshot & { capability: string }
   generation?: 'ai'
   need?: string
   profileKeypoints?: string[]

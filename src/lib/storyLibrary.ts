@@ -1,6 +1,8 @@
 import type { PersonalStory } from './story'
 import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
+import { parseFreeformState } from './freeformStory'
+import type { JourneyDuration, JourneySnapshot } from './personalJourney'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
@@ -60,9 +62,25 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   })
   if (!scenes.length || typeof input.currentStep !== 'number' || !Number.isInteger(input.currentStep) || input.currentStep < 0 || input.currentStep >= scenes.length) throw new Error('Invalid story progress.')
   if (input.generation !== undefined && input.generation !== 'ai') throw new Error('Invalid story generation.')
+  let journey: (JourneySnapshot & { capability: string }) | undefined
+  if (input.journey !== undefined) {
+    const saved = record(input.journey)
+    const caps: Record<number, number> = { 5: 3, 10: 6, 15: 9, 20: 12 }
+    if (typeof saved.duration !== 'number' || !caps[saved.duration] || saved.maxTurns !== caps[saved.duration] ||
+      !Number.isInteger(saved.revision) || Number(saved.revision) < 0 || Number(saved.revision) > Number(saved.maxTurns) ||
+      typeof saved.pending !== 'boolean' || !['active', 'concluded', 'exhausted'].includes(String(saved.status)) ||
+      typeof saved.capability !== 'string' || !/^[0-9a-f]{64}$/i.test(saved.capability) ||
+      scenes.length > Number(saved.maxTurns) + 1 || scenes.some(scene => scene.choices.length || scene.question)) throw new Error('Invalid personal journey snapshot.')
+    journey = {
+      duration: saved.duration as JourneyDuration, maxTurns: Number(saved.maxTurns), revision: Number(saved.revision),
+      pending: saved.pending, status: saved.status as JourneySnapshot['status'],
+      state: parseFreeformState(saved.state), capability: saved.capability
+    }
+  }
   return {
     id: identifier(input.id), mood, title: text(input.title), description: text(input.description),
     currentStep: input.currentStep, createdAt: date(input.createdAt), responses: strings(input.responses), scenes,
+    ...(journey ? { journey } : {}),
     ...narration(input),
     ...(input.generation === 'ai' ? { generation: 'ai' } : {}),
     ...(input.need !== undefined ? { need: text(input.need) } : {}),

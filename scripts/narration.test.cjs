@@ -14,7 +14,7 @@ async function main() {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
     'src/lib/narration.ts', 'src/lib/useNarration.ts', 'src/lib/sharedStory.ts', 'src/lib/sharedStorySharing.ts',
-    'src/lib/personalStoryGenerator.ts', 'src/pages/api/tts.ts', 'src/components/NarrationControls.tsx',
+    'src/lib/personalStoryGenerator.ts', 'src/pages/api/tts.ts', 'src/components/NarrationControls.tsx', 'src/components/SharedStoryReveal.tsx',
     '--outDir', output, '--rootDir', 'src', '--module', 'commonjs', '--target', 'es2020', '--jsx', 'react-jsx',
     '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'
   ], { cwd: root, stdio: 'inherit' })
@@ -64,9 +64,9 @@ async function main() {
     assert.equal(parseNarrationMetadata({ narrationStyle: 'warm', narrationLanguage: 'zh-Hant-TW' }, true).narrationLanguage, 'zh-Hant-TW')
   })
   await check('style voice preferences remain language/locale-aware', () => {
-    assert.equal(selectNarrationVoice(voices, 'en-US', 'suspenseful').name, 'Microsoft David')
+    assert.equal(selectNarrationVoice(voices, 'en-US', 'suspenseful').name, 'Microsoft Zira')
     assert.equal(selectNarrationVoice(voices, 'en-US', 'warm').name, 'Microsoft Zira')
-    assert.equal(selectNarrationVoice(voices, 'de-DE', 'curious').name, 'Microsoft Katja')
+    assert.equal(selectNarrationVoice(voices, 'de-DE', 'curious').name, 'Microsoft Hedda')
     assert.equal(selectNarrationVoice(voices, 'de-AT', 'warm').name, 'Microsoft Michael')
     assert.equal(selectNarrationVoice(voices, 'it-IT', 'warm').name, 'Microsoft Elsa')
     assert.equal(selectNarrationVoice(voices, 'fr-FR', 'warm'), undefined)
@@ -74,6 +74,18 @@ async function main() {
     assert.equal(selectNarrationVoice(voices, 'de-DE', 'warm', voiceKey(voices[0])).lang, 'de-DE')
     const unknown = voice('Unknown Voice', 'de-DE')
     assert.equal(selectNarrationVoice([voices[0], unknown], 'de-DE', 'warm'), unknown)
+  })
+  await check('automatic speaker stays stable across moods, prefers natural voices, and preserves manual choices', () => {
+    const natural = { ...voice('Microsoft Jenny Natural', 'en-US'), localService: false }
+    for (const style of NARRATION_STYLES) {
+      assert.equal(selectNarrationVoice(voices, 'en-US', style), voices[2])
+      assert.equal(selectNarrationVoice([...voices, natural], 'en-US', style), natural)
+      assert.equal(selectNarrationVoice([...voices, natural], 'en-US', style, voiceKey(voices[0])), voices[0])
+      assert.equal(NARRATION_PRESETS[style].pitch, 1)
+    }
+    const systemDefault = { ...voice('Device default', 'en-US'), default: true }
+    assert.equal(selectNarrationVoice([...voices, systemDefault], 'en-US', 'suspenseful'), systemDefault)
+    assert.equal(selectNarrationVoice([...voices, { ...natural, lang: 'en-GB' }], 'en-US', 'warm'), voices[2])
   })
   await check('long narration chunks preserve sentences/text with bounded lengths', () => {
     const text = 'The door opens. ' + 'A long thought continues '.repeat(120) + 'A quiet ending!'
@@ -220,7 +232,7 @@ async function main() {
   await check('voiceschanged updates actual voices; empty, unsupported and missing-language paths are explicit', async () => {
     const hook = mount({}, [])
     try {
-      assert.match(hook.render().source, /not AI-selected/)
+      assert.equal(hook.render().source, 'Manual style')
       await hook.render().speak('Preview.')
       assert.match(hook.render().error, /No browser voices/)
       assert.equal(hook.render().speaking, false)
@@ -287,17 +299,17 @@ async function main() {
 
   await check('preference parsing is versioned, validated per field, and absent data is a valid default', () => {
     assert.equal(NARRATION_PREFERENCES_KEY, 'muse.narration.preferences.v1')
-    assert.deepEqual(parseNarrationPreferences(null), { preferences: { style: 'auto', language: '', voice: '' }, invalid: false })
-    assert.deepEqual(parseNarrationPreferences('{"version":1}'), { preferences: { style: 'auto', language: '', voice: '' }, invalid: false })
+    assert.deepEqual(parseNarrationPreferences(null), { preferences: { style: 'warm', language: '', voice: '' }, invalid: false })
+    assert.deepEqual(parseNarrationPreferences('{"version":1}'), { preferences: { style: 'warm', language: '', voice: '' }, invalid: false })
     const key = voiceKey(voices[0])
     const round = parseNarrationPreferences(serializeNarrationPreferences({ style: 'playful', language: 'de-DE', voice: key }))
     assert.deepEqual(round, { preferences: { style: 'playful', language: 'de-DE', voice: key }, invalid: false })
     assert.equal(parseNarrationPreferences('{"version":1,"language":"en_us"}').preferences.language, 'en-US')
     for (const raw of ['not json', '[]', 'null', '{"version":2,"style":"warm"}', '{"style":"warm"}']) {
-      assert.deepEqual(parseNarrationPreferences(raw), { preferences: { style: 'auto', language: '', voice: '' }, invalid: true })
+      assert.deepEqual(parseNarrationPreferences(raw), { preferences: { style: 'warm', language: '', voice: '' }, invalid: true })
     }
     const partial = parseNarrationPreferences(JSON.stringify({ version: 1, style: 'evil', language: 'de-DE', voice: 'x\u0000|y|z' }))
-    assert.deepEqual(partial, { preferences: { style: 'auto', language: 'de-DE', voice: '' }, invalid: true })
+    assert.deepEqual(partial, { preferences: { style: 'warm', language: 'de-DE', voice: '' }, invalid: true })
     assert.equal(parseNarrationPreferences(JSON.stringify({ version: 1, language: '<script>' })).invalid, true)
     assert.equal(parseNarrationPreferences(JSON.stringify({ version: 1, voice: 'v'.repeat(600) + '|a|b' })).invalid, true)
   })
@@ -310,7 +322,7 @@ async function main() {
       assert.equal(hook.render().style, 'warm')
       assert.equal(hook.render().preferenceNotice, '')
       assert.equal(storage.writes.length, 0, 'mount must not write preferences')
-      assert.equal(hook.setMetadata({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }).style, 'suspenseful')
+      assert.equal(hook.setMetadata({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }).style, 'warm')
       hook.render().setStyle('playful')
       assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'playful', language: '', voice: '' })
       hook.render().setStyle('auto')
@@ -339,7 +351,7 @@ async function main() {
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { storage: denied })
     try {
       assert.match(hook.render().preferenceNotice, /could not be read/)
-      assert.equal(hook.render().styleOverride, 'auto')
+      assert.equal(hook.render().styleOverride, 'warm')
       hook.render().setStyle('calm')
       assert.equal(hook.render().style, 'calm', 'the choice still applies for this page')
       assert.match(hook.render().preferenceNotice, /could not be remembered/)
@@ -353,7 +365,7 @@ async function main() {
     const second = mount({ narrationStyle: 'warm' }, voices, true, { storage: invalid })
     try {
       assert.match(second.render().preferenceNotice, /invalid and were ignored/)
-      assert.equal(second.render().styleOverride, 'auto')
+      assert.equal(second.render().styleOverride, 'warm')
       assert.equal(second.render().language, 'it-IT', 'valid fields survive')
       assert.equal(invalid.data.get(NARRATION_PREFERENCES_KEY), raw, 'invalid data is not overwritten on load')
       assert.equal(invalid.writes.length, 0)
@@ -539,7 +551,7 @@ async function main() {
       voices, supported: true, styleOverride: 'auto', languageOverride: '', selectedVoice: '', style: 'warm', language: 'en-US', voice: voices[2],
       status: 'idle', speaking: false, loading: false, paused: false, busy: false, activeText: '', canPause: false,
       error: '', notice: '', preferenceNotice: '', voiceNotice: '', provider: 'browser', source: 'AI-selected style',
-      speak: async () => {}, stop() {}, pause() {}, resume() {}, setStyle() {}, setLanguage() {}, setVoice() {}
+      speak: async () => {}, stop() {}, pause() {}, resume() {}, setStyle() {}, setLanguage() {}, setVoice() {}, resetVoice() {}
     }
     const button = (narrator, text = 'Scene two text.', label = 'Listen to scene two') => renderToStaticMarkup(createElement(controls.NarrationButton, { narrator, text, label }))
     assert.match(button(base), />Listen to scene two</)
@@ -574,8 +586,38 @@ async function main() {
     assert.match(html, /Storage blocked\./)
     assert.match(html, /aria-label="Pause narration: current story narration"/)
     assert.match(html, /Preview selected style<\/button>/)
-    assert.match(html, /<option value="auto" selected="">Auto \(AI\)<\/option>/)
+    assert.match(html, /<option value="auto" selected="">Follow story mood \(AI\)<\/option>/)
+    assert.match(html, /Use gentle recommended voice/)
     for (const style of NARRATION_STYLES) assert.ok(html.includes(`<option value="${style}">${style}</option>`))
+  })
+  await check('gentle reset stops playback and remembers natural delivery without changing language', async () => {
+    const storage = memoryStorage(stored({ version: 1, style: 'suspenseful', language: 'de-DE', voice: voiceKey(voices[5]) }))
+    const hook = mount({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }, voices, true, { storage })
+    try {
+      await hook.render().speak('Eine Geschichte beginnt.')
+      hook.render().resetVoice()
+      const state = hook.render()
+      assert.equal(state.busy, false)
+      assert.equal(state.style, 'warm')
+      assert.equal(state.language, 'de-DE')
+      assert.equal(state.selectedVoice, '')
+      assert.equal(state.voice.name, 'Microsoft Hedda')
+      assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'warm', language: 'de-DE', voice: '' })
+    } finally { hook.dispose() }
+  })
+  await check('shared success message renders only escaped text, never image markup or gallery media', () => {
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const { createElement } = require('react')
+    const Reveal = require(path.join(output, 'components', 'SharedStoryReveal.js')).default
+    const narrator = { busy: false, activeText: '', speak() {}, stop() {} }
+    const message = '<img src="file:///private-gallery/photo.jpg" onerror="alert(1)">\n![photo](https://example.invalid/photo.jpg)\nYou are wonderful.'
+    const html = renderToStaticMarkup(createElement(Reveal, { message, narrator, beforeSpeak() {} }))
+    assert.match(html, /You found it\. Here is your message\./)
+    assert.match(html, /&lt;img/)
+    assert.match(html, /You are wonderful\./)
+    assert.ok(!/<(?:img|picture|video|iframe|object|embed|script)\b/i.test(html))
+    assert.ok(!/style="[^"]*url\(/i.test(html))
+    assert.match(html, /Play the final message/)
   })
 
   await check('TTS endpoint requires explicit provider mode and never returns upstream auth details', async () => {

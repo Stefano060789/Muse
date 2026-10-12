@@ -6,6 +6,7 @@
     "share:gateway": "node scripts/recipient-gateway.cjs",
     "test:gateway": "node scripts/recipient-gateway.test.cjs",
     "test:creator-access": "node scripts/creator-access.test.cjs",
+    "test:personal-journey": "node scripts/personal-journey.test.cjs",
     "dev": "next dev -p 3000",
     "build": "next build",
     "test:shared": "node scripts/shared-story.test.cjs",

@@ -201,7 +201,9 @@ try {
     assert.ok(page.includes('Remove browser entry only'))
     assert.ok(page.includes('encodeURIComponent(entry.story.ownerToken)'))
     assert.ok(page.includes('Remote availability not checked'))
-    assert.ok(!page.includes('entry.story.brief.'))
+    for (const field of ['solution', 'message', 'assistanceHints', 'alternativeAnswers', 'recipientHints']) {
+      assert.ok(!page.includes(`entry.story.brief.${field}`), `Private ${field} must not appear in cards`)
+    }
     assert.ok(!page.includes('fetch('))
     assert.ok(page.includes('selectPersonalStory(id)'))
   })

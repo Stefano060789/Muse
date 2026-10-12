@@ -1,0 +1,113 @@
+import { createHash } from 'crypto'
+import type { PersonalStory, PersonalStoryMood } from './story'
+import { SharedStoryError } from './sharedStory'
+import { parsePersonalStoryRequest } from './personalStoryGenerator'
+import { generateStoryJson } from './storyProvider'
+import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadata } from './narration'
+import { boundedStoryList, boundedStoryText, exactObject, FREEFORM_SYSTEM, invalidFreeform, parseFreeformState, type FreeformState } from './freeformStory'
+
+export const JOURNEY_TURNS = { 5: 3, 10: 6, 15: 9, 20: 12 } as const
+export type JourneyDuration = keyof typeof JOURNEY_TURNS
+export type JourneyInput = { mood: PersonalStoryMood; need: string; profileKeypoints: string[]; duration: JourneyDuration }
+export type JourneyTurn = { narration: string; state: FreeformState; concluded: boolean }
+export type JourneyOpening = NarrationMetadata & { title: string; description: string; plan: string[]; turn: JourneyTurn }
+export type JourneyRecord = {
+  id: string; capabilityHash: string; input: JourneyInput; createdAt: string; expiresAt: string
+  opening: JourneyOpening | null; used: number; turn: JourneyTurn | null; lastAction: string
+  scenes: PersonalStory['scenes']; responses: string[]; creationStatus: 'pending' | 'done' | 'failed'
+}
+export type JourneySnapshot = {
+  duration: JourneyDuration; maxTurns: number; revision: number; pending: boolean
+  status: 'preparing' | 'active' | 'concluded' | 'exhausted' | 'failed'; state: FreeformState | null
+}
+export type JourneyResult = { record: JourneyRecord; snapshot: JourneySnapshot; status?: 'reserved' | 'pending' | 'done' | 'failed' }
+export type JourneyOperation = {
+  operation: 'create' | 'view' | 'reserve' | 'finish'
+  id: string; capabilityHash: string; requestId?: string; fingerprint?: string; revision?: number
+  input?: JourneyInput; opening?: JourneyOpening; turn?: JourneyTurn; text?: string; failed?: boolean; cap: number
+}
+export const journeyHash = (value: string) => createHash('sha256').update(value).digest('hex')
+export function journeyIdentifier(value: unknown): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new SharedStoryError('Provide a valid journey/request ID.')
+  return value.toLowerCase()
+}
+export function journeyCapability(value: unknown): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/i.test(value)) throw new SharedStoryError('Provide the saved journey capability.')
+  return value
+}
+export function parseJourneyInput(body: Record<string, unknown>): JourneyInput {
+  if (!Number.isInteger(body.duration) || !(Number(body.duration) in JOURNEY_TURNS)) throw new SharedStoryError('Choose 5, 10, 15 or 20 minutes.')
+  const parsed = parsePersonalStoryRequest({ ...body, action: 'create' })
+  if (parsed.action !== 'create') throw new SharedStoryError('Invalid journey input.')
+  return { mood: parsed.mood, need: parsed.need, profileKeypoints: parsed.profileKeypoints, duration: body.duration as JourneyDuration }
+}
+export function parseJourneyAction(body: Record<string, unknown>) {
+  const requestId = journeyIdentifier(body.requestId)
+  if (!Number.isInteger(body.revision) || Number(body.revision) < 0 || Number(body.revision) > 12 ||
+    typeof body.text !== 'string' || !body.text.trim() || body.text.length > 800 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(body.text)) throw new SharedStoryError('Provide text up to 800 characters and the current revision.')
+  const text = body.text.trim()
+  return { requestId, revision: Number(body.revision), text, fingerprint: journeyHash(JSON.stringify([text, body.revision])) }
+}
+export function parseJourneyTurn(value: unknown, concluding: boolean): JourneyTurn {
+  const input = exactObject(value, ['narration', 'state', 'concluded'])
+  const narration = boundedStoryText(input.narration, 1800)
+  const words = narration.split(/\s+/).length
+  if (words < 30 || words > 180 || input.concluded !== concluding) throw invalidFreeform()
+  return { narration, state: parseFreeformState(input.state), concluded: concluding }
+}
+export function parseJourneyOpening(value: unknown): JourneyOpening {
+  const input = exactObject(value, ['title', 'description', 'plan', 'turn', 'narrationStyle', 'narrationLanguage'])
+  const plan = boundedStoryList(input.plan, 5, 180)
+  if (plan.length < 3) throw invalidFreeform()
+  try {
+    return {
+      title: boundedStoryText(input.title, 160), description: boundedStoryText(input.description, 500), plan,
+      ...parseNarrationMetadata(input, true), turn: parseJourneyTurn(input.turn, false)
+    }
+  } catch { throw invalidFreeform() }
+}
+export function journeySnapshot(record: JourneyRecord, pending: boolean): JourneySnapshot {
+  const maxTurns = JOURNEY_TURNS[record.input.duration]
+  return {
+    duration: record.input.duration, maxTurns, revision: record.used, pending,
+    status: record.creationStatus === 'failed' ? 'failed' : record.creationStatus === 'pending' ? 'preparing' :
+      record.turn?.concluded ? 'concluded' : record.used >= maxTurns && !pending ? 'exhausted' : 'active',
+    state: record.turn?.state ?? null
+  }
+}
+export function publicJourney(result: JourneyResult, capability: string) {
+  const { record, snapshot, status } = result
+  const story: PersonalStory | null = record.opening ? {
+    id: record.id, createdAt: record.createdAt, generation: 'ai', title: record.opening.title, description: record.opening.description,
+    mood: record.input.mood, need: record.input.need, profileKeypoints: record.input.profileKeypoints,
+    narrationStyle: record.opening.narrationStyle, narrationLanguage: record.opening.narrationLanguage,
+    scenes: record.scenes, currentStep: record.scenes.length - 1, responses: record.responses,
+    journey: { ...snapshot, capability }
+  } : null
+  return { story, snapshot, status }
+}
+const SYSTEM = [
+  'You are Muse, an original warm non-therapeutic personal storyteller.', FREEFORM_SYSTEM,
+  'The selected mood is authoritative even if the need suggests another mood. Do not infer or replace it.',
+  'Adventure favors movement and courage; relaxed favors quiet unpressured exploration; curious favors learning and perspectives; hopeful favors gentle possibilities.',
+  'Personalize only from supplied details without inventing biography. This is not a hidden-answer puzzle, secret mystery, or guessing game.',
+  'Duration is approximate reading and participation time, never a timer. Weave actions into the prepared flexible arc, relevant to the selected mood.',
+  'Write 100-180 words of concrete narration (strict maximum 180 words and 1800 characters). Respect language and narration style.',
+  'Return ONLY the exact requested JSON, no extra keys.', NARRATION_AI_INSTRUCTION
+].join('\n')
+export async function generateJourneyOpening(input: JourneyInput): Promise<JourneyOpening> {
+  return parseJourneyOpening(await generateStoryJson(
+    `${SYSTEM}\nPrepare 3-5 compact arc points (each at most 180 characters) and the opening in ONE response. Leave room for freeform actions, with a satisfying eventual ending. Return {"title":"...","description":"...","narrationStyle":"warm","narrationLanguage":"en-US","plan":["..."],"turn":{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false}}. Choose a valid narration style.`, input, 1600))
+}
+export async function generateJourneyTurn(record: JourneyRecord): Promise<JourneyTurn> {
+  if (!record.opening || !record.turn) throw new SharedStoryError('Journey is not ready.', 409)
+  const remaining = JOURNEY_TURNS[record.input.duration] - record.used
+  return parseJourneyTurn(await generateStoryJson(
+    `${SYSTEM}\n${remaining === 0 ? 'This is the FINAL paid response. Deliver an actual meaningful conclusion resolving the arc and reflecting the latest action, state and consequences. No unresolved required next action or question. Set concluded:true.' : `There are ${remaining} responses left after this one. ${remaining <= 2 ? 'Draw threads together toward the ending.' : 'Develop the flexible arc.'} Set concluded:false.`}\nReturn {"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":${remaining === 0}}.`,
+    {
+      ...record.input, title: record.opening.title, plan: record.opening.plan,
+      narrationStyle: record.opening.narrationStyle, narrationLanguage: record.opening.narrationLanguage,
+      state: record.turn.state, recentNarration: record.turn.narration, action: record.lastAction, responsesRemaining: remaining
+    }, 1600), remaining === 0)
+}

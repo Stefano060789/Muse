@@ -57,6 +57,7 @@ export function parsePersonalStoryRequest(value: unknown) {
   }
   if (input.action !== 'continue') throw new SharedStoryError('Unsupported personal story action.')
   const saved = object(input.story)
+  if (saved.journey !== undefined) throw new SharedStoryError('Resume this personal journey using its saved capability, not legacy continuation.')
   if (saved.generation !== 'ai' || !Array.isArray(saved.scenes) || saved.scenes.length !== 3
     || !Number.isInteger(saved.currentStep) || Number(saved.currentStep) < 0 || Number(saved.currentStep) > 1
     || !Array.isArray(saved.responses) || saved.responses.length !== saved.currentStep) {

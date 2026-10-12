@@ -4,12 +4,12 @@ export type NarrationMetadata = { narrationStyle?: NarrationStyle; narrationLang
 export type VoiceInfo = { name: string; lang: string; voiceURI: string; localService?: boolean; default?: boolean }
 
 export const NARRATION_PRESETS: Record<NarrationStyle, { rate: number; pitch: number; voices: string[]; description: string }> = {
-  calm: { rate: 0.86, pitch: 0.95, voices: ['zira', 'katja', 'elsa'], description: 'Quiet, unhurried and grounded.' },
-  warm: { rate: 0.93, pitch: 1.02, voices: ['zira', 'hedda', 'elsa'], description: 'Gentle and welcoming.' },
-  curious: { rate: 1, pitch: 1.06, voices: ['mark', 'katja', 'cosimo'], description: 'Thoughtful, with a little lift.' },
-  adventurous: { rate: 1.08, pitch: 1.02, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Energetic and forward-moving.' },
-  playful: { rate: 1.06, pitch: 1.12, voices: ['zira', 'hedda', 'elsa'], description: 'Light and lively.' },
-  suspenseful: { rate: 0.9, pitch: 0.9, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Measured, with space for mystery.' }
+  calm: { rate: 0.95, pitch: 1, voices: ['zira', 'katja', 'elsa'], description: 'Quiet and unhurried, with a natural voice.' },
+  warm: { rate: 0.98, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Gentle and welcoming, without pitch effects.' },
+  curious: { rate: 1, pitch: 1, voices: ['mark', 'katja', 'cosimo'], description: 'Thoughtful and conversational.' },
+  adventurous: { rate: 1.05, pitch: 1, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Energetic, with a natural voice.' },
+  playful: { rate: 1.04, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Light and lively, without pitch effects.' },
+  suspenseful: { rate: 0.97, pitch: 1, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Measured, without a lowered or ominous voice.' }
 }
 
 export function validateNarrationLanguage(value: unknown): string {
@@ -39,19 +39,20 @@ export function legacyNarrationStyle(mood?: string): NarrationStyle {
 
 export function voiceKey(voice: VoiceInfo): string { return `${voice.voiceURI}|${voice.lang}|${voice.name}` }
 
-export function selectNarrationVoice<T extends VoiceInfo>(voices: T[], language: string, style: NarrationStyle, selectedKey = ''): T | undefined {
+export function selectNarrationVoice<T extends VoiceInfo>(voices: T[], language: string, _style: NarrationStyle, selectedKey = ''): T | undefined {
   const tag = language.toLowerCase()
   const base = tag.split('-')[0]
   const matching = voices.filter((voice) => voice.lang.toLowerCase().split(/[-_]/)[0] === base)
   const manual = matching.find((voice) => voiceKey(voice) === selectedKey)
   if (manual) return manual
-  // Exact locale precedes preset preference: a style must never change the narration language.
+  // Keep the speaker stable across story styles; mood changes must not select an ominous voice.
   const exact = matching.filter((voice) => voice.lang.toLowerCase().replace('_', '-') === tag)
   const pool = exact.length ? exact : matching
   return [...pool].sort((a, b) => {
     const score = (voice: T) => {
-      const preference = NARRATION_PRESETS[style].voices.findIndex((name) => new RegExp(`\\b${name}\\b`, 'i').test(voice.name))
-      return (preference >= 0 ? 100 - preference : 0) + (voice.localService ? 5 : 0) + (voice.default ? 1 : 0)
+      const preference = NARRATION_PRESETS.warm.voices.findIndex((name) => new RegExp(`\\b${name}\\b`, 'i').test(voice.name))
+      const natural = /\b(natural|neural|enhanced|premium)\b/i.test(voice.name)
+      return (natural ? 1000 : 0) + (voice.default ? 200 : 0) + (preference >= 0 ? 100 - preference : 0) + (voice.localService ? 5 : 0)
     }
     // Name/URI tie-breaks keep the fallback deterministic regardless of getVoices() ordering.
     return score(b) - score(a) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) || (a.voiceURI < b.voiceURI ? -1 : a.voiceURI > b.voiceURI ? 1 : 0)
@@ -63,7 +64,7 @@ export function voiceKeyName(key: string): string { return key.split('|').slice(
 export const NARRATION_PREFERENCES_KEY = 'muse.narration.preferences.v1'
 export const NARRATION_PREFERENCES_VERSION = 1
 export type NarrationPreferences = { style: NarrationStyle | 'auto'; language: string; voice: string }
-export const DEFAULT_NARRATION_PREFERENCES: NarrationPreferences = { style: 'auto', language: '', voice: '' }
+export const DEFAULT_NARRATION_PREFERENCES: NarrationPreferences = { style: 'warm', language: '', voice: '' }
 
 export function normalizeNarrationLanguagePreference(value: unknown): string {
   if (value === '') return ''

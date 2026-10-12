@@ -8,6 +8,7 @@ import MicrophoneCheck from '../components/MicrophoneCheck'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
+import SharedStoryReveal from '../components/SharedStoryReveal'
 
 type PlayerResponse = { player: SharedStoryPlayer; sessionToken: string }
 
@@ -37,6 +38,7 @@ export default function SharedStoryPage() {
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
   const [guess, setGuess] = useState('')
+  const [actionText, setActionText] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -172,6 +174,41 @@ export default function SharedStoryPage() {
     }
   }
 
+  const adventureAction = async (refresh = false) => {
+      if (!player?.adventure) return
+      setBusy(true)
+      setError('')
+      interaction.stopRecording()
+      narrator.stop()
+      const storageKey = `muse-adventure-action:${playToken}:${sessionToken}`
+      try {
+        let submission: Record<string, unknown> = { action: 'open', token: playToken, sessionToken }
+        if (!refresh) {
+          const saved = window.localStorage.getItem(storageKey)
+          // Persist before sending. Network retries and tabs reuse the same ID;
+          // a changed draft cannot silently turn a retry into another paid call.
+          const attempt = saved ? JSON.parse(saved) : { requestId: crypto.randomUUID(), revision: player.adventure.revision, text: actionText.trim() }
+          if (!saved) window.localStorage.setItem(storageKey, JSON.stringify(attempt))
+          if (saved) setActionText(attempt.text)
+          submission = { action: 'adventure', token: playToken, sessionToken, ...attempt }
+        }
+        const response = await fetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submission) })
+        const data = await response.json()
+        if (data.player) setPlayer(data.player)
+        if (!refresh && data.player && (!data.player.adventure?.pending || response.ok)) {
+          window.localStorage.removeItem(storageKey)
+        }
+        if (!response.ok) throw new Error(data.error || 'The action could not be completed. Refresh progress; do not create another retry ID.')
+        if (!refresh) setActionText('')
+        // A refresh resolves a stored interrupted attempt without another call.
+        if (refresh && !data.player.adventure?.pending) window.localStorage.removeItem(storageKey)
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Action failed. Refresh progress or retry the same submission.')
+      } finally {
+        setBusy(false)
+      }
+  }
+
   const copy = async (value: string) => {
     try {
       if (!navigator.clipboard) throw new Error('Clipboard is unavailable. Select and copy the link below.')
@@ -211,7 +248,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => setBrief({ ...brief, [key]: event.target.value })} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
@@ -315,13 +352,31 @@ export default function SharedStoryPage() {
             {experience === 'listen' ? <p>Tap Play to start audio. Choose an action after listening to move forward. Audio never starts automatically.</p> : null}
             {player.solved ? (
               <article style={cardStyle}>
-                <h2>You found it. Here is your message.</h2>
-                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.message}</p>
-                <NarrationButton narrator={narrator} text={player.message || ''} label="Play the final message" beforeSpeak={interaction.stopRecording} />
+                <SharedStoryReveal message={player.message || ''} narrator={narrator} beforeSpeak={interaction.stopRecording} />
+                {player.adventure?.turn ? <><h3>Your completed journey</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
               </article>
             ) : (
               <>
-                <article style={cardStyle}>
+              {player.adventure ? <article style={cardStyle}>
+                <h2>{player.adventure.turn ? 'Your adventure continues' : player.scene.title}</h2>
+                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.adventure.turn?.narration || player.scene.body}</p>
+                <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label="Play adventure narration" beforeSpeak={interaction.stopRecording} />
+                <p>{player.adventure.actionsRemaining} of 12 actions remaining in this playthrough. Total adventure AI budget: {player.adventure.budgetRemaining} of {player.adventure.budget} attempts remaining across all recipients.</p>
+                <p>Each submitted action consumes an attempt, including failed AI calls. Guesses, creator hints and browser audio do not consume adventure actions.</p>
+                {player.adventure.turn ? <section aria-label="Adventure state">
+                  <h3>Your journey</h3><p>{player.adventure.turn.state.progress}</p>
+                  {(['inventory', 'discoveries', 'relationships'] as const).map(key => <div key={key}><h4>{key}</h4><ul>{player.adventure!.turn!.state[key].map(item => <li key={item}>{item}</li>)}</ul></div>)}
+                </section> : null}
+                {player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0 ? <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
+                  <label htmlFor="adventure-action">What do you do?<textarea id="adventure-action" value={actionText} onChange={event => setActionText(event.target.value)} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
+                  <p>Type or dictate freely. Review and edit the transcript before submitting; dictation never submits automatically.</p>
+                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => setActionText(value.slice(0, 800)))} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? 'Stop dictation' : 'Dictate action'}</button>
+                  {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? 'Listening - speak now; review the text before submitting.' : 'Starting microphone - please wait.'}</p> : null}
+                  <button disabled={busy || (!actionText.trim() && !player.adventure.pending)} style={primaryStyle}>{player.adventure.pending ? 'Retry same submission / check status' : 'Submit action (uses one attempt)'}</button>
+                </form> : <p>Your live AI journey has reached its action or adventure budget limit. Reflect on your discoveries, use creator hints, and submit the final answer below. Audio remains available; no canned continuation replaces the game master.</p>}
+                {player.adventure.pending ? <p role="status">An action is processing. A disconnected attempt may take up to 90 seconds to expire; it remains charged.</p> : null}
+                <button disabled={busy} onClick={() => void adventureAction(true)} style={buttonStyle}>Refresh adventure progress</button>
+              </article> : <article style={cardStyle}>
                   <p>Scene {player.sceneIndex + 1} of {player.sceneCount}</p>
                   <h2>{player.scene.title}</h2>
                   {experience === 'read' ? <>
@@ -337,7 +392,7 @@ export default function SharedStoryPage() {
                     </div>
                     {!player.scene.choices ? <p>This older story uses standard navigation actions; they do not create new branches.</p> : null}
                   </> : <p>You have reached the final clue. Type your secret answer below to discover the message.</p>}
-                </article>
+                </article>}
                 {player.discoveries.length > 0 ? (
                   <details style={cardStyle}>
                     <summary>Earlier discoveries ({player.discoveries.length})</summary>
@@ -382,6 +437,7 @@ export default function SharedStoryPage() {
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes, not a timed challenge.</p>
+            {creator.brief.adventure ? <p>Prepared adventure with a live AI game master: freeform actions and durable consequences, up to 12 actions per playthrough. Creator-approved total budget: {creator.brief.adventure.actionBudget} AI action attempts across all recipients, including failures. Preparation is a separate generation request.</p> : null}
             <article style={cardStyle}>
               <h2>Listen before sending</h2>
               <p>Hear all scenes and clues in order using the selected narration style. The private answer and final message are excluded from this preview. Listening does not send the story or advance the recipient's progress.</p>
@@ -393,7 +449,7 @@ export default function SharedStoryPage() {
                 <summary style={{ cursor: 'pointer' }}>Scene {index + 1}: {scene.title}</summary>
                 <p style={{ lineHeight: 1.8 }}>{scene.body}</p>
                 <p><strong>Clue:</strong> {scene.clue}</p>
-                {index + 1 < creator.content.scenes.length ? <>
+                {creator.brief.adventure ? <p>Prepared public clue opportunity. The live game master adapts it to the recipient&apos;s actions; scenes do not advance automatically.</p> : index + 1 < creator.content.scenes.length ? <>
                   <h3>Recipient exploration actions</h3>
                   <ul>{(scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <li key={choice}>{choice}</li>)}</ul>
                   <p>All actions continue to the same next scene.</p>
@@ -504,6 +560,14 @@ export default function SharedStoryPage() {
                   </select>
                 </label>
                 <p>This is an approximate reading/listening and solving duration, not a countdown.</p>
+                <label><input type="checkbox" checked={Boolean(brief.adventure)} disabled={busy} onChange={event => setBrief(current => {
+                  const { adventure, ...legacy } = current
+                  return event.target.checked ? { ...legacy, adventure: { actionBudget: 12 } } : legacy
+                })} /> Enable prepared adventure + live AI game master (opt-in)</label>
+                {brief.adventure ? <>
+                  <label htmlFor="adventure-budget">Explicit total AI action budget (all recipients)<input id="adventure-budget" type="number" min={1} max={1000} required value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => setBrief({ ...brief, adventure: { actionBudget: Number(event.target.value) } })} style={fieldStyle} /></label>
+                  <p>Approve 1–1000 live AI attempts for this adventure in total. Each playthrough has at most 12 submitted actions; attempts including provider failures count against both limits. Preparation costs a separate generation request. Freeform typed or reviewed dictated actions change the story and durable state; guesses and hints remain deterministic at the cap. The operator also imposes a daily global cap.</p>
+                </> : <p>Standard mode preserves the existing linear clue trail; no paid live actions.</p>}
               </div>
               <p>Your brief, including the private answer, approved alternatives, optional hints and message, is sent to the configured AI provider (Claude Haiku by default; OpenAI or Groq if selected by the operator) to prepare the story and stored in the server database (local SQLite for testing, or Supabase for hosted use) for up to 30 days of link access. Hint requests use only your supplied text, without new AI calls. Do not include confidential or sensitive personal information about someone else.</p>
               <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype.</p>

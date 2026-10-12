@@ -1,24 +1,13 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { answerPersonalStory, inferPersonalStoryMood, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
+import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
 import { loadMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
-
-type RecognitionEvent = Event & { resultIndex: number; results: SpeechRecognitionResultList }
-type Recognition = {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  onend: (() => void) | null
-  onerror: (() => void) | null
-  onresult: ((event: RecognitionEvent) => void) | null
-  start: () => void
-  stop: () => void
-}
-type RecognitionConstructor = new () => Recognition
-type RecognitionWindow = Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }
+import { useStoryInteraction } from '../lib/useStoryInteraction'
+const PREPARATION_KEY = 'muse-personal-journey-preparation'
+type Preparation = { id: string; capability: string }
 
 const moods: Array<{ key: PersonalStoryMood; title: string; description: string }> = [
   { key: 'adventure', title: 'Adventure', description: 'I want movement, courage, and something new.' },
@@ -33,38 +22,90 @@ export default function StoryPage() {
   const [selectedMood, setSelectedMood] = useState<PersonalStoryMood>('curious')
   const [profileReady, setProfileReady] = useState(false)
   const [responseDraft, setResponseDraft] = useState('')
-  const [isRecording, setIsRecording] = useState(false)
+  const [duration, setDuration] = useState(10)
+  const [creatorCode, setCreatorCode] = useState('')
+  const [dictationLanguage, setDictationLanguage] = useState('en-US')
+  const [reconciled, setReconciled] = useState(false)
+  const [preparation, setPreparation] = useState<Preparation | null>(null)
   const [storyError, setStoryError] = useState('')
   const [storyNotice, setStoryNotice] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(false)
-  const recognitionRef = useRef<Recognition | null>(null)
+  const requestLock = useRef(false)
   const narrator = useNarration(story || {}, story?.mood || selectedMood)
   const stopSpeaking = narrator.stop
+  const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
+  const stopRecording = interaction.stopRecording
+  const isRecording = Boolean(interaction.recordingTarget)
 
   useEffect(() => {
     try {
       setStory(loadPersonalStory())
       setProfileReady(Boolean(loadMuseProfile()))
+      const raw = window.localStorage.getItem(PREPARATION_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (!/^[0-9a-f-]{36}$/i.test(saved.id) || !/^[0-9a-f]{64}$/i.test(saved.capability)) throw new Error('Invalid saved preparation capability.')
+        setPreparation({ id: saved.id, capability: saved.capability })
+      }
     } catch (error) {
       setStoryNotice(error instanceof Error ? error.message : 'This browser could not restore your story or memories.')
     }
-    return () => {
-      const recognition = recognitionRef.current
-      recognitionRef.current = null
-      recognition?.stop()
-    }
+    const invalidate = () => setReconciled(false)
+    window.addEventListener('focus', invalidate)
+    window.addEventListener('storage', invalidate)
+    return () => { window.removeEventListener('focus', invalidate); window.removeEventListener('storage', invalidate) }
   }, [])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
 
   const requestStory = async (body: Record<string, unknown>): Promise<PersonalStory> => {
     const response = await fetch('/api/personal-story', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode }, body: JSON.stringify(body)
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Could not generate your story.')
     return data
+  }
+
+  const requestJourney = async (body: Record<string, unknown>) => {
+    const response = await fetch('/api/personal-story', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+      body: JSON.stringify({ mode: 'journey', ...body })
+    })
+    const data = await response.json()
+    const saved = data.story ? persistStory(data.story) : false
+    if (!response.ok) throw new Error(data.error || 'Could not complete this attempt. Reconcile before continuing.')
+    if (data.status === 'failed' || data.snapshot?.status === 'failed') throw new Error('This attempt failed and was consumed. No automatic retry is made.')
+    if (data.story && saved) {
+      window.localStorage.removeItem(PREPARATION_KEY)
+      setPreparation(null)
+    }
+    setReconciled(!data.snapshot?.pending)
+    return data
+  }
+
+  const reconcile = async () => {
+    const saved = preparation || (story?.journey ? { id: story.id, capability: story.journey.capability } : null)
+    if (!saved || requestLock.current) return
+    requestLock.current = true
+    setIsGenerating(true); setStoryError(''); setReconciled(false)
+    stopSpeaking(); stopRecording()
+    try {
+      const data = await requestJourney({ action: 'resume', ...saved })
+      if (!data.story) setStoryNotice('Preparation is still pending. Reconcile later; this does not trigger another AI request.')
+    } catch (error) { setStoryError(error instanceof Error ? error.message : 'Could not reconcile your story.') }
+    finally { requestLock.current = false; setIsGenerating(false) }
+  }
+
+  const abandonPreparation = () => {
+    try {
+      window.localStorage.removeItem(PREPARATION_KEY)
+      setPreparation(null)
+      setStoryError('')
+    } catch {
+      setStoryError('Could not remove the saved preparation. Check browser storage permissions before trying again.')
+    }
   }
 
   const persistStory = (nextStory: PersonalStory) => {
@@ -72,43 +113,55 @@ export default function StoryPage() {
     setStoryNotice('')
     try {
       savePersonalStory(nextStory)
+      return true
     } catch (error) {
       setStoryNotice(error instanceof Error ? error.message : 'This browser could not save your story. It is available now, but may be lost when you leave.')
+      return false
     }
   }
 
   const begin = async () => {
-    if (isGenerating) return
+    if (requestLock.current || preparation) return
+    requestLock.current = true
     setIsGenerating(true)
     setStoryError('')
     stopSpeaking()
     stopRecording()
-    const mood = need.trim() ? inferPersonalStoryMood(need) : selectedMood
     try {
       const profile = useProfile ? loadMuseProfile() : null
-      const nextStory = await requestStory({ action: 'create', mood, need, profileKeypoints: profile?.keypoints.slice(-5) || [] })
-      persistStory(nextStory)
+      const saved = {
+        id: crypto.randomUUID(),
+        capability: Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
+      }
+      window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
+      setPreparation(saved)
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, need, profileKeypoints: profile?.keypoints.slice(-5) || [] })
       setNeed('')
       setResponseDraft('')
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not generate your story.')
     } finally {
+      requestLock.current = false
       setIsGenerating(false)
     }
   }
 
-  const finished = Boolean(story && story.responses.length >= story.scenes.length)
+  const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status) : story.responses.length >= story.scenes.length))
 
   const choose = async (choice: string) => {
-    if (!story || isGenerating || finished) return
+    if (!story || requestLock.current || finished || (story.journey && (!reconciled || story.journey.pending))) return
+    requestLock.current = true
     setStoryError('')
     setIsGenerating(true)
     stopSpeaking()
-    const recognition = recognitionRef.current
-    recognitionRef.current = null
-    recognition?.stop()
-    setIsRecording(false)
+    stopRecording()
     try {
+      if (story.journey) {
+        setReconciled(false)
+        await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice })
+        setResponseDraft('')
+        return
+      }
       const nextStory = story.generation === 'ai' && story.currentStep < story.scenes.length - 1
         ? await requestStory({ action: 'continue', story, answer: choice })
         : answerPersonalStory(story, choice)
@@ -117,6 +170,7 @@ export default function StoryPage() {
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not continue your story.')
     } finally {
+      requestLock.current = false
       setIsGenerating(false)
     }
   }
@@ -125,60 +179,8 @@ export default function StoryPage() {
     if (responseDraft.trim()) choose(responseDraft)
   }
 
-  const stopRecording = () => {
-    const recognition = recognitionRef.current
-    recognitionRef.current = null
-    recognition?.stop()
-    setIsRecording(false)
-  }
-
   const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording()
-      return
-    }
-    const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
-    if (!Constructor) {
-      setStoryError('Voice input is unavailable in this browser. Please type your answer instead.')
-      return
-    }
-    setStoryError('')
-    stopSpeaking()
-    const recognition = new Constructor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-    recognition.onresult = (event) => {
-      let transcript = ''
-      for (let index = 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
-      setResponseDraft(transcript.trim().slice(0, 600))
-    }
-    recognition.onerror = () => {
-      if (recognitionRef.current !== recognition) return
-      setIsRecording(false)
-      recognitionRef.current = null
-      setStoryError('Voice input failed. Check microphone permission or type your answer instead.')
-    }
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition) {
-        try {
-          recognition.start()
-        } catch {
-          setIsRecording(false)
-          recognitionRef.current = null
-          setStoryError('Voice input stopped. Please try again or type your answer instead.')
-        }
-      }
-    }
-    recognitionRef.current = recognition
-    try {
-      recognition.start()
-      setIsRecording(true)
-    } catch {
-      recognitionRef.current = null
-      setIsRecording(false)
-      setStoryError('Could not start voice input. Check microphone permission or type your answer instead.')
-    }
+    interaction.dictate('response', value => setResponseDraft(value.slice(0, story?.journey ? 800 : 600)))
   }
 
   return (
@@ -195,45 +197,71 @@ export default function StoryPage() {
           </header>
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
+          {interaction.error ? <p role="alert">{interaction.error}</p> : null}
+          <label style={{ display: 'block', marginBottom: '1rem' }}>Creator access code (if required by this deployment)
+            <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={isGenerating} onChange={event => { setCreatorCode(event.target.value); setReconciled(false) }} style={{ display: 'block', padding: '0.6rem', width: '100%', maxWidth: 400 }} />
+          </label>
+          <p>The code stays in page memory only. Saved personal capabilities are private and remain in this browser.</p>
           <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
+          {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
+            <button onClick={reconcile} disabled={isGenerating}>Resume / reconcile saved progress (no AI call)</button>
+            {!reconciled || story?.journey?.pending ? <p>Reconcile before sending a response. Pending or uncertain attempts are never automatically retried. Stale attempts expire after 90 seconds and stay consumed.</p> : null}
+            {preparation ? <p>Saved preparation awaiting reconciliation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon preparation (does not refund attempts)</button></p> : null}
+          </div> : null}
           {!story ? (
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story</p>
               <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What kind of story do you need today?</h1>
-              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>Choose a mood or tell Muse what is on your mind. Muse will shape an interactive story around your answer and offer you a next step at each scene.</p>
+              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>Choose your mood before starting, then optionally tell Muse what is on your mind. Your chosen mood stays in charge. Explore through your own words, without fixed choices.</p>
               {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}>Want it to feel more personal? <Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Tell Muse about yourself first.</Link></p> : null}
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
-                {moods.map((mood) => <button key={mood.key} onClick={() => setSelectedMood(mood.key)} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
+                {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => setSelectedMood(mood.key)} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
-              <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>Or tell Muse what you need
+              <label style={{ display: 'block', marginTop: '1rem' }}>Approximate duration
+                <select aria-label="Approximate duration" value={duration} disabled={isGenerating || Boolean(preparation)} onChange={event => setDuration(Number(event.target.value))}>
+                  {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>Optionally tell Muse what you need
                 <textarea value={need} onChange={(event) => setNeed(event.target.value)} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
               {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => setUseProfile(event.target.checked)} /> Include my latest five Myself key points in the AI request</label> : null}
-              <p>Your need and, only if selected, profile key points are sent to the configured AI provider (Claude Haiku by default). Each story uses one generation and up to two AI continuations. Browser narration requires no narration credits.</p>
-              <button onClick={begin} disabled={isGenerating} style={{ marginTop: '1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.95rem 1.3rem', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>{isGenerating ? 'Muse is writing your story...' : 'Create my story →'}</button>
+              <p>Your need and, only if selected, profile key points go to the configured AI provider. Opening and compact plan use one generation; each response uses one AI call, up to {duration * 3 / 5} attempts including failures. Time is approximate, never a cutoff timer. The final successful response at the cap concludes the story. Failed final attempts cannot be retried or refunded. Browser narration is free; browser dictation may use your browser&apos;s speech service.</p>
+              <button onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.95rem 1.3rem', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>{isGenerating ? 'Muse is writing your story...' : 'Create my story →'}</button>
             </section>
           ) : (
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
               <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
               <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
-              <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${((story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
+              <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
               <article style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
-                <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>Scene {story.currentStep + 1} of {story.scenes.length}</p>
+                <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
                 <p style={{ fontSize: '1.15rem', lineHeight: 1.85 }}>{scene?.body}</p>
                 <NarrationButton narrator={narrator} text={scene ? `${scene.title}. ${scene.body} ${scene.question}` : ''} beforeSpeak={stopRecording} />
-                <h3  style={{ marginTop: '2rem' }}>{scene?.question}</h3>
-                <textarea value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={600} disabled={isGenerating || finished} rows={3} placeholder="Write or speak your answer…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
+                {!finished ? <>
+                <h3 style={{ marginTop: '2rem' }}>{story.journey ? 'What do you do or say?' : scene?.question}</h3>
+                <label>Editable response
+                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                </label>
+                <label>Dictation language <select value={dictationLanguage} disabled={isGenerating || isRecording} onChange={event => setDictationLanguage(event.target.value)}>
+                  <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option><option value="es-ES">Español</option>
+                </select></label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
-                  <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>
-                  <button onClick={toggleRecording} disabled={isGenerating || finished} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak your answer'}</button>
+                  <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>
+                  <button onClick={toggleRecording} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak your answer'}</button>
                 </div>
-                <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction:</p>
+                {isRecording ? <p role="status">{interaction.ready ? 'Listening - speak now' : 'Starting microphone…'}</p> : null}
+                {!story.journey ? <>
+                <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction (legacy story):</p>
                 <div style={{ display: 'grid', gap: '0.7rem' }}>{scene?.choices.map((choice) => <button key={choice} disabled={isGenerating || finished} onClick={() => choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', cursor: 'pointer', font: 'inherit' }}>{choice} →</button>)}</div>
+                </> : null}
+                </> : null}
               </article>
-              {story.currentStep === story.scenes.length - 1 && story.responses.length >= story.scenes.length ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>You have reached the end of this chapter. Start a new story whenever your needs change.</div> : null}
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}><button disabled={isGenerating} onClick={() => { stopSpeaking(); setStory(null); setNeed(''); setStoryError('') }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button><Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link></div>
+              {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'The allowance is exhausted, including failed attempts. The last available narration remains saved; no additional AI conclusion is charged.' : 'Your story has reached its conclusion.'} Narration and library reopening remain available.</div> : null}
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}><button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button><Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link></div>
             </section>
           )}
         </div>

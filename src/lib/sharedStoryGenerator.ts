@@ -1,6 +1,7 @@
 import { parseGeneratedStory, sceneCountForDuration, SharedStoryError, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { generateStoryJson } from './storyProvider'
 import { NARRATION_AI_INSTRUCTION } from './narration'
+import { assertAdventurePrivacy } from './sharedAdventure'
 
 export { storyProviderConfig as sharedStoryProviderConfig } from './storyProvider'
 
@@ -15,8 +16,11 @@ export async function generateSharedStory(brief: SharedStoryBrief): Promise<Shar
     'assistanceHints are private on-demand help revealed separately by the server. Do not copy them into the story, titles, clues or description.',
     'Clues must indirectly lead to the exact creator-supplied solution; do not invent a different answer.',
     'Return JSON only, without markdown: {"title":"...","description":"...","narrationStyle":"suspenseful","narrationLanguage":"en-US","scenes":[{"title":"...","body":"...","clue":"...","choices":["...","...","..."]}]}.',
-    'Every scene must include exactly three distinct short choices phrased as safe exploratory actions, not secret-answer guesses. Never include a private answer, alternative answer, final message or assistance hint in a choice.',
-    'The story is a linear clue trail, not branching: every action continues to the same next scene. Make each option compatible with that next scene; do not promise different destinations or different outcomes. Final-scene actions are not used; the recipient types the final answer.',
+    brief.adventure
+      ? 'Prepare a public adventure plan: scenes are flexible locations and clue opportunities, not compulsory steps. Omit choices. The first scene opens the adventure; later scenes prepare public indirect clues for a live game master. Include meaningful relationships, useful objects, possible consequences and a satisfying journey ending without revealing private text.'
+      : 'Every scene must include exactly three distinct short choices phrased as safe exploratory actions, not secret-answer guesses. Never include a private answer, alternative answer, final message or assistance hint in a choice.',
+    brief.adventure ? 'Live actions may explore without advancing, and affect inventory, discoveries, relationships and progress. Plan clues that remain solvable in at most twelve actions.'
+      : 'The story is a linear clue trail, not branching: every action continues to the same next scene. Make each option compatible with that next scene; do not promise different destinations or different outcomes. Final-scene actions are not used; the recipient types the final answer.',
     `Return exactly ${sceneCountForDuration(brief.durationMinutes)} ordered scenes.`,
     `Total narration and clue length must be ${brief.durationMinutes * 60}-${brief.durationMinutes * 110} words.`,
     'Target duration includes reading/listening and thinking; it is an estimate, not a countdown.',
@@ -25,7 +29,9 @@ export async function generateSharedStory(brief: SharedStoryBrief): Promise<Shar
   ].join('\n')
   const generated = await generateStoryJson(system, brief, Math.min(9000, brief.durationMinutes * 400 + 1000))
   try {
-    return parseGeneratedStory(generated, brief)
+    const content = parseGeneratedStory(generated, brief)
+    if (brief.adventure) assertAdventurePrivacy(JSON.stringify(content), brief)
+    return content
   } catch (error) {
     if (error instanceof SharedStoryError) throw new SharedStoryError(error.message, 502)
     throw error

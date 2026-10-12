@@ -3,7 +3,8 @@
 Muse is a personalized storytelling prototype with three areas:
 
 - **Myself:** a browser-local profile entered by typing or voice.
-- **My Story:** AI-generated personal stories with answer-driven continuations.
+- **My Story:** prepared personal journeys shaped by freeform responses and a
+  mood chosen before starting; legacy three-scene stories remain playable.
 - **Shared Story:** one creator supplies a story idea, setting, narration
   style, personal hints, exact solution and final message. AI prepares a
   mystery for a recipient to solve in approximately 5, 10, 15 or 20 minutes.
@@ -37,6 +38,60 @@ The full product definition lives in four documents:
 Never commit `.env.local`, service-role keys, or other provider credentials.
 
 ### Hosted shared-story test on Vercel
+
+#### Optional live shared adventures
+
+The creator must opt in and approve an explicit **1–1000 total AI action
+attempt budget** per adventure, shared by all recipient playthroughs.
+Existing stories remain linear and unchanged. New adventures use the prepared
+public clue plan, freeform typed actions or editable browser dictation, meaningful
+consequences and compact durable inventory/discoveries/relationships/progress.
+Narration uses the prepared voice/style and language. Review dictation before
+submit; unreliable hardware/browser recognition still reports explicit errors.
+
+Each playthrough allows **12 submitted live actions**, including failed paid
+attempts. The game master draws the journey toward a conclusion before that
+limit. Exact guesses, creator hints and browser audio stay available at the
+cap; there is no canned or silently substituted continuation. Preparation is
+a separate existing generation request. Live prompts contain only bounded
+public plan/state and the latest narration/action, never private answers,
+alternatives, hints, final message or a growing transcript. Server validation
+rejects exposed private text and invalid output; guesses use existing deterministic
+judging, not AI. Do not include sensitive data in any brief or action.
+
+**Hosted rollout:** apply `supabase/shared-stories.sql` first, then the separate
+incremental `supabase/shared-adventures.sql` before enabling this feature.
+The migration changes only Muse tables/functions, uses service-role-only
+grants and RLS, and does not touch iVote objects. Missing migration fails
+clearly without a legacy fallback or paid preparation call. SQLite initializes
+its additive tables automatically on a persistent Node 24 machine.
+No migration, deployment, dashboard change or provider generation is performed
+by tests.
+
+Set server-only `MUSE_ADVENTURE_DAILY_ACTION_CAP` (1–10000, default **100**)
+for the persistent UTC daily cap across Shared Adventure and My Story journeys
+(the same `muse_adventure_budgets` day bucket). All instances sharing
+the database should use the same cap. Budgets reserve atomically **before**
+provider calls, count failures conservatively, and never refund or auto-retry.
+Each attempt has a durable request ID, fingerprint and revision; duplicate
+tabs/restarts cannot replay a paid call. An interrupted attempt expires after
+90 seconds as charged/failed; refresh to see current progress and intentionally
+submit a new action. Token rotation/deletion and stale/solved state prevent
+late completion. Browser storage must work to persist safe submission retries.
+Clearing it may lose playthrough access but never resets the adventure/global
+budget. Anyone holding the play link can consume the creator-approved budget.
+
+Run `npm run test:sqlite`, `npm run test:shared`, and `npm run test:gateway`
+with mocked AI only. There is no dedicated `test:adventure` suite yet.
+`test:personal-journey` covers the tightly coupled shared daily budget and
+freeform infrastructure, not comprehensive Shared Adventure behavior.
+Hosted migration application and a service-role integration smoke test
+remain an operator rollout step.
+After applying both adventure migrations, run
+`supabase/journeys-smoke.sql` in the SQL editor to verify PostgreSQL
+reservations, idempotency, duration limits, conclusions, shared daily budgets
+and RPC/RLS permissions. All fixtures and budget changes are rolled back;
+the test makes no AI calls.
 
 Use Node.js 24, the Next.js application preset, and the repository root.
 SQLite is intentionally rejected on Vercel because its filesystem is not
@@ -116,7 +171,7 @@ and running Muse. Never tunnel the main Muse port directly.
 1. Run Muse locally on port 3102.
 2. Run `npm run share:gateway`. It listens on loopback port 3104 and
    forwards only the recipient page, static assets, and the `open`,
-   `next`, `guess`, and `hint` Shared Story actions. Creation, management,
+   `next`, `guess`, `hint`, and opt-in `adventure` Shared Story actions. Creation, management,
    deletion, link rotation, other APIs and other pages are blocked.
 3. Install the official Cloudflare `cloudflared` Windows tool and run
    `cloudflared tunnel --url http://127.0.0.1:3104`.
@@ -159,7 +214,9 @@ invalid settings or storage failures do not silently fall back.
 
 `/library` keeps multiple personal stories (including answers and progress)
 and private shared-story management entries in this browser. Reopening a
-personal story is local; opening a shared management link checks the server,
+legacy personal story is local. New personal journeys reconcile authoritative
+server progress through `/api/personal-story` after entering the creator code;
+reconciliation is free and never generates text. Opening a shared management link checks the server,
 where the story may already have expired or been deleted. Library cards do
 not display private answers, messages or access tokens.
 
@@ -173,7 +230,7 @@ changing storage keys.
 
 These are browser-local plaintext records, not an account or cloud backup.
 Anyone with access to the browser may read personal answers, private shared
-briefs and management tokens. Clearing browser data loses these entries.
+briefs, personal journey capabilities and management tokens. Clearing browser data loses these entries.
 Removing a library entry removes only its browser copy; use shared-story
 management to delete the remote story and invalidate its links.
 
@@ -238,20 +295,74 @@ return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 ## My Story generation
 
 My Story uses the same provider and database-backed request budget. SQLite
-initializes locally without registration. For Supabase mode, apply the
-shared-story migration and configure the service-role key even though the
-personal story itself is stored only in the user's browser.
+initializes additive journey tables locally without registration. New UI
+requests opt in with `mode: "journey"`; unmarked legacy `create`/`continue`
+requests and old browser saves retain their three-scene behavior.
 
-Creation generates three planned scenes. The first two answers each trigger
-one bounded AI request that rewrites the next scene using visited scenes,
-the original need and the answer. The final reflection is saved locally
-without another API request: at most three paid requests per completed story,
-unless the user explicitly retries or starts another one.
+Select the mood **before** starting. Explicit selection always wins over
+need-based inference. Select approximately **5/10/15/20 minutes**, allowing
+at most **3/6/9/12 freeform AI response attempts** respectively. These are
+participation/reading estimates, not timers. The opening plus compact 3–5-point
+plan is generated in one call; each submitted response uses one call.
+The last successful response at the cap must return a validated conclusion,
+not another required action. Failed final attempts exhaust the allowance
+without fabricating an ending or charging another call.
 
-Both creation and continuation prompts specify the full required JSON shape,
-including top-level `narrationStyle` and `narrationLanguage`. Missing or invalid
-AI fields still produce an explicit error without replacing saved progress;
-there is no paid automatic retry or made-up metadata.
+The initial mood, duration, cap, opted-in five profile points and prepared
+plan are authoritative server data. Live prompts send only that bounded
+input, compact state (inventory/discoveries/relationships/progress), the most
+recent narration and the latest action—not a growing transcript. Narration
+is typically 100–180 words (validated 30–180, maximum 1800 characters),
+with a strict 1600 output-token limit for opening and live responses.
+Exact JSON keys, bounded unique lists, language/style and the final
+conclusion flag are validated. Personal journeys have **no hidden answer,
+private puzzle message, fixed-choice menu or Shared Story record**.
+
+Atomic durable request-ID/fingerprint reservations occur **before AI calls**.
+Repeated IDs reconcile current results without a second call; changed text,
+stale revisions and concurrent different submissions are blocked. Failures,
+invalid output, abandoned calls and restarts conservatively consume attempts.
+Pending attempts expire after 90 seconds as failed; never auto-retry or refund.
+Opening preparation also uses the existing 5/hour/connection and 100/day
+generation limits. Live responses share the existing configurable UTC daily
+cap with Shared Adventure in the same database row.
+
+Every personal API operation, including resume, uses `requireCreatorAccess`.
+My Story has a code field kept **only in page memory**, never browser storage.
+The library saves a private journey capability, transcript and snapshot;
+server storage holds only its hash. Resume/reconcile requires the code and
+capability and makes zero provider calls. Cross-tab focus/storage changes and
+uncertain requests disable sending until explicit reconciliation. An
+interrupted opening retains its ID/capability under
+`muse-personal-journey-preparation` so it can be reconciled after reload.
+Browser entries remain local plaintext, not accounts or cloud backup.
+Server sessions expire after 30 days; local SQLite cleans expired sessions
+on use. Hosted operators should schedule expiry cleanup. Removing browser
+entries does not reset or delete server allowance.
+
+Responses may be typed or dictated with the same browser interaction hook
+as Shared Story, selected language, editable text and explicit recognition
+errors. No paid speech service is called for dictation. Narration reuses
+the existing stable warm browser speaker, remembered preferences and
+pause/resume controls; hardware transcription/audibility are not guaranteed.
+
+**Hosted rollout (operator action, not performed by tests):** after reviewing
+Muse-only names, apply `supabase/shared-stories.sql`, then
+`supabase/shared-adventures.sql`, then the new incremental
+`supabase/personal-journeys.sql`. Configure service-role storage, the private
+creator code, provider and the same daily action cap on every instance.
+The new RPC/tables are RLS-enabled and service-role-only and touch no iVote
+objects. A missing journey migration fails closed before generation. Run a
+service-role integration smoke test before deployment. No dashboard changes,
+migrations, deployment, paid generation, commit or push are part of the
+offline journey verification.
+
+Run `npm run test:personal-journey` for actual handler + SQLite tests with a
+mock provider: all four durations/endings, immutable inputs, concurrency
+(including separate processes), idempotency, abandoned/failed attempts,
+restart persistence, shared UTC cap, library/legacy compatibility and
+private response projection. Supabase RPC transport/grants/locking contracts
+are checked offline; actual PostgreSQL execution remains a rollout check.
 
 ## Profile memories and browser story library
 
@@ -276,8 +387,9 @@ as deleting a server-stored shared story; use its creator deletion controls
 to revoke links permanently.
 
 Only the latest five Myself key points are sent, and only when the user
-checks the opt-in box. The current need, answers and bounded visited-scene
-context are sent to the provider. No raw profile or unbounded chat history
+checks the opt-in box. The current need, latest action and bounded prepared
+plan/state/recent-narration context are sent to the provider (legacy
+continuations still use bounded visited scenes). No raw profile or unbounded chat history
 is included. Existing saved template stories remain playable locally;
 new generation failures do not replace them with an undisclosed template.
 
@@ -302,14 +414,19 @@ Styles available for selection:
 | Suspenseful | Mystery and anticipation, not frightening effects |
 
 Claude chooses allowlisted `narrationStyle` and `narrationLanguage` metadata while writing
-the story, without another paid AI request. The browser turns that style
-into pace/pitch settings and an appropriate available speech voice. The
-user can override the style, language or voice and preview the result.
-Older stories without AI narration metadata use a disclosed default.
+the story, without another paid AI request. New browser preferences default
+to Warm instead of following a potentially suspenseful story mood. All presets
+keep natural pitch (1) and adjust only pace gently. Automatic voice selection
+stays stable across moods, respects the story locale, and prefers voices labelled
+natural/neural/enhanced/premium, then the device default and gentle fallbacks.
+Voice names are hints, not a guarantee of audio quality. Manual voice choices
+take precedence. Preview the selected voice or use **Use gentle recommended
+voice** to reset style and voice while keeping the selected language.
+Existing saved choices remain intact; **Follow story mood (AI)** is opt-in.
 
 Narration can be paused and resumed, or stopped to restart from the beginning.
 Style, language and manual voice preferences are remembered locally; keeping
-style on Auto preserves AI choice for each new story. The browser voice
+style on **Follow story mood (AI)** preserves AI choice for each new story. The browser voice
 selector is bounded to the screen width, including narrow phone layouts.
 Unavailable speech input and microphone failures are reported explicitly;
 users can continue by typing.
@@ -341,6 +458,12 @@ Mark and Zira (English), Hedda/Katja/Stefan/Michael (German), and Cosimo/Elsa
 (Italian). Another device may expose different voices. Missing or
 unsupported speech voices must be reported rather than pretending audio
 played. Browser presets cannot guarantee studio-quality acting.
+
+The shared success message is text-only. HTML and Markdown image syntax are
+displayed as literal text, never loaded as pictures. Muse has no gallery picker
+or photo attachment in this flow. Rendering regression tests cover image markup
+and media URLs; an unexpected picture still needs the affected page or a
+redacted screenshot to identify its source.
 
 Local installed voices avoid a paid speech-provider request. Some browsers
 also expose network-based voices; choose an available local voice if you
@@ -400,6 +523,12 @@ installations must reapply `supabase/shared-stories.sql` for the updated hint
 progress schema/RPC before using puzzle assistance.
 
 ### Validation
+
+- `npm run test:personal-journey` - 23 mocked-provider checks using actual
+  handlers and SQLite, including cross-process concurrency/restart, all
+  durations and final narration, failure charging, immutable state, shared
+  UTC limits, browser-library compatibility and offline Supabase RPC contracts.
+  This is not a comprehensive Shared Adventure suite or a live PostgreSQL test.
 
 - `npm run test:shared` - both story areas, provider contracts, bounded
   progression, privacy projection and APIs using mocked provider/database calls.

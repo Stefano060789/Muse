@@ -23,7 +23,7 @@ function readStoredPreferences(): { preferences: NarrationPreferences; notice: s
 export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [supported, setSupported] = useState<boolean | null>(null)
-  const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>('auto')
+  const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>(DEFAULT_NARRATION_PREFERENCES.style)
   const [languageOverride, setLanguageOverride] = useState('')
   const [selectedVoice, setSelectedVoice] = useState('')
   const [status, setStatus] = useState<NarrationStatus>('idle')
@@ -299,6 +299,12 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     setSelectedVoice(value)
     persist({ style: styleOverride, language: languageOverride, voice: value })
   }
+  const resetVoice = () => {
+    stop()
+    setStyleOverride('warm')
+    setSelectedVoice('')
+    persist({ style: 'warm', language: languageOverride, voice: '' })
+  }
 
   let voiceNotice = ''
   if (selectedVoice && voices.length) {
@@ -313,7 +319,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     voices, supported, styleOverride, languageOverride, selectedVoice, style, language, voice,
     status, speaking: status === 'speaking', loading: status === 'loading', paused: status === 'paused', busy: status !== 'idle',
     activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider,
-    speak, stop, pause, resume, setStyle, setLanguage, setVoice,
+    speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
     source: styleOverride !== 'auto' ? 'Manual style' : aiStyle ? 'AI-selected style' : `Legacy ${mood ? 'mood' : 'story'} fallback (not AI-selected)`
   }
 }

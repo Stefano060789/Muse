@@ -14,6 +14,7 @@ export type SharedStoryBrief = {
   durationMinutes: number
   assistanceHints?: string[]
   alternativeAnswers?: string[]
+  adventure?: { actionBudget: number }
 }
 
 export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[] }
@@ -41,6 +42,7 @@ export type SharedStoryPlayer = NarrationMetadata & {
   hintsRemaining: number
   feedback?: string
   message?: string
+  adventure?: import('./sharedAdventure').AdventureView
 }
 
 export class SharedStoryError extends Error {
@@ -80,7 +82,16 @@ export function parseSharedStoryBrief(value: unknown): SharedStoryBrief {
     message: text(input.message, 'Final message', 2000),
     durationMinutes: Number(input.durationMinutes),
     assistanceHints: privateList(input.assistanceHints, 'Assistance hints', 3, 600),
-    alternativeAnswers: privateList(input.alternativeAnswers, 'Approved alternative answers', 5, 200)
+    alternativeAnswers: privateList(input.alternativeAnswers, 'Approved alternative answers', 5, 200),
+    ...(input.adventure === undefined ? {} : { adventure: parseAdventureBudget(input.adventure) })
+  }
+
+  function parseAdventureBudget(value: unknown): { actionBudget: number } {
+    const input = record(value)
+    if (Object.keys(input).some(key => key !== 'actionBudget') || !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000) {
+      throw new SharedStoryError('Choose an explicit adventure AI action budget from 1 to 1000.')
+    }
+    return { actionBudget: Number(input.actionBudget) }
   }
   if (!normalizeSharedAnswer(brief.solution) || !normalizeSharedAnswer(brief.message)) {
     throw new SharedStoryError('The answer and message must contain letters or numbers.')
