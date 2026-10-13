@@ -142,15 +142,28 @@ values ('muse-shared-media', 'muse-shared-media', false, 20971520,
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
--- Do not guess whether an arbitrary existing client policy also grants access
--- to this bucket (a bucket_id reference alone does not establish isolation).
--- Stop for review rather than changing policies belonging to another product.
+-- Accept only exact equality to another bucket, not arbitrary policy text.
+-- Check every applicable predicate; missing or broader predicates fail closed.
+-- Never change policies belonging to another product.
 do $$
 begin
   if exists (
-    select 1 from pg_policies
-    where schemaname = 'storage' and tablename = 'objects'
-      and roles && array['public', 'anon', 'authenticated']::name[]
+    select 1 from pg_policies p
+    cross join lateral unnest(
+      case p.cmd
+        when 'SELECT' then array[p.qual]
+        when 'DELETE' then array[p.qual]
+        when 'INSERT' then array[p.with_check]
+        else array[p.qual, coalesce(p.with_check, p.qual)]
+      end
+    ) as checks(predicate)
+    where p.schemaname = 'storage' and p.tablename = 'objects'
+      and p.roles && array['public', 'anon', 'authenticated']::name[]
+      and (
+        predicate is null
+        or predicate !~ '^\(bucket_id = ''[a-zA-Z0-9_-]+''::text\)$'
+        or predicate = '(bucket_id = ''muse-shared-media''::text)'
+      )
   ) then
     raise exception 'Existing client-role storage.objects policies require an isolation review before installing Muse media. No policies have been changed.';
   end if;

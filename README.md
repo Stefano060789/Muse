@@ -336,9 +336,15 @@ Hosted setup: after `shared-stories.sql` (and the adventure/journey SQL if
 used), apply [supabase/shared-story-media.sql](supabase/shared-story-media.sql).
 It creates the media/purge tables (RLS, service role only), upload RPCs, the
 `upload` request limit, and the **private** `muse-shared-media` bucket with a
-20 MB/type allowlist. It aborts if the shared project has any client-role
-`storage.objects` policies: their isolation must be reviewed explicitly before
-applying this migration, without changing another product's policies.
+20 MB/type allowlist. Existing client-role `storage.objects` policies are
+accepted only when every applicable predicate is an exact `bucket_id` equality
+to a different bucket. Missing predicates, broader expressions, or Muse-bucket
+access abort the transaction for an explicit isolation review. The migration
+never changes another product's policies.
+After applying it, run [supabase/shared-media-smoke.sql](supabase/shared-media-smoke.sql)
+to verify service-role RPC access, private storage configuration, upload limits,
+expiry, replacement and deletion queues. All fixture changes are rolled back;
+the smoke test makes no AI or object-storage calls.
 The server verifies the bucket is private before paid media-story generation
 and before issuing an upload capability. No new environment variables are needed. Text-only
 stories keep working before the migration; creating a media story fails
