@@ -46,7 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           fingerprint: journeyHash(JSON.stringify(input))
         }
       } else if (body.action === 'respond') {
-        operation = { ...common, operation: 'reserve', ...parseJourneyAction(body) }
+        const current = await db.personalJourney({ ...common, operation: 'view' })
+        operation = { ...common, operation: 'reserve', ...parseJourneyAction(body, current.record) }
       } else throw new SharedStoryError('Unsupported personal journey action.')
       const reserved = await db.personalJourney(operation)
       if (reserved.status !== 'reserved') return res.status(200).json(publicJourney(reserved, capability))
@@ -60,8 +61,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(publicJourney(finished, capability))
       } catch (error) {
         console.error('Personal journey attempt failed', error instanceof Error ? error.name : 'Unknown error')
-        // Reservation precedes the provider. Even ambiguous transport/storage failures
-        // consume the attempt; reconciliation never invokes the provider again.
         try {
           await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, failed: true })
         } catch (completionError) {
@@ -85,6 +84,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     if (error instanceof SharedStoryError) return res.status(error.status).json({ error: error.message })
     console.error('Personal story request failed', error instanceof Error ? error.name : 'Unknown error')
-    return res.status(500).json({ error: 'Could not generate your story. Please try again later.' })
+    return res.status(500).json({ error: 'The story request failed. Please try again later.' })
   }
 }

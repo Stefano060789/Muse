@@ -285,6 +285,12 @@ async function main() {
       if (body.action_name === 'hint') state.revealed_hints = Math.min(state.revealed_hints + 1, stored.brief.assistanceHints.length)
       return json(legacyRpc ? { current_scene: state.current_scene, solved: state.solved } : state)
     }
+    if (location.pathname === '/rest/v1/shared_story_media' || location.pathname === '/rest/v1/shared_story_media_purge') {
+      // Text-only stories only check for media and sweep abandoned uploads; there is nothing to remove.
+      if (options.method === 'DELETE') return new Response(null, { status: 204 })
+      assert.ok(options.method === undefined || options.method === 'GET')
+      return json([])
+    }
     assert.equal(location.pathname, '/rest/v1/shared_stories')
     if (options.method === 'POST') {
       stored = body

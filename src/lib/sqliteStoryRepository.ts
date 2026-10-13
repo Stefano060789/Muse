@@ -6,13 +6,14 @@ import type { StoryRepository, StoredStory, PlayerState, RequestKind } from './s
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
 import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
+import { SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedMediaRecord } from './sharedStoryMedia'
 
 const schema = `
 CREATE TABLE IF NOT EXISTS shared_stories (
   id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
   brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL,
   alternative_answers_normalized TEXT NOT NULL DEFAULT '[]',
-  expires_at TEXT NOT NULL
+  expires_at TEXT NOT NULL, media_attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS story_expiry ON shared_stories(expires_at);
 CREATE TABLE IF NOT EXISTS shared_story_sessions (
@@ -49,7 +50,20 @@ CREATE TABLE IF NOT EXISTS muse_personal_journey_requests (
   request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, kind TEXT NOT NULL,
   status TEXT NOT NULL, reserved_at INTEGER NOT NULL, revision INTEGER NOT NULL,
   PRIMARY KEY(journey_id, request_id)
-);`
+);
+CREATE TABLE IF NOT EXISTS shared_story_media (
+  id TEXT PRIMARY KEY, story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
+  object_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('photo', 'video')),
+  mime TEXT NOT NULL, size INTEGER NOT NULL CHECK (size > 0 AND size <= 20971520),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'ready')), upload_hash TEXT NOT NULL,
+  upload_expires_at TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS shared_story_media_one_ready ON shared_story_media(story_id) WHERE status = 'ready';
+CREATE TABLE IF NOT EXISTS shared_story_media_purge (object_key TEXT PRIMARY KEY, queued_at TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS shared_story_media_queue_purge AFTER DELETE ON shared_story_media
+BEGIN
+  INSERT OR IGNORE INTO shared_story_media_purge(object_key, queued_at) VALUES (old.object_key, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+END;`
 
 export class SqliteStoryRepository implements StoryRepository {
   private readonly filename: string
@@ -72,6 +86,9 @@ export class SqliteStoryRepository implements StoryRepository {
       const columns = (table: string) => db!.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name)
       if (!columns('shared_stories').includes('alternative_answers_normalized')) {
         db.exec("ALTER TABLE shared_stories ADD COLUMN alternative_answers_normalized TEXT NOT NULL DEFAULT '[]'")
+      }
+      if (!columns('shared_stories').includes('media_attempts')) {
+        db.exec('ALTER TABLE shared_stories ADD COLUMN media_attempts INTEGER NOT NULL DEFAULT 0')
       }
       if (!columns('shared_story_sessions').includes('revealed_hints')) {
         db.exec('ALTER TABLE shared_story_sessions ADD COLUMN revealed_hints INTEGER NOT NULL DEFAULT 0')
@@ -114,6 +131,64 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async rotate(id: string, playHash: string) {
     this.transaction(db => { db.prepare('UPDATE shared_stories SET play_hash = ? WHERE id = ?').run(playHash, id) })
+  }
+
+  async mediaBegin(record: SharedMediaRecord, maxAttempts: number) {
+    return this.transaction((db, now) => {
+      const story = db.prepare('SELECT media_attempts FROM shared_stories WHERE id = ? AND expires_at > ?').get(record.story_id, new Date(now).toISOString())
+      if (!story) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+      if (Number(story.media_attempts) >= maxAttempts) return false
+      db.prepare('UPDATE shared_stories SET media_attempts = media_attempts + 1 WHERE id = ?').run(record.story_id)
+      // At most one in-flight upload per story; a newer attempt supersedes it.
+      db.prepare("DELETE FROM shared_story_media WHERE story_id = ? AND status = 'pending'").run(record.story_id)
+      db.prepare("INSERT INTO shared_story_media(id, story_id, object_key, kind, mime, size, status, upload_hash, upload_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)")
+        .run(record.id, record.story_id, record.object_key, record.kind, record.mime, record.size, record.upload_hash, record.upload_expires_at, record.created_at)
+      return true
+    })
+  }
+
+  async mediaGet(id: string) {
+    return this.transaction(db => {
+      const row = db.prepare('SELECT * FROM shared_story_media WHERE id = ?').get(id)
+      return row ? { ...row, size: Number(row.size) } as SharedMediaRecord : null
+    })
+  }
+
+  async mediaReady(storyId: string) {
+    return this.transaction(db => {
+      const row = db.prepare("SELECT * FROM shared_story_media WHERE story_id = ? AND status = 'ready'").get(storyId)
+      return row ? { ...row, size: Number(row.size) } as SharedMediaRecord : null
+    })
+  }
+
+  async mediaActivate(storyId: string, id: string) {
+    this.transaction(db => {
+      if (!db.prepare("SELECT 1 FROM shared_story_media WHERE id = ? AND story_id = ? AND status = 'pending'").get(id, storyId)) {
+        throw new SharedStoryError('This upload is no longer available. Choose the file again.', 409)
+      }
+      db.prepare("DELETE FROM shared_story_media WHERE story_id = ? AND status = 'ready'").run(storyId)
+      db.prepare("UPDATE shared_story_media SET status = 'ready' WHERE id = ?").run(id)
+    })
+  }
+
+  async mediaDiscard(storyId: string, id?: string) {
+    this.transaction(db => {
+      if (id) db.prepare('DELETE FROM shared_story_media WHERE story_id = ? AND id = ?').run(storyId, id)
+      else db.prepare("DELETE FROM shared_story_media WHERE story_id = ? AND status = 'ready'").run(storyId)
+    })
+  }
+
+  async mediaPurgeQueue(limit: number) {
+    return this.transaction((db, now) => {
+      db.prepare("DELETE FROM shared_story_media WHERE status = 'pending' AND upload_expires_at < ?").run(new Date(now - MEDIA_PENDING_GRACE_MS).toISOString())
+      return db.prepare('SELECT object_key FROM shared_story_media_purge ORDER BY queued_at LIMIT ?').all(limit).map(row => String(row.object_key))
+    })
+  }
+
+  async mediaPurged(keys: string[]) {
+    this.transaction(db => {
+      for (const key of keys) db.prepare('DELETE FROM shared_story_media_purge WHERE object_key = ?').run(key)
+    })
   }
 
   async personalJourney(input: JourneyOperation): Promise<JourneyResult> {
@@ -207,11 +282,19 @@ export class SqliteStoryRepository implements StoryRepository {
       const used = () => Number(db.prepare('SELECT used FROM muse_adventure_budgets WHERE bucket = ?').get(storyBucket)!.used)
       const view = () => {
         const state = db.prepare('SELECT * FROM muse_adventure_sessions WHERE story_id = ? AND player_hash = ?').get(input.storyId, input.sessionHash)!
+        const brief = JSON.parse(String(story.brief))
+        const choiceMode = brief.adventure?.choiceMode ?? 'free'
+        const turn = state.turn ? JSON.parse(String(state.turn)) as AdventureTurn : null
+        const actionsRemaining = Math.max(0, 12 - Number(state.used))
+        const pending = Boolean(db.prepare("SELECT 1 FROM muse_adventure_requests WHERE story_id = ? AND player_hash = ? AND status = 'pending'").get(input.storyId, input.sessionHash))
+        const choices = choiceMode === 'suggested' && actionsRemaining > 0 && !pending ? (turn?.choices ?? JSON.parse(String(story.content)).scenes[0]?.choices) : undefined
         return {
-          revision: Number(state.used), actionsUsed: Number(state.used), actionsRemaining: Math.max(0, 12 - Number(state.used)),
+          revision: Number(state.used), actionsUsed: Number(state.used), actionsRemaining,
           budget, budgetRemaining: Math.max(0, budget - used()),
-          pending: Boolean(db.prepare("SELECT 1 FROM muse_adventure_requests WHERE story_id = ? AND player_hash = ? AND status = 'pending'").get(input.storyId, input.sessionHash)),
-          turn: state.turn ? JSON.parse(String(state.turn)) as AdventureTurn : null
+          pending,
+          turn,
+          choiceMode,
+          ...(choices ? { choices } : {})
         }
       }
       if (input.operation === 'view') return { view: view() }
@@ -277,14 +360,14 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async reserve(clientHash: string, kind: RequestKind) {
     return this.transaction((db, now) => {
-      if (kind !== 'generate' && kind !== 'guess') throw new SharedStoryError('Invalid request kind.')
+      if (kind !== 'generate' && kind !== 'guess' && kind !== 'upload') throw new SharedStoryError('Invalid request kind.')
       const date = new Date(now).toISOString()
       const day = `day:${date.slice(0, 10)}:${kind}`
       const hour = `hour:${date.slice(0, 13).replace('T', '-')}:${kind}:${clientHash}`
       const older = new Date(now - 2 * 86400000).toISOString()
       db.prepare("DELETE FROM shared_story_generation_limits WHERE (bucket LIKE 'day:%' AND bucket < ?) OR (bucket LIKE 'hour:%' AND bucket < ?)")
         .run(`day:${older.slice(0, 10)}`, `hour:${older.slice(0, 13).replace('T', '-')}`)
-      const buckets: [string, number][] = [[day, kind === 'generate' ? 100 : 5000], [hour, kind === 'generate' ? 5 : 60]]
+      const buckets: [string, number][] = [[day, kind === 'generate' ? 100 : kind === 'upload' ? 200 : 5000], [hour, kind === 'generate' ? 5 : kind === 'upload' ? 10 : 60]]
       for (const [bucket, cap] of buckets) {
         db.prepare('INSERT INTO shared_story_generation_limits(bucket, count) VALUES (?, 0) ON CONFLICT DO NOTHING').run(bucket)
         if (Number(db.prepare('SELECT count FROM shared_story_generation_limits WHERE bucket = ?').get(bucket)!.count) >= cap) return false

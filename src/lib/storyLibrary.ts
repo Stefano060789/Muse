@@ -1,7 +1,7 @@
 import type { PersonalStory } from './story'
 import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
-import { parseFreeformState } from './freeformStory'
+import { parseFreeformState, parseStoryChoiceMode, parseSuggestedChoices } from './freeformStory'
 import type { JourneyDuration, JourneySnapshot } from './personalJourney'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
@@ -71,10 +71,14 @@ export function validatePersonalStory(value: unknown): PersonalStory {
       typeof saved.pending !== 'boolean' || !['active', 'concluded', 'exhausted'].includes(String(saved.status)) ||
       typeof saved.capability !== 'string' || !/^[0-9a-f]{64}$/i.test(saved.capability) ||
       scenes.length > Number(saved.maxTurns) + 1 || scenes.some(scene => scene.choices.length || scene.question)) throw new Error('Invalid personal journey snapshot.')
+    const choiceMode = saved.choiceMode !== undefined ? parseStoryChoiceMode(saved.choiceMode) : 'free'
+    const choices = saved.choices !== undefined ? parseSuggestedChoices(saved.choices) : undefined
     journey = {
       duration: saved.duration as JourneyDuration, maxTurns: Number(saved.maxTurns), revision: Number(saved.revision),
       pending: saved.pending, status: saved.status as JourneySnapshot['status'],
-      state: parseFreeformState(saved.state), capability: saved.capability
+      state: parseFreeformState(saved.state), capability: saved.capability,
+      choiceMode,
+      ...(choices ? { choices } : {})
     }
   }
   return {
@@ -99,7 +103,7 @@ export function validateCreatorStory(value: unknown): CreatorStory {
   return {
     ownerToken: identifier(input.ownerToken),
     ...(input.playToken !== undefined ? { playToken: identifier(input.playToken) } : {}),
-    expiresAt: date(input.expiresAt), brief: parseSharedStoryBrief(input.brief),
+    expiresAt: date(input.expiresAt), brief: parseSharedStoryBrief(input.brief, { allowEmptyMessage: true }),
     content: { title: text(content.title), description: text(content.description), scenes, ...narration(content) }
   }
 }

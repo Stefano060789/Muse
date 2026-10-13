@@ -1,6 +1,6 @@
 const http = require('node:http')
 
-const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'adventure'])
+const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'adventure', 'media'])
 
 function createRecipientGateway(target = 'http://127.0.0.1:3102') {
   const upstream = new URL(target)
@@ -49,7 +49,7 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
         }
         const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
         if (!value || Array.isArray(value) || typeof value !== 'object' || !PLAYER_ACTIONS.has(value.action)) {
-          return fail(403, 'Only open, next, guess, hint and adventure actions are public.')
+          return fail(403, 'Only open, next, guess, hint, adventure and solved-media actions are public.')
         }
         body = JSON.stringify(value)
       } catch {
@@ -66,7 +66,7 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
       method: req.method, headers, timeout: 20000
     }, response => {
       res.statusCode = response.statusCode
-      for (const name of ['content-type', 'content-length', 'cache-control']) {
+      for (const name of ['content-type', 'content-length', 'cache-control', 'content-security-policy', 'cross-origin-resource-policy', 'content-disposition']) {
         if (response.headers[name]) res.setHeader(name, response.headers[name])
       }
       response.on('error', () => res.destroy())

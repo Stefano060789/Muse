@@ -48,13 +48,14 @@ declare
   daily_count integer;
   client_count integer;
 begin
-  if request_kind not in ('generate', 'guess') then raise exception 'Invalid request kind'; end if;
+  -- Keep identical to shared-story-media.sql, which adds the 'upload' kind.
+  if request_kind not in ('generate', 'guess', 'upload') then raise exception 'Invalid request kind'; end if;
   insert into shared_story_generation_limits(bucket, count) values (daily_bucket, 0) on conflict do nothing;
   select count into daily_count from shared_story_generation_limits where bucket = daily_bucket for update;
   insert into shared_story_generation_limits(bucket, count) values (client_bucket, 0) on conflict do nothing;
   select count into client_count from shared_story_generation_limits where bucket = client_bucket for update;
-  if daily_count >= (case when request_kind = 'generate' then 100 else 5000 end)
-     or client_count >= (case when request_kind = 'generate' then 5 else 60 end) then return false; end if;
+  if daily_count >= (case request_kind when 'generate' then 100 when 'upload' then 200 else 5000 end)
+     or client_count >= (case request_kind when 'generate' then 5 when 'upload' then 10 else 60 end) then return false; end if;
   update shared_story_generation_limits set count = count + 1 where bucket in (daily_bucket, client_bucket);
   delete from shared_stories where expires_at <= now();
   delete from shared_story_generation_limits

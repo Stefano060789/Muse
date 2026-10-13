@@ -35,7 +35,7 @@ async function main() {
   const token = `${id}.${key}`
   async function start() {
     child = spawn(process.execPath, ['--require', preload, path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-H', '127.0.0.1', '-p', String(port)], {
-      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, VERCEL: '' }, stdio: ['ignore', 'pipe', 'pipe']
+      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, MUSE_MEDIA_PATH: path.join(directory, 'media'), MUSE_CREATOR_ACCESS_CODE: '', VERCEL: '' }, stdio: ['ignore', 'pipe', 'pipe']
     })
     child.stdout.on('data', value => { logs += value })
     child.stderr.on('data', value => { logs += value })
@@ -77,10 +77,30 @@ async function main() {
   assert.equal(persisted.body.player.sceneIndex, 1)
   assert.equal(persisted.body.player.narrationStyle, 'suspenseful')
   assert.deepEqual(persisted.body.player.revealedHints, [brief.assistanceHints[0]])
+  // Real HTTP upload through the streaming route (body parser disabled) into private local storage.
+  const ownerToken = `${id}.${'b'.repeat(64)}`
+  const photo = Buffer.alloc(3000, 5)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(photo)
+  const oversized = await api({ action: 'media-start', token: ownerToken, media: { mime: 'image/png', size: 100 } })
+  const rejectedPut = await fetch(new URL(oversized.body.upload.url, url), { method: 'PUT', headers: oversized.body.upload.headers, body: photo })
+  assert.equal(rejectedPut.status, 413)
+  const started = await api({ action: 'media-start', token: ownerToken, media: { mime: 'image/png', size: photo.length } })
+  assert.equal(started.status, 201)
+  const put = await fetch(new URL(started.body.upload.url, url), { method: 'PUT', headers: started.body.upload.headers, body: photo })
+  assert.equal(put.status, 200)
+  assert.deepEqual((await api({ action: 'media-finish', token: ownerToken, uploadId: started.body.uploadId })).body.media, { kind: 'photo', mime: 'image/png', size: photo.length })
+  const locked = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'media', token: `${id}.${'c'.repeat(64)}`, sessionToken }) })
+  assert.equal(locked.status, 403)
   const solved = await api({ action: 'guess', token: `${id}.${'c'.repeat(64)}`, sessionToken, guess: 'APPROVED equivalent!' })
   assert.equal(solved.body.player.solved, true)
   assert.equal(solved.body.player.message, brief.message)
-  console.log('PASS built Next HTTP SQLite initialization, private hints, approved alternatives and restart durability (external fetch forbidden)')
+  assert.deepEqual(solved.body.player.media, { kind: 'photo', mime: 'image/png' })
+  const media = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'media', token: `${id}.${'c'.repeat(64)}`, sessionToken }) })
+  assert.equal(media.status, 200)
+  assert.equal(media.headers.get('content-type'), 'image/png')
+  assert.equal(media.headers.get('cache-control'), 'no-store')
+  assert.ok(Buffer.from(await media.arrayBuffer()).equals(photo))
+  console.log('PASS built Next HTTP SQLite initialization, private hints, approved alternatives, restart durability and private photo upload/reveal (external fetch forbidden)')
 }
 main().catch(error => { console.error(error, logs); process.exitCode = 1 }).finally(async () => {
   await stop()

@@ -4,6 +4,7 @@ import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult } from './sharedAdventure'
 import type { JourneyOperation, JourneyResult } from './personalJourney'
+import { SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedMediaRecord } from './sharedStoryMedia'
 export { storyStorageError } from './storyStorageErrors'
 
 export type StoredStory = {
@@ -17,7 +18,7 @@ export type StoredStory = {
   expires_at: string
 }
 export type PlayerState = { current_scene: number; solved: boolean; revealed_hints: number }
-export type RequestKind = 'generate' | 'guess'
+export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
@@ -27,7 +28,19 @@ export interface StoryRepository {
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   personalJourney(request: JourneyOperation): Promise<JourneyResult>
+  /** Registers a pending upload; false when the story's attempt allowance is used up. */
+  mediaBegin(record: SharedMediaRecord, maxAttempts: number): Promise<boolean>
+  mediaGet(id: string): Promise<SharedMediaRecord | null>
+  mediaReady(storyId: string): Promise<SharedMediaRecord | null>
+  /** Atomically promotes a pending upload and queues any previous ready object for purge. */
+  mediaActivate(storyId: string, id: string): Promise<void>
+  /** Deletes one upload (or the ready media when id is omitted); its object is queued for purge. */
+  mediaDiscard(storyId: string, id?: string): Promise<void>
+  /** Expires abandoned uploads, then returns queued object keys whose rows no longer exist. */
+  mediaPurgeQueue(limit: number): Promise<string[]>
+  mediaPurged(keys: string[]): Promise<void>
 }
+
 
 export function storyStorageMode(): 'supabase' | 'sqlite' {
   const mode = process.env.STORY_STORAGE ?? 'supabase'
@@ -60,7 +73,58 @@ export function storyRepository(): StoryRepository {
       throw storyStorageError(error)
     }
   })()
+  const media = () => db.from('shared_story_media')
   return {
+    async mediaBegin(record, maxAttempts) {
+      const { data, error } = await db.rpc('muse_begin_shared_media', { media: record, max_attempts: maxAttempts })
+      if (error) {
+        if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+        throw new SharedStoryError('Private media storage is unavailable. Apply supabase/shared-story-media.sql before enabling photo and video reveals.', 503)
+      }
+      return data === true
+    },
+    async mediaGet(id) {
+      const { data, error } = await media().select('*').eq('id', id).maybeSingle()
+      if (error) throw storyStorageError(error)
+      return data as SharedMediaRecord | null
+    },
+    async mediaReady(storyId) {
+      const { data, error } = await media().select('*').eq('story_id', storyId).eq('status', 'ready').maybeSingle()
+      // Before shared-story-media.sql is applied no story can have media; keep legacy playback working.
+      if (error && (error.code === '42P01' || error.code === 'PGRST205')) return null
+      if (error) throw storyStorageError(error)
+      return data as SharedMediaRecord | null
+    },
+    async mediaActivate(storyId, id) {
+      const { error } = await db.rpc('muse_activate_shared_media', { story_uuid: storyId, media_uuid: id })
+      if (error) {
+        if (error.message === 'Media unavailable') throw new SharedStoryError('This upload is no longer available. Choose the file again.', 409)
+        throw storyStorageError(error)
+      }
+    },
+    async mediaDiscard(storyId, id) {
+      const query = media().delete().eq('story_id', storyId)
+      const { error } = await (id ? query.eq('id', id) : query.eq('status', 'ready'))
+      if (error) throw storyStorageError(error)
+    },
+    async mediaPurgeQueue(limit) {
+      const cutoff = new Date(Date.now() - MEDIA_PENDING_GRACE_MS).toISOString()
+      const expired = await media().delete().eq('status', 'pending').lt('upload_expires_at', cutoff)
+      // Routine sweeps stay quiet before shared-story-media.sql; the strict pre-generation check (limit 0) still fails.
+      if (expired.error && limit > 0 && (expired.error.code === '42P01' || expired.error.code === 'PGRST205')) return []
+      if (expired.error) throw storyStorageError(expired.error)
+      const { data, error } = await db.from('shared_story_media_purge').select('object_key').order('queued_at').limit(limit)
+      if (error) throw storyStorageError(error)
+      return (data ?? []).map(row => String(row.object_key))
+    },
+    async mediaPurged(keys) {
+      if (!keys.length) return
+      const now = new Date().toISOString()
+      const { error } = await db.from('shared_story_media_purge').delete().in('object_key', keys).lte('retain_until', now)
+      if (error) throw storyStorageError(error)
+      const retry = await db.from('shared_story_media_purge').update({ queued_at: now }).in('object_key', keys)
+      if (retry.error) throw storyStorageError(retry.error)
+    },
     async personalJourney(request) {
       const { data, error } = await db.rpc('muse_personal_journey', { input: request })
       if (error) {

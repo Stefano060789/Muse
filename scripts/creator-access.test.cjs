@@ -28,7 +28,9 @@ try {
   }
   assert.equal(check('fixture-code-not-a-real-secret').allowed, true)
   const shared = fs.readFileSync(path.join(root, 'src', 'pages', 'api', 'shared-story.ts'), 'utf8')
-  assert.ok(shared.includes("!['open', 'next', 'guess', 'hint', 'adventure'].includes(String(action)) && !requireCreatorAccess(req, res)"))
+  assert.ok(shared.includes("const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'adventure', 'media']"))
+  assert.ok(shared.includes('if (!PLAYER_ACTIONS.includes(String(action)) && !requireCreatorAccess(req, res)) return'))
+  assert.ok(fs.readFileSync(path.join(root, 'src', 'pages', 'api', 'shared-story-upload.ts'), 'utf8').includes('if (!requireCreatorAccess(req, res)) return'))
   for (const name of ['personal-story', 'story', 'profile', 'tts']) {
     assert.ok(fs.readFileSync(path.join(root, 'src', 'pages', 'api', `${name}.ts`), 'utf8').includes('if (!requireCreatorAccess(req, res)) return'))
   }

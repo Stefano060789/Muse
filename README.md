@@ -44,7 +44,8 @@ Never commit `.env.local`, service-role keys, or other provider credentials.
 The creator must opt in and approve an explicit **1–1000 total AI action
 attempt budget** per adventure, shared by all recipient playthroughs.
 Existing stories remain linear and unchanged. New adventures use the prepared
-public clue plan, freeform typed actions or editable browser dictation, meaningful
+public clue plan, freeform typed actions/editable browser dictation or 3-5
+AI-suggested actions selected at creation, meaningful
 consequences and compact durable inventory/discoveries/relationships/progress.
 Narration uses the prepared voice/style and language. Review dictation before
 submit; unreliable hardware/browser recognition still reports explicit errors.
@@ -82,7 +83,9 @@ Clearing it may lose playthrough access but never resets the adventure/global
 budget. Anyone holding the play link can consume the creator-approved budget.
 
 Run `npm run test:sqlite`, `npm run test:shared`, and `npm run test:gateway`
-with mocked AI only. There is no dedicated `test:adventure` suite yet.
+with mocked AI only. `npm run test:interaction` covers the live suggested-choice
+API flow through the full 12-action shared cap, replay, privacy, and personal
+journeys at every duration. It is not a complete Shared Adventure suite.
 `test:personal-journey` covers the tightly coupled shared daily budget and
 freeform infrastructure, not comprehensive Shared Adventure behavior.
 Hosted migration application and a service-role integration smoke test
@@ -162,6 +165,12 @@ Claude still needs internet access and consumes your API credits. SQLite
 does not make the AI run offline. Optional provider narration is a separate
 paid request. The database itself has no service subscription.
 
+Final-reveal photos and videos are stored as files under
+`data/shared-media` (ignored by Git). Set server-only `MUSE_MEDIA_PATH` to
+choose another private directory; Muse refuses a path inside `public/`.
+Files are uploaded with an authenticated same-origin PUT and served only
+through the API after a correct answer — never as static files.
+
 ### Temporary recipient-only HTTPS sharing
 
 Use non-sensitive test stories only. Cloudflare carries tunnel traffic.
@@ -171,7 +180,7 @@ and running Muse. Never tunnel the main Muse port directly.
 1. Run Muse locally on port 3102.
 2. Run `npm run share:gateway`. It listens on loopback port 3104 and
    forwards only the recipient page, static assets, and the `open`,
-   `next`, `guess`, `hint`, and opt-in `adventure` Shared Story actions. Creation, management,
+   `next`, `guess`, `hint`, solved-session `media`, and opt-in `adventure` Shared Story actions. Creation, management,
    deletion, link rotation, other APIs and other pages are blocked.
 3. Install the official Cloudflare `cloudflared` Windows tool and run
    `cloudflared tunnel --url http://127.0.0.1:3104`.
@@ -292,6 +301,54 @@ Guesses are limited to 30/session, spaced by 2 seconds, with an additional
 production-grade identity or billing controls. Missing providers/storage
 return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 
+### Final photo or video reveal
+
+The creator form has four steps (who, story and duration, secret answer, final reveal)
+with narration style, alternative answers, hints and adventure
+mode chosen visibly with the story settings; narration and private puzzle help
+are under **Advanced options** (defaults: warm playful narration, 5 minutes,
+classic mystery). The final reveal is a message, one photo/video, or both.
+
+- Accepted: one JPEG, PNG or WebP photo up to 5 MB, or one MP4 or WebM
+  video up to 20 MB, chosen directly from the device. The browser checks the
+  type/size before the paid generation call; the server checks the declared
+  type and size again before generation and, after upload, the exact stored
+  size and the file's byte signature (HEIC/AVIF/QuickTime are rejected).
+- The file and its type/size/name are never part of the AI prompt. The story
+  is generated first; the owner then attaches the file to that story through
+  a single-use upload session (15-minute window, bound to the story and its
+  management link, creator code required, 6 attempts per story, 10 upload
+  starts per connection per hour, 200/day overall). A failed upload keeps the
+  generated story and the chosen file so **Retry upload** never regenerates.
+- A story without a written message cannot be played until its media is
+  attached; the creator view hides sharing until then. Replacing or removing
+  the media deletes the old object. Deleting or expiring the story deletes it
+  too (cleanup runs on later create/upload/delete requests; failed deletions
+  stay queued).
+- Recipients never receive media or its URL before a correct answer. Solved
+  sessions request it explicitly: hosted mode returns a private signed URL
+  valid for 10 minutes (refreshed automatically when it expires during
+  viewing); local mode streams it from the API. Video shows controls and
+  never autoplays. Rotating the recipient link revokes media access for old
+  links (an already issued signed URL stays valid until it expires).
+
+Hosted setup: after `shared-stories.sql` (and the adventure/journey SQL if
+used), apply [supabase/shared-story-media.sql](supabase/shared-story-media.sql).
+It creates the media/purge tables (RLS, service role only), upload RPCs, the
+`upload` request limit, and the **private** `muse-shared-media` bucket with a
+20 MB/type allowlist. It aborts if the shared project has any client-role
+`storage.objects` policies: their isolation must be reviewed explicitly before
+applying this migration, without changing another product's policies.
+The server verifies the bucket is private before paid media-story generation
+and before issuing an upload capability. No new environment variables are needed. Text-only
+stories keep working before the migration; creating a media story fails
+with an explicit error before any AI call until it is applied. Signed upload URLs are issued by Supabase
+for 2 hours; Muse only accepts files finished within its own 15-minute
+window. Discarded pending objects stay in the cleanup queue for at least
+125 minutes after the upload was started, so later sweeps also remove files
+uploaded after cancellation. Cleanup is request-driven; schedule a sweep or
+review storage retention if the application will be idle.
+
 ## My Story generation
 
 My Story uses the same provider and database-backed request budget. SQLite
@@ -301,7 +358,7 @@ requests and old browser saves retain their three-scene behavior.
 
 Select the mood **before** starting. Explicit selection always wins over
 need-based inference. Select approximately **5/10/15/20 minutes**, allowing
-at most **3/6/9/12 freeform AI response attempts** respectively. These are
+at most **3/6/9/12 AI response attempts** respectively. These are
 participation/reading estimates, not timers. The opening plus compact 3–5-point
 plan is generated in one call; each submitted response uses one call.
 The last successful response at the cap must return a validated conclusion,
@@ -316,7 +373,7 @@ is typically 100–180 words (validated 30–180, maximum 1800 characters),
 with a strict 1600 output-token limit for opening and live responses.
 Exact JSON keys, bounded unique lists, language/style and the final
 conclusion flag are validated. Personal journeys have **no hidden answer,
-private puzzle message, fixed-choice menu or Shared Story record**.
+private puzzle message or Shared Story record**.
 
 Atomic durable request-ID/fingerprint reservations occur **before AI calls**.
 Repeated IDs reconcile current results without a second call; changed text,
@@ -340,7 +397,20 @@ Server sessions expire after 30 days; local SQLite cleans expired sessions
 on use. Hosted operators should schedule expiry cleanup. Removing browser
 entries does not reset or delete server allowance.
 
-Responses may be typed or dictated with the same browser interaction hook
+Choose **Free choice** (typed or reviewed dictated actions) or **Suggested
+choices** (3-5 action buttons) before creating a journey. Both modes narrate
+meaningful consequences using one AI call per response. Suggestions are generated
+within that same call, with no extra request; final conclusions offer no actions.
+The selected mode is immutable server data. Only the offered actions can be
+submitted in suggested mode, and stale or arbitrary submissions cannot reserve
+new paid attempts. Choice mode and current actions survive library saves and
+resume on both SQLite and Supabase; they are projected from the stored JSON, so
+no additional choice-mode SQL migration is needed. Older personal journeys and
+live shared adventures default to free choice. Existing classic shared mysteries
+keep their prepared linear trail, clearly labelled separately; creators must
+opt into live free/suggested interactions and approve their total budget.
+
+Free responses may be typed or dictated with the same browser interaction hook
 as Shared Story, selected language, editable text and explicit recognition
 errors. No paid speech service is called for dictation. Narration reuses
 the existing stable warm browser speaker, remembered preferences and
@@ -535,7 +605,13 @@ progress schema/RPC before using puzzle assistance.
 - `npm run test:sqlite` - real temporary SQLite storage, durable progress,
   rate limits, deletion, expiry and local configuration guards.
 - `npm run test:sqlite:production` - actual built Next server SQLite loading
-  and progress persistence across a server restart, with external calls blocked.
+  and progress persistence across a server restart, plus a real HTTP photo
+  upload and solved-only reveal, with external calls blocked.
+- `npm run test:media` - final photo/video reveal: declarations rejected
+  before AI, no media metadata in prompts, upload binding (creator code,
+  story, secret, exact type/size, single use), byte signatures, unsolved and
+  other sessions denied, replacement/cancel/removal/delete/expiry cleanup,
+  attempt and rate limits, and the Supabase signed-URL store (mocked).
 - `npm run test:narration` - adaptive styles, voice matching, playback lifecycle and sharing payloads.
 - `npm run test:core` - profile memory CRUD/storage failures and complete personal-story AI response schemas.
 - `npm run test:dictation` - name dictation, readiness, language and recognition error handling.

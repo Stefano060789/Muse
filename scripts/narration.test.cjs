@@ -116,7 +116,7 @@ async function main() {
     assert.deepEqual(sharedStoryPlayerView(brief, generated, { current_scene: 0, solved: false }).scene.choices, scenes[0].choices)
     assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: ['One', 'One', 'Two'] })) }, brief), /distinct/)
     assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: [brief.solution, 'Follow', 'Continue'] })) }, brief), /exposed/)
-    assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: ['Only one'] })) }, brief), /three choices/)
+    assert.throws(() => parseGeneratedStory({ ...content, scenes: scenes.map(scene => ({ ...scene, choices: ['Only one'] })) }, brief), /3 to 5/)
   })
   await check('personal generation and continuation validate/rechoose metadata in the existing AI call', async () => {
     process.env.LLM_PROVIDER = 'GROQ'
@@ -605,7 +605,7 @@ async function main() {
       assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'warm', language: 'de-DE', voice: '' })
     } finally { hook.dispose() }
   })
-  await check('shared success message renders only escaped text, never image markup or gallery media', () => {
+  await check('shared reveal renders the message as escaped text and media only from the authorized media prop', () => {
     const { renderToStaticMarkup } = require('react-dom/server')
     const { createElement } = require('react')
     const Reveal = require(path.join(output, 'components', 'SharedStoryReveal.js')).default
@@ -618,6 +618,19 @@ async function main() {
     assert.ok(!/<(?:img|picture|video|iframe|object|embed|script)\b/i.test(html))
     assert.ok(!/style="[^"]*url\(/i.test(html))
     assert.match(html, /Play the final message/)
+    const photo = renderToStaticMarkup(createElement(Reveal, { message, media: { kind: 'photo', state: 'ready', url: 'blob:https://muse.example/1234' }, narrator, beforeSpeak() {} }))
+    assert.equal((photo.match(/<img\b/gi) || []).length, 1, 'Exactly one image comes from the authorized media prop')
+    assert.match(photo, /<img[^>]+src="blob:https:\/\/muse\.example\/1234"/)
+    assert.ok(!/src="(?!blob:https:\/\/muse\.example\/1234")/.test(photo), 'Message text never becomes a media source')
+    assert.match(photo, /&lt;img/)
+    const video = renderToStaticMarkup(createElement(Reveal, { media: { kind: 'video', state: 'ready', url: 'https://project.supabase.co/storage/v1/object/sign/x?token=t' }, narrator, beforeSpeak() {} }))
+    assert.match(video, /<video[^>]+controls/)
+    assert.match(video, /preload="metadata"/)
+    assert.ok(!/autoplay/i.test(video), 'Video must never autoplay')
+    assert.ok(!/Play the final message/.test(video), 'A media-only reveal has no empty narration button')
+    assert.match(video, /surprise video/)
+    const pending = renderToStaticMarkup(createElement(Reveal, { message: 'Hi', media: { kind: 'photo', state: 'loading' }, narrator, beforeSpeak() {} }))
+    assert.ok(!/<(?:img|video)\b/i.test(pending), 'No media markup before an authorized URL exists')
   })
 
   await check('TTS endpoint requires explicit provider mode and never returns upstream auth details', async () => {

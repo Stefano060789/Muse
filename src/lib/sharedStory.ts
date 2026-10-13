@@ -1,4 +1,6 @@
 import { parseNarrationMetadata, type NarrationMetadata } from './narration'
+import type { SharedMediaKind, SharedMediaMime } from './sharedStoryMedia'
+import { parseStoryChoiceMode, parseSuggestedChoices, type StoryChoiceMode } from './freeformStory'
 
 export const SHARED_STORY_DURATIONS = [5, 10, 15, 20] as const
 
@@ -14,17 +16,14 @@ export type SharedStoryBrief = {
   durationMinutes: number
   assistanceHints?: string[]
   alternativeAnswers?: string[]
-  adventure?: { actionBudget: number }
+  adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode }
 }
 
 export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[] }
 
 export function parseSharedSceneChoices(value: unknown): string[] | undefined {
   if (value === undefined) return undefined
-  if (!Array.isArray(value) || value.length !== 3) throw new SharedStoryError('Scene actions must contain exactly three choices.', 502)
-  const choices = value.map(choice => text(choice, 'Scene action', 160))
-  if (new Set(choices.map(choice => choice.toLowerCase())).size !== choices.length) throw new SharedStoryError('Scene actions must be distinct.', 502)
-  return choices
+  return parseSuggestedChoices(value)
 }
 export type SharedStoryContent = NarrationMetadata & { title: string; description: string; scenes: SharedStoryScene[] }
 export type SharedStoryPlayer = NarrationMetadata & {
@@ -42,6 +41,7 @@ export type SharedStoryPlayer = NarrationMetadata & {
   hintsRemaining: number
   feedback?: string
   message?: string
+  media?: { kind: SharedMediaKind; mime: SharedMediaMime }
   adventure?: import('./sharedAdventure').AdventureView
 }
 
@@ -61,12 +61,12 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown, label: string, max: number, optional = false): string {
   if (typeof value !== 'string' || (!optional && !value.trim()) || value.length > max) {
-    throw new SharedStoryError(`${label} ${optional ? 'must be text' : 'is required'} (maximum ${max} characters).`)
+    throw new SharedStoryError(label + ' ' + (optional ? 'must be text' : 'is required') + ' (maximum ' + max + ' characters).')
   }
   return value.trim()
 }
 
-export function parseSharedStoryBrief(value: unknown): SharedStoryBrief {
+export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessage?: boolean } = {}): SharedStoryBrief {
   const input = record(value)
   if (!SHARED_STORY_DURATIONS.some((duration) => duration === input.durationMinutes)) {
     throw new SharedStoryError('Choose a duration of 5, 10, 15, or 20 minutes.')
@@ -79,21 +79,22 @@ export function parseSharedStoryBrief(value: unknown): SharedStoryBrief {
     recipientHints: text(input.recipientHints, 'Personal hints', 1500, true),
     goal: text(input.goal, 'What the recipient needs to find or solve', 600),
     solution: text(input.solution, 'Secret answer', 200),
-    message: text(input.message, 'Final message', 2000),
+    message: options.allowEmptyMessage && typeof input.message === 'string' && !input.message.trim() ? '' : text(input.message, 'Final message', 2000),
     durationMinutes: Number(input.durationMinutes),
     assistanceHints: privateList(input.assistanceHints, 'Assistance hints', 3, 600),
     alternativeAnswers: privateList(input.alternativeAnswers, 'Approved alternative answers', 5, 200),
     ...(input.adventure === undefined ? {} : { adventure: parseAdventureBudget(input.adventure) })
   }
 
-  function parseAdventureBudget(value: unknown): { actionBudget: number } {
+  function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode } {
     const input = record(value)
-    if (Object.keys(input).some(key => key !== 'actionBudget') || !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000) {
+    if (Object.keys(input).some(key => key !== 'actionBudget' && key !== 'choiceMode') || !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000) {
       throw new SharedStoryError('Choose an explicit adventure AI action budget from 1 to 1000.')
     }
-    return { actionBudget: Number(input.actionBudget) }
+    const choiceMode = parseStoryChoiceMode(input.choiceMode)
+    return { actionBudget: Number(input.actionBudget), choiceMode }
   }
-  if (!normalizeSharedAnswer(brief.solution) || !normalizeSharedAnswer(brief.message)) {
+  if (!normalizeSharedAnswer(brief.solution) || (brief.message && !normalizeSharedAnswer(brief.message))) {
     throw new SharedStoryError('The answer and message must contain letters or numbers.')
   }
   if (brief.alternativeAnswers.some(answer => !normalizeSharedAnswer(answer))) {
@@ -105,7 +106,7 @@ export function parseSharedStoryBrief(value: unknown): SharedStoryBrief {
 function privateList(value: unknown, label: string, count: number, max: number): string[] {
   if (value === undefined) return []
   if (!Array.isArray(value) || value.length > count) {
-    throw new SharedStoryError(`${label} must be a list of at most ${count} entries.`)
+    throw new SharedStoryError(label + ' must be a list of at most ' + count + ' entries.')
   }
   return value.map(entry => text(entry, label, max))
 }
@@ -124,7 +125,7 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
   const description = text(input.description, 'Generated description', 500)
   const count = sceneCountForDuration(brief.durationMinutes)
   if (!Array.isArray(input.scenes) || input.scenes.length !== count) {
-    throw new SharedStoryError(`The AI must return exactly ${count} scenes.`, 502)
+    throw new SharedStoryError('The AI must return exactly ' + count + ' scenes.', 502)
   }
   const scenes = input.scenes.map((value) => {
     const scene = record(value)
@@ -135,15 +136,18 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
       ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) })
     }
   })
+  if (brief.adventure?.choiceMode === 'suggested' && !scenes[0].choices) {
+    throw new SharedStoryError('Suggested-choice stories need 3 to 5 opening actions.', 502)
+  }
   const publicText = normalizeSharedAnswer([title, description, ...scenes.flatMap((scene) => [scene.title, scene.body, scene.clue, ...(scene.choices || [])])].join(' '))
   const solutions = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer)
   const message = normalizeSharedAnswer(brief.message)
-  if (solutions.some(solution => !solution) || !message) throw new SharedStoryError('The answer and message must contain letters or numbers.')
+  if (solutions.some(solution => !solution) || (brief.message && !message)) throw new SharedStoryError('The answer and message must contain letters or numbers.')
   const privateHints = (brief.assistanceHints ?? []).map(normalizeSharedAnswer).filter(Boolean)
-  if ([...solutions, message, ...privateHints].some(secret => ` ${publicText} `.includes(` ${secret} `))) {
+  if ([...solutions, message, ...privateHints].filter(Boolean).some(secret => (' ' + publicText + ' ').includes(' ' + secret + ' '))) {
     throw new SharedStoryError('The generated narration exposed the answer or final message. Try generating again.', 502)
   }
-  const words = scenes.map((scene) => `${scene.body} ${scene.clue}`).join(' ').split(/\s+/).length
+  const words = scenes.map((scene) => scene.body + ' ' + scene.clue).join(' ').split(/\s+/).length
   if (words < brief.durationMinutes * 60 || words > brief.durationMinutes * 110) {
     throw new SharedStoryError('The AI returned a story outside the requested narration length. Try generating again.', 502)
   }
@@ -158,7 +162,8 @@ export function sharedStoryPlayerView(
   brief: SharedStoryBrief,
   content: SharedStoryContent,
   state: { current_scene: number; solved: boolean; revealed_hints?: number },
-  feedback?: string
+  feedback?: string,
+  media?: { kind: SharedMediaKind; mime: SharedMediaMime } | null
 ): SharedStoryPlayer {
   const sceneIndex = Math.max(0, Math.min(state.current_scene, content.scenes.length - 1))
   const hints = brief.assistanceHints ?? []
@@ -178,6 +183,7 @@ export function sharedStoryPlayerView(
     revealedHints: hints.slice(0, revealed),
     hintsRemaining: hints.length - revealed,
     ...(feedback ? { feedback } : {}),
-    ...(state.solved ? { message: brief.message } : {})
+    ...(state.solved && brief.message ? { message: brief.message } : {}),
+    ...(state.solved && media ? { media: { kind: media.kind, mime: media.mime } } : {})
   }
 }

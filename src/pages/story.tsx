@@ -6,6 +6,7 @@ import { loadMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
+import type { StoryChoiceMode } from '../lib/freeformStory'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -23,6 +24,7 @@ export default function StoryPage() {
   const [profileReady, setProfileReady] = useState(false)
   const [responseDraft, setResponseDraft] = useState('')
   const [duration, setDuration] = useState(10)
+  const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
   const [creatorCode, setCreatorCode] = useState('')
   const [dictationLanguage, setDictationLanguage] = useState('en-US')
   const [reconciled, setReconciled] = useState(false)
@@ -135,7 +137,7 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, need, profileKeypoints: profile?.keypoints.slice(-5) || [] })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, need, profileKeypoints: profile?.keypoints.slice(-5) || [] })
       setNeed('')
       setResponseDraft('')
     } catch (error) {
@@ -212,7 +214,7 @@ export default function StoryPage() {
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story</p>
               <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What kind of story do you need today?</h1>
-              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>Choose your mood before starting, then optionally tell Muse what is on your mind. Your chosen mood stays in charge. Explore through your own words, without fixed choices.</p>
+              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>Choose your mood, then how you want to interact. Write your own actions or pick from Muse's suggestions. Either way, the story responds to what you choose.</p>
               {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}>Want it to feel more personal? <Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Tell Muse about yourself first.</Link></p> : null}
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
                 {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => setSelectedMood(mood.key)} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
@@ -222,6 +224,13 @@ export default function StoryPage() {
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
                 </select>
               </label>
+              <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
+                <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => setChoiceMode(event.target.value as StoryChoiceMode)}>
+                  <option value="free">Free choice - write or speak your action</option>
+                  <option value="suggested">Suggested choices - pick from 3 to 5 actions</option>
+                </select>
+              </label>
+              <p>Muse narrates the consequences in either mode. Suggestions come with each scene, with no extra AI request.</p>
               <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>Optionally tell Muse what you need
                 <textarea value={need} onChange={(event) => setNeed(event.target.value)} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
@@ -243,6 +252,13 @@ export default function StoryPage() {
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey ? 'What do you do or say?' : scene?.question}</h3>
+                {story.journey?.choiceMode === 'suggested' ? <>
+                  <p>Choose an action. Muse will narrate its consequences (one response attempt).</p>
+                  <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
+                    {story.journey.choices?.map(choice => <button key={choice} disabled={isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
+                  </div>
+                  {!story.journey.choices?.length ? <p>Reconcile saved progress to load the available actions.</p> : null}
+                </> : <>
                 <label>Editable response
                 <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
@@ -254,6 +270,7 @@ export default function StoryPage() {
                   <button onClick={toggleRecording} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak your answer'}</button>
                 </div>
                 {isRecording ? <p role="status">{interaction.ready ? 'Listening - speak now' : 'Starting microphone…'}</p> : null}
+                </>}
                 {!story.journey ? <>
                 <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction (legacy story):</p>
                 <div style={{ display: 'grid', gap: '0.7rem' }}>{scene?.choices.map((choice) => <button key={choice} disabled={isGenerating || finished} onClick={() => choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', cursor: 'pointer', font: 'inherit' }}>{choice} →</button>)}</div>

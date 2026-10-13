@@ -6,7 +6,7 @@ import { storyRepository, storyStorageMode, type StoryRepository } from './story
 export const storyDatabase = storyRepository
 export { storyStorageError } from './storyRepository'
 
-export async function reserveStoryRequest(db: StoryRepository, req: NextApiRequest, kind: 'generate' | 'guess') {
+export async function reserveStoryRequest(db: StoryRepository, req: NextApiRequest, kind: 'generate' | 'guess' | 'upload') {
   const address = process.env.VERCEL
     ? String(req.headers['x-vercel-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
     : req.socket.remoteAddress || 'local'
@@ -16,6 +16,8 @@ export async function reserveStoryRequest(db: StoryRepository, req: NextApiReque
   if (!await db.reserve(clientHash, kind)) {
     throw new SharedStoryError(kind === 'generate'
       ? 'Story generation limit reached. Please try again later (up to 5 requests per hour per connection).'
-      : 'Too many guesses. Please try again later.', 429)
+      : kind === 'upload'
+        ? 'Photo and video upload limit reached. Your story is saved; try attaching the file again later (up to 10 uploads per hour).'
+        : 'Too many guesses. Please try again later.', 429)
   }
 }
