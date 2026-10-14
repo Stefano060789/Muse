@@ -169,7 +169,7 @@ async function main() {
     let voiceList = availableVoices, cancels = 0
     const calls = [], ambientCalls = []
     class FakeAmbience {
-      async start(kind, volume) { ambientCalls.push(['start', kind, volume]); if (options.ambientFailure) throw new Error('No audio device') }
+      async start(kind, volume) { ambientCalls.push(['start', kind, volume]); if (options.ambientFailure) throw new Error('No audio device'); if (options.ambientStart) await options.ambientStart() }
       async pause() { ambientCalls.push(['pause']) }
       async resume() { ambientCalls.push(['resume']) }
       stop() { ambientCalls.push(['stop']) }
@@ -213,6 +213,32 @@ async function main() {
       assert.equal(hook.render().speaking, false)
       assert.equal(hook.render().loading, false)
     } finally { hook.dispose() }
+  })
+  await check('Safari tap starts full-preview speech synchronously even while ambient startup is pending', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    let resolveAmbient
+    const ambient = new Promise(resolve => { resolveAmbient = resolve })
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, {
+      storage: memoryStorage(), ambientStart: () => ambient
+    })
+    const preview = sharedStoryPreviewText({ title: 'Rain at the window', description: 'A quiet mystery.',
+      scenes: [{ title: 'First', body: 'Rain falls. A letter waits.', clue: 'Look left.' },
+        { title: 'Second', body: 'You find a small key.', clue: 'Try the drawer.' }] })
+    try {
+      const speaking = hook.render().speak(preview)
+      assert.equal(hook.spoken.length, 1, 'speech is dispatched before the tap call stack returns')
+      await speaking
+      let index = 0
+      while (hook.render().busy) {
+        assert.ok(index < 100, 'preview must finish')
+        hook.spoken[index++].onend()
+      }
+      assert.equal(hook.spoken.map(item => item.text).join(' '), narrationChunks(preview).join(' '))
+      resolveAmbient()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.equal(hook.render().ambientKind, 'none', 'late ambient startup cannot revive completed playback')
+      assert.equal(hook.render().busy, false)
+    } finally { resolveAmbient(); hook.dispose() }
   })
   await check('stop, preview replacement, language changes, errors and unmount cancel safely', async () => {
     const hook = mount({ narrationStyle: 'curious', narrationLanguage: 'en-US' })
@@ -410,9 +436,12 @@ async function main() {
       assert.equal(hook.spoken.length, 1)
       hook.render().stop()
       const pending = hook.render().speak('The rain falls.')
+      assert.equal(hook.spoken.length, 2, 'new speech starts synchronously')
+      const stale = hook.spoken.at(-1).onend
       hook.render().stop()
       await pending
-      assert.equal(hook.spoken.length, 1)
+      stale()
+      assert.equal(hook.spoken.length, 2, 'cancelled playback never advances')
       assert.equal(hook.render().busy, false)
     } finally { hook.dispose() }
   })

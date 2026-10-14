@@ -482,6 +482,19 @@ Use `NEXT_PUBLIC_NARRATION_PROVIDER=browser` for testing without narration
 credits or another account. This explicitly bypasses the cloud TTS route.
 Changing this public setting requires rebuilding/restarting the app.
 
+Browser speech starts directly from the Listen tap, without waiting for ambient
+audio initialization, to preserve iPhone Safari's user activation. Background
+audio is optional and never blocks the voice. Playback errors are visible in
+Shared Story even when audio settings are collapsed. Real-device listening
+still requires validation; a desktop/mobile-sized browser is not an iPhone test.
+
+The creator preview offers **Create new story** (blank brief) and **Reuse this
+brief** without waiting for recipients to finish. Both save the current story
+to Story Library first and leave its recipient link/progress unchanged. New
+stories need fresh AI consent and media must be attached separately. If browser
+storage cannot save the current story, the preview stays open with an error so
+the creator can preserve its private management link.
+
 Styles available for selection:
 
 | Style | Experience |

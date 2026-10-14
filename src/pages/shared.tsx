@@ -201,6 +201,35 @@ export default function SharedStoryPage() {
     }
   }
 
+  const startNewStory = (reuseBrief = false) => {
+    if (busy || !creator) return
+    try {
+      saveLibraryCreatorStory(creator)
+    } catch (error) {
+      setError(`${error instanceof Error ? error.message : 'Could not save this story in your library.'} Copy your private management link before leaving this preview.`)
+      return
+    }
+    interaction.stopRecording()
+    narrator.stop()
+    if (!reuseBrief) {
+      setBrief({ ...blankBrief })
+      setAssistanceHintsText('')
+      setAlternativeAnswersText('')
+    }
+    setCreator(null)
+    setOwnerMedia(null)
+    setOwnerPreview(null)
+    setMediaFile(null)
+    setUpload(idleUpload)
+    setAiConsent(false)
+    setError('')
+    setNotice('Your previous story is in Story Library. Its recipient link and progress are unchanged.')
+    objectUrls.current.forEach(url => URL.revokeObjectURL(url))
+    objectUrls.current = []
+    window.history.replaceState(null, '', '/shared#new')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   useEffect(() => () => { objectUrls.current.forEach(url => URL.revokeObjectURL(url)) }, [])
 
   const mediaUrl = (result: { url: string; blob: boolean }) => {
@@ -515,7 +544,7 @@ export default function SharedStoryPage() {
             <Link href="/library" style={{ color: 'inherit' }}>Story Library</Link>
           </nav> : null}
         </header>
-        {error || interaction.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error}</p> : null}
+        {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {creatorLocked && !playToken ? <section style={cardStyle} aria-label="Private creator access">
           <h2>Private creator access</h2>
@@ -644,6 +673,11 @@ export default function SharedStoryPage() {
         ) : <p>Could not open the story. Check the link or ask its creator for a new one.</p> : creator ? (
           <section>
             <p>Private creator preview</p>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button disabled={busy} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
+              <button disabled={busy} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
+            </div>
+            <p>Sent stories stay active. Reopen them from <Link href="/library">Story Library</Link>.</p>
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
@@ -756,9 +790,6 @@ export default function SharedStoryPage() {
               </details>
               <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>
             </article>}
-            <button disabled={busy} onClick={() => { narrator.stop(); setCreator(null); setOwnerMedia(null); setOwnerPreview(null); setMediaFile(null); setUpload(idleUpload); window.history.replaceState(null, '', '/shared#new') }} style={{ ...buttonStyle, marginBottom: '1rem' }}>Reuse brief for a new story</button>
-            <p>Creates a separate story. Keep this management link; media must be reattached.</p>
-            <a href="/shared#new" style={{ color: 'inherit' }}>Create another story</a>
             <details style={{ marginTop: '1.5rem' }}>
               <summary>Delete this story</summary>
               <p>This permanently removes the story and disables both links.</p>

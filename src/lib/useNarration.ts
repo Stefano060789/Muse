@@ -197,17 +197,16 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       if (sound !== 'none' && immersive.ambientVolume > 0 && immersive.voiceVolume > 0) {
         const engine = new StoryAmbience()
         ambience.current = engine
-        try {
-          // Lower the sound bed under narration, with no independent idle playback.
-          await engine.start(sound, immersive.ambientVolume * 0.55 * Math.min(1, immersive.voiceVolume / 0.9))
-          if (!valid()) { engine.stop(); return }
+        // Start speech in the tap's call stack: awaiting Web Audio can lose Safari's user activation.
+        void engine.start(sound, immersive.ambientVolume * 0.55 * Math.min(1, immersive.voiceVolume / 0.9)).then(() => {
+          if (!valid() || ambience.current !== engine) { engine.stop(); return }
           setAmbientKind(sound)
-        } catch {
+        }).catch(() => {
           engine.stop()
-          if (!valid()) return
+          if (!valid() || ambience.current !== engine) return
           ambience.current = null
           setAmbientNotice('Ambient audio could not start in this browser. Narration continues without background sound.')
-        }
+        })
       }
       if (!valid()) return
       const chunks = narrationChunks(text)
