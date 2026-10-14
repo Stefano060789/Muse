@@ -70,11 +70,19 @@ async function main() {
       status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this }
     }
     const code = Object.hasOwn(options, 'code') ? options.code : process.env.MUSE_CREATOR_ACCESS_CODE
-    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': code, ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body }, res)
+    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': code, ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body: { consentVersion: '2026-10-14', ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status: res.statusCode, body: res.body }
   }
   const savedCreations = []
+  await check('missing or stale processing consent blocks creation before any AI attempt', async () => {
+    const before = calls
+    for (const consentVersion of [undefined, null, 'old-version']) {
+      assert.equal((await api({ ...newCreation(), consentVersion })).status, 400)
+    }
+    assert.equal(calls, before)
+    assert.ok(!fs.existsSync(filename))
+  })
   await check('every personal operation is gated, origin-protected and no-store before storage/provider access', async () => {
     const before = calls
     for (const action of ['create', 'respond', 'resume']) {
@@ -366,7 +374,7 @@ async function main() {
     `
     function child(body) {
       return new Promise((resolve, reject) => {
-        const processChild = spawn(process.execPath, ['-e', script, JSON.stringify(body)], { cwd: root, env: process.env })
+        const processChild = spawn(process.execPath, ['-e', script, JSON.stringify({ consentVersion: '2026-10-14', ...body })], { cwd: root, env: process.env })
         let text = '', errors = ''
         processChild.stdout.on('data', value => { text += value })
         processChild.stderr.on('data', value => { errors += value })
@@ -414,6 +422,20 @@ async function main() {
     assert.ok(!/localStorage\.(?:setItem|getItem)\([^)]*creatorCode/.test(ui))
     assert.ok(!ui.includes('setInterval') && !ui.includes('setTimeout'))
     assert.ok(ui.includes('!story.journey ? <>'))
+  })
+  await check('personal deletion requires creator access and capability, cascades requests without resetting budgets or calling AI', async () => {
+    const created = await api(newCreation())
+    assert.equal(created.status, 200)
+    const body = { mode: 'journey', action: 'delete', id: created.body.story.id, capability: created.body.story.journey.capability }
+    const before = calls, used = dayUsed()
+    assert.equal((await api(body, { code: 'wrong-code' })).status, 401)
+    assert.equal((await api({ ...body, capability: 'a'.repeat(64) })).status, 404)
+    assert.equal((await api(body)).status, 200)
+    assert.equal((await api({ ...body, action: 'resume' })).status, 404)
+    assert.equal((await api(body)).status, 404)
+    assert.equal(calls, before)
+    assert.equal(dayUsed(), used)
+    assert.equal(inspect(db => db.prepare('SELECT count(*) total FROM muse_personal_journey_requests WHERE journey_id = ?').get(body.id).total), 0)
   })
   await check('expired personal sessions are unavailable without provider calls or resetting old capabilities', async () => {
     const { creation } = savedCreations[0], before = calls

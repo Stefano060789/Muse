@@ -11,6 +11,7 @@ let passed = 0
 async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
 
 async function main() {
+  process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
     'src/lib/narration.ts', 'src/lib/useNarration.ts', 'src/lib/sharedStory.ts', 'src/lib/sharedStorySharing.ts',
@@ -265,6 +266,7 @@ async function main() {
     global.fetch = async () => { calls++; return new Response('private provider error', { status: 401 }) }
     const hook = mount({ narrationStyle: 'playful', narrationLanguage: 'en-US' })
     try {
+      hook.render().setCloudConsent(true)
       await hook.render().speak('Preview.')
       assert.equal(calls, 1)
       assert.match(hook.render().notice, /falling back/)
@@ -276,6 +278,23 @@ async function main() {
       await pending
       assert.equal(hook.spoken.length, 1)
       assert.equal(hook.render().loading, false)
+    } finally { hook.dispose() }
+  })
+  await check('cloud narration consent starts unchecked and never sends text until explicitly accepted', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
+    let calls = 0
+    global.fetch = async () => { calls++; return new Response('unavailable', { status: 503 }) }
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' })
+    try {
+      assert.equal(hook.render().cloudConsent, false)
+      await hook.render().speak('Local voice only.')
+      assert.equal(calls, 0)
+      assert.match(hook.render().notice, /needs your consent/)
+      hook.render().setCloudConsent(true)
+      await hook.render().speak('Consented narration.')
+      assert.equal(calls, 1)
+      hook.render().setCloudConsent(false)
+      assert.equal(hook.render().busy, false)
     } finally { hook.dispose() }
   })
   const { NARRATION_PREFERENCES_KEY, parseNarrationPreferences, serializeNarrationPreferences } = narration
@@ -612,6 +631,7 @@ async function main() {
     const clock = fakeClock()
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { storage: memoryStorage() })
     try {
+      hook.render().setCloudConsent(true)
       await hook.render().speak('Provider text.')
       assert.equal(hook.render().speaking, true)
       assert.equal(hook.render().canPause, true)
@@ -739,7 +759,7 @@ async function main() {
     const run = async body => {
       let status = 200, result
       const res = { setHeader() {}, status(value) { status = value; return this }, json(value) { result = value; return this }, send(value) { result = value; return this } }
-      await handler({ method: 'POST', body }, res)
+      await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: 'tts-fixture' }, body: { consentVersion: '2026-10-14', ...body } }, res)
       return { status, result }
     }
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
@@ -748,6 +768,7 @@ async function main() {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
     process.env.ELEVEN_API_KEY = 'fake-key'
     process.env.ELEVEN_VOICE_ID = 'fake-voice'
+    assert.equal((await run({ text: 'Hello', consentVersion: undefined })).status, 400)
     let payload
     global.fetch = async (_url, options) => { payload = JSON.parse(options.body); return new Response('private token detail', { status: 401 }) }
     const response = await run({ text: 'Hello', narrationStyle: 'playful', narrationLanguage: 'it-IT' })

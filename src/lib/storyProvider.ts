@@ -1,4 +1,5 @@
 import { SharedStoryError } from './sharedStory'
+import { reserveAiAttempt, reportOperation } from './operations'
 
 export function storyProviderConfig() {
   const provider = (process.env.LLM_PROVIDER || 'ANTHROPIC').trim().toUpperCase()
@@ -20,6 +21,10 @@ export function storyProviderConfig() {
 
 export async function generateStoryJson(system: string, input: unknown, maxTokens: number): Promise<unknown> {
   const { provider, key, endpoint, model } = storyProviderConfig()
+  if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 9000 || system.length > 40000 || JSON.stringify(input).length > 100000) {
+    throw new SharedStoryError('AI request exceeds the permitted size.', 400)
+  }
+  await reserveAiAttempt()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 45000)
   try {
@@ -67,6 +72,7 @@ export async function generateStoryJson(system: string, input: unknown, maxToken
       throw new SharedStoryError('The AI provider returned invalid story JSON. Please try again.', 502)
     }
   } catch (error) {
+    await reportOperation('provider-failure')
     if (error instanceof SharedStoryError) throw error
     throw new SharedStoryError('The AI provider is unavailable or timed out. Please try again later.', 503)
   } finally {

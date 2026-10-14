@@ -1,5 +1,32 @@
 # Muse - TODO
 
+## January 2027 public-beta target
+
+Target a limited, free public web launch by **31 January 2027**. The deadline
+does not require subscriptions, advertising, cycle-sensitive features, or a
+native app. Confirm current hosted configuration and actual product scope:
+this TODO tracks the active Myself/My Story/Shared Story implementation, while
+older planning and marketing documents describe a different product direction.
+
+- [ ] By 23 October 2026, freeze the minimum public scope and choose/clear a
+      public product name; "Muse" remains an internal codename with documented
+      naming conflicts.
+- [ ] Before public invitations, verify production Supabase/Vercel settings,
+      migrations, access controls, backups, error reporting, API/provider
+      spending limits and alerts; never expose service-role credentials.
+- [ ] Complete privacy, terms, AI-provider/data-processing, capability-link,
+      retention/deletion, and support-contact reviews for the features actually
+      included. Do not release cycle-sensitive features or advertising without
+      their separate privacy/legal approval.
+- [ ] Run closed user tests by 15 December 2026, including story quality,
+      clue-solvability, accessibility/mobile usability, and feedback on
+      approximate session durations; fix launch-blocking defects.
+- [ ] Make a go/no-go decision by 15 January 2027 and release the free public
+      web beta by 31 January only if privacy, security, reliability, and
+      provider-cost gates pass.
+- [ ] Validate engagement and operating cost after the free beta before
+      choosing paid features, price, customer countries, or a billing provider.
+
 ## Current product direction
 
 Exactly three areas: **Myself**, **My Story**, **Shared Story**.
@@ -51,6 +78,46 @@ current MVP.
 
 ## Before public launch
 
+### Production safety rollout and deferred backups (14 October 2026)
+
+- [x] Implement and locally verify the 100 paid AI attempts/day cap, warning at
+      80, abuse throttles, maintenance controls and private operations dashboard
+- [x] Implement fixed-code redacted error reporting, explicit AI/cloud-voice
+      consent, draft privacy/terms/support pages and personal-story deletion
+- [x] Implement and test encrypted Muse-only database/private-media backup and
+      archive-verification tools; these are not configured production backups
+- [x] Apply the operations database migration (operator reported complete)
+- [ ] Run the operations migration rollback smoke and verify hosted grants,
+      counters and alerts without paid provider calls
+- [ ] Commit/push the safety release, deploy it and verify hosted controls,
+      consent/deletion flows and private operations access
+- [ ] Configure real operator/support details and complete legal/privacy,
+      consent, retention/deletion and recovery reviews before public invitations
+- [ ] Decide how operators receive proactive failure/spending alerts; current
+      alerts are server logs and the private dashboard, not email notifications
+
+Backups are deferred by request. A dedicated private folder on this Windows
+computer was chosen for initial setup; no backup job or destination is configured.
+See [BACKUPS.md](BACKUPS.md) for prerequisites and recovery constraints.
+
+- [ ] Install compatible PostgreSQL command-line tools (`psql`, `pg_dump`,
+      `pg_restore`) and make them available to the backup execution account
+- [ ] Configure a dedicated private backup directory outside the project,
+      protected database/media credentials and an encryption key with a
+      separately secured recovery copy; never commit or paste secrets into chat
+- [ ] Enforce deployed maintenance mode, drain/pause all relevant writers and
+      make the first full database + ready-private-media backup
+- [ ] Verify the encrypted archive and media integrity; archive verification
+      alone does not prove a successful restore
+- [ ] Establish a reviewed private recovery procedure and rehearse restoration
+      into an isolated database/private media store, with no paid AI calls;
+      verify access controls and reconcile current deletions/expiry before access
+- [ ] Schedule daily nonoverlapping backups and verification with Windows Task
+      Scheduler, seven-day initial retention, failure/missed-run alerts and
+      capacity/last-success monitoring; the computer must be on
+- [ ] Keep an approved encrypted off-device copy and test periodic recovery;
+      same-computer backups do not protect against computer/disk loss
+
 - [x] Select explicit browser narration mode locally (no cloud narration calls)
 - [x] Automated narration metadata/voice selection regression checks and production build/restart smoke
 - [x] Browser verification: six style overrides, language-matched installed voices, preview/stop and no cloud TTS requests
@@ -59,7 +126,8 @@ current MVP.
 - [ ] Optional later: repair ElevenLabs key (catalog check returned HTTP 401) before using cloud narration
 
 - [ ] Add scheduled expired-story/session cleanup (current cleanup is request-triggered)
-- [ ] Add stronger abuse protection and provider spending alerts
+- [x] Add stronger abuse protection and provider spending alerts locally
+      (production rollout and proactive delivery tracked above)
 - [ ] Review capability-link privacy, speech-provider processing and consent
 - [ ] Add identity/invitations only if user validation demonstrates the need
 - [ ] Decide whether a completed private archive is useful; do not assume a daily couple ritual

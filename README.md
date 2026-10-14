@@ -658,6 +658,58 @@ progress schema/RPC before using puzzle assistance.
 
 ## Hosted configuration checklist
 
+### Operational baseline
+
+Apply `supabase/operations.sql` after the existing journey/media migrations
+**before deploying this release**. Missing operational storage fails closed:
+no provider call is made without a durable reservation.
+
+- All paid story requests and enabled ElevenLabs requests share
+  `MUSE_AI_DAILY_ATTEMPT_CAP` (default 100, allowed 1-100) across instances.
+  Failed calls count. The 80% warning and exhaustion events appear in server
+  logs and `/operations`, protected by the creator access code.
+  This caps attempts, **not dollars**. Set provider-account billing/spending
+  controls separately; model pricing and text lengths still affect cost.
+- Requests are bounded to 120/minute per connection; failed creator access to
+  20/10 minutes; browser error reports to 5/minute. Limits are atomic in
+  Supabase/SQLite, with `Retry-After`. This is not a replacement for network
+  DDoS protection or platform firewall settings.
+- Error reporting stores only fixed event codes and timestamps, deduplicated
+  per minute and retained for seven days. No story text, URLs, capabilities,
+  IP addresses, stacks or exception messages are reported. Rate limits store
+  address hashes (keyed in hosted mode) until their window expires. Alerts are operator-pulled;
+  no email, webhook or third-party telemetry destination is configured.
+- `/privacy`, `/terms` and `/support` describe current data handling and
+  deletion. Set `NEXT_PUBLIC_MUSE_OPERATOR_NAME` and
+  `NEXT_PUBLIC_MUSE_SUPPORT_EMAIL`, rebuild, and review the draft terms/privacy
+  for your actual jurisdiction before public invitations.
+  AI generation and live actions require an unchecked processing-consent
+  checkbox, enforced by a versioned field on the server before any paid
+  reservation. Consent is not stored. Reading, hints, guessing and deletion do
+  not require AI consent. Enabled cloud narration has a separate, session-only
+  opt-in to send spoken text to ElevenLabs and consume a paid attempt.
+- My Story deletion removes the capability-bound server journey and dependent
+  requests, without resetting aggregate spending/abuse allowances. Shared Story
+  management deletion continues to invalidate links and queue media cleanup.
+  Existing browser copies on other devices and AI-provider records are not
+  remotely erased. Expired data is inaccessible, but physical cleanup is still
+  request-triggered; no scheduled deletion guarantee is claimed.
+- Follow [the encrypted backup procedure](docs/BACKUPS.md). Tooling is not proof
+  that production backups are scheduled or recoverable. Configure a private
+  destination, encryption key and retention, and complete a restore rehearsal.
+  `MUSE_BACKUP_LAST_VERIFIED_AT` is explicitly an operator-attested timestamp,
+  not an independently verified guarantee. Public-beta readiness remains blocked.
+  `MUSE_MAINTENANCE_MODE=true` pauses story APIs without clearing browser drafts.
+  Drain active requests and any outstanding signed uploads before backup; merely
+  setting a flag does not stop requests already in flight or issued storage URLs.
+
+Validate controls with `npm run test:operations`.
+Run `npm run test:privacy` and `npm run test:backup` for consent/contact and
+encrypted database/private-media backup fixtures; they do not access production.
+After applying the migration, run `supabase/operations-smoke.sql` as the database
+administrator. Its fixture changes roll back; automated local tests do not
+claim that the hosted migration has been applied or tested.
+
 - **GitHub:** connect the repository and enable the CI workflow on `main`.
 - **Vercel:** import the GitHub repository, configure the same environment
   variables for Preview and Production, and deploy from `main`.

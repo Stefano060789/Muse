@@ -15,4 +15,11 @@ jobs:
         with:
           node-version: '24'
       - run: npm install
+      - run: npm run test:operations
+      - run: npm run test:privacy
+      - run: npm run test:backup
+      - run: npm run test:personal-journey
+      - run: npm run test:shared
+      - run: npm run test:narration
       - run: npm run build
+      - run: npm run test:sqlite:production

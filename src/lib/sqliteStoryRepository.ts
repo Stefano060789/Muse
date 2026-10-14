@@ -129,6 +129,10 @@ export class SqliteStoryRepository implements StoryRepository {
     this.transaction(db => { db.prepare('DELETE FROM shared_stories WHERE id = ?').run(id) })
   }
 
+  async deletePersonalJourney(id: string, capabilityHash: string) {
+    return this.transaction(db => Number(db.prepare('DELETE FROM muse_personal_journeys WHERE id=? AND capability_hash=?').run(id, capabilityHash).changes) > 0)
+  }
+
   async rotate(id: string, playHash: string) {
     this.transaction(db => { db.prepare('UPDATE shared_stories SET play_hash = ? WHERE id = ?').run(playHash, id) })
   }

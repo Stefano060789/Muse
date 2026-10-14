@@ -1,6 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { legacyNarrationStyle, parseNarrationMetadata } from '../../lib/narration'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { apiSafety, reserveAiAttempt, reportOperation } from '../../lib/operations'
+import { SharedStoryError } from '../../lib/sharedStory'
+import { requireProviderConsent } from '../../lib/providerConsent'
+
+export const config = { api: { bodyParser: { sizeLimit: '64kb' } } }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store')
@@ -12,7 +17,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER !== 'elevenlabs') {
     return res.status(503).json({ error: 'Provider narration is disabled. Use browser narration.' })
   }
+  if (!await apiSafety(req, res)) return
   if (!requireCreatorAccess(req, res)) return
+  try { requireProviderConsent(req.body) } catch {
+    return res.status(400).json({ error: 'Cloud narration requires consent to send text to ElevenLabs and use a paid attempt.' })
+  }
   const apiKey = process.env.ELEVEN_API_KEY
   const voiceId = process.env.ELEVEN_VOICE_ID
   const text = String(req.body?.text || '').trim()
@@ -34,6 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!text || text.length > 12000) {
     return res.status(400).json({ error: 'Text is required (maximum 12000 characters)' })
+  }
+  try { await reserveAiAttempt() } catch (error) {
+    return res.status(error instanceof SharedStoryError ? error.status : 503).json({ error: 'Paid narration allowance is unavailable or exhausted. Use browser narration.' })
   }
 
   let response: Response
@@ -61,12 +73,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       signal: controller.signal
     })
   } catch {
+    await reportOperation('provider-failure')
     return res.status(503).json({ error: 'Text-to-speech provider is unavailable' })
   } finally {
     clearTimeout(timeout)
   }
 
   if (!response.ok) {
+    await reportOperation('provider-failure')
     return res.status(503).json({ error: 'Text-to-speech provider is unavailable' })
   }
 

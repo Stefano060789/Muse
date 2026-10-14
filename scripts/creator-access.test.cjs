@@ -43,6 +43,7 @@ try {
     exports,
     require(name) {
       if (name.endsWith('/creatorAccess')) return { requireCreatorAccess }
+      if (name.endsWith('/operations')) return { apiSafety: async () => true }
       return new Proxy({}, { get() { throw new Error('Unauthorized request reached generation dependencies') } })
     }
   })

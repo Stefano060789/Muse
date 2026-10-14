@@ -66,7 +66,7 @@ async function main() {
     let result
     const headers = {}
     const res = { setHeader: (key, value) => { headers[key] = value }, status: value => { status = value; return res }, json: value => { result = value; return res } }
-    await selected({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: address }, body }, res)
+    await selected({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: address }, body: { consentVersion: '2026-10-14', ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status, body: result }
   }

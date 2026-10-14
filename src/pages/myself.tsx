@@ -157,7 +157,8 @@ export default function MyselfPage() {
           </header>
           <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>Myself</p>
           <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What matters to you?</h1>
-          <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Include your latest five in My Story only if you choose.</p>
+          <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Saving does not send them to AI; include your latest five in My Story only if you choose. Browser storage is readable text, so keep this browser private.</p>
+          <p style={{ maxWidth: 620, lineHeight: 1.7 }}>Speaking uses speech recognition from your browser or device and may be processed by an online speech service. Review the text before using it.</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>
             <label style={{ display: 'block', fontWeight: 700 }}>What should Muse remember?
               <textarea value={about} onChange={(event) => setAbout(event.target.value)} rows={8} placeholder="People, places, feelings, things you love…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />

@@ -3,8 +3,13 @@ import { createStoryArc, type StoryArc } from '../../lib/story'
 import { readMuseProfile } from '../../lib/profileStorage'
 import { readStoryState, writeStoryState } from '../../lib/storyStorage'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { apiSafety } from '../../lib/operations'
+
+export const config = { api: { bodyParser: { sizeLimit: '20kb' } } }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Cache-Control', 'no-store')
+  if (!await apiSafety(req, res)) return
   if (!requireCreatorAccess(req, res)) return
   if (req.method === 'GET') {
     const story = await readStoryState()

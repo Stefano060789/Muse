@@ -13,6 +13,8 @@ import {
   type SharedMediaRecord
 } from '../../lib/sharedStoryMedia'
 import { sharedMediaStore, type SharedMediaStore } from '../../lib/sharedMediaStore'
+import { apiSafety, reportOperation } from '../../lib/operations'
+import { requireProviderConsent } from '../../lib/providerConsent'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -51,6 +53,7 @@ async function purgeMedia(db: StoryRepository, store?: SharedMediaStore, strict 
   } catch (error) {
     if (strict) throw error
     console.error('Shared media cleanup deferred', error instanceof Error ? error.name : 'Unknown error')
+    await reportOperation('storage-failure')
   }
 }
 
@@ -79,6 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  if (!await apiSafety(req, res, true)) return
   const origin = req.headers.origin
   if (origin) {
     try {
@@ -97,6 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new SharedStoryError('Unsupported story action.')
     }
     if (!PLAYER_ACTIONS.includes(String(action)) && !requireCreatorAccess(req, res)) return
+    if (action === 'create' || action === 'adventure') requireProviderConsent(body)
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
@@ -170,6 +175,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const upload = await store.createUpload(record, uploadSecret)
         return res.status(201).json({ uploadId, upload, uploadExpiresAt: record.upload_expires_at })
       } catch (error) {
+        await reportOperation('request-failure')
         await db.mediaDiscard(id, uploadId).catch(() => undefined)
         throw error
       }
@@ -263,6 +269,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const turn = await generateAdventureTurn(story, reserved.view, submission.text)
             player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', turn })).view, story)
           } catch (error) {
+            if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('request-failure')
             try { player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', failed: true })).view, story) } catch { /* Reservation stays charged, and expires without retry. */ }
             return res.status(error instanceof SharedStoryError ? error.status : 502).json({
               error: `${error instanceof SharedStoryError ? error.message : 'The adventure action failed.'} The reserved attempt remains charged. Reopen to refresh before a new action.`, player, sessionToken

@@ -28,6 +28,7 @@ export interface StoryRepository {
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   personalJourney(request: JourneyOperation): Promise<JourneyResult>
+  deletePersonalJourney(id: string, capabilityHash: string): Promise<boolean>
   /** Registers a pending upload; false when the story's attempt allowance is used up. */
   mediaBegin(record: SharedMediaRecord, maxAttempts: number): Promise<boolean>
   mediaGet(id: string): Promise<SharedMediaRecord | null>
@@ -75,6 +76,12 @@ export function storyRepository(): StoryRepository {
   })()
   const media = () => db.from('shared_story_media')
   return {
+    async deletePersonalJourney(id, capabilityHash) {
+      const { data, error } = await db.rpc('muse_delete_personal_journey', { p_id: id, p_capability_hash: capabilityHash })
+      if (error) throw storyStorageError(error)
+      if (typeof data !== 'boolean') throw storyStorageError()
+      return data
+    },
     async mediaBegin(record, maxAttempts) {
       const { data, error } = await db.rpc('muse_begin_shared_media', { media: record, max_attempts: maxAttempts })
       if (error) {

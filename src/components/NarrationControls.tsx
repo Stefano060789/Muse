@@ -42,6 +42,7 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
   return <aside aria-label="Narration settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
     <p style={{ marginTop: 0 }}><strong>Narration: {narrator.style}</strong> · {narrator.source}</p>
     <p>{narrator.provider === 'browser' ? 'Free browser narration.' : 'ElevenLabs voice; browser voice is the fallback.'}</p>
+    {narrator.provider !== 'browser' ? <label><input type="checkbox" checked={narrator.cloudConsent} onChange={event=>narrator.setCloudConsent(event.target.checked)} /> Send spoken text to ElevenLabs and use a paid attempt. <a href="/privacy">Privacy</a></label> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>Voice style <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
         <option value="auto">Follow this story (recommended)</option>

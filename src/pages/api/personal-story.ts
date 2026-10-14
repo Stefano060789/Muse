@@ -5,6 +5,8 @@ import { storyProviderConfig } from '../../lib/storyProvider'
 import { storyDatabase, reserveStoryRequest } from '../../lib/storyRequestLimits'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
 import { adventureGlobalCap } from '../../lib/sharedAdventure'
+import { apiSafety, reportOperation } from '../../lib/operations'
+import { requireProviderConsent } from '../../lib/providerConsent'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
   parseJourneyAction, parseJourneyInput, publicJourney, type JourneyOperation
@@ -18,6 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  if (!await apiSafety(req, res)) return
   if (!requireCreatorAccess(req, res)) return
   if (req.headers.origin) {
     try {
@@ -29,11 +32,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
   try {
+    if (!(req.body?.mode === 'journey' && ['resume', 'delete'].includes(req.body?.action))) requireProviderConsent(req.body)
     if (req.body?.mode === 'journey') {
       const body = req.body as Record<string, unknown>
       const capability = journeyCapability(body.capability)
       const id = journeyIdentifier(body.id)
       const db = storyDatabase()
+      if (body.action === 'delete') {
+        if (!await db.deletePersonalJourney(id, journeyHash(capability))) {
+          throw new SharedStoryError('Journey: session unavailable', 404)
+        }
+        return res.status(200).json({ deleted: true })
+      }
       const common = { id, capabilityHash: journeyHash(capability), cap: adventureGlobalCap() }
       if (body.action === 'resume') {
         return res.status(200).json(publicJourney(await db.personalJourney({ ...common, operation: 'view' }), capability))
@@ -61,6 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(publicJourney(finished, capability))
       } catch (error) {
         console.error('Personal journey attempt failed', error instanceof Error ? error.name : 'Unknown error')
+        await reportOperation('request-failure')
         try {
           await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, failed: true })
         } catch (completionError) {
@@ -82,6 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const story = await generatePersonalStory(input)
     return res.status(200).json(story)
   } catch (error) {
+    if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('request-failure')
     if (error instanceof SharedStoryError) return res.status(error.status).json({ error: error.message })
     console.error('Personal story request failed', error instanceof Error ? error.name : 'Unknown error')
     return res.status(500).json({ error: 'The story request failed. Please try again later.' })

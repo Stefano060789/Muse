@@ -2,11 +2,14 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
+import { removeLibraryEntry } from '../lib/storyLibrary'
 import { loadMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
+import ExplicitConsent from '../components/ExplicitConsent'
+import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -33,6 +36,7 @@ export default function StoryPage() {
   const [storyNotice, setStoryNotice] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(false)
+  const [aiConsent, setAiConsent] = useState(false)
   const requestLock = useRef(false)
   const narrator = useNarration(story || {}, story?.mood || selectedMood, {
     progress: story?.journey ? story.journey.revision / story.journey.maxTurns
@@ -129,6 +133,12 @@ export default function StoryPage() {
 
   const begin = async () => {
     if (requestLock.current || preparation) return
+    if (!hasExplicitConsent(aiConsent)) {
+      setStoryError('Review the AI disclosure and check the consent box before creating your story.')
+      return
+    }
+    const consentVersion = MUSE_AI_CONSENT_VERSION
+    setAiConsent(false)
     requestLock.current = true
     setIsGenerating(true)
     setStoryError('')
@@ -142,7 +152,7 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, need, profileKeypoints: profile?.keypoints.slice(-5) || [] })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
       setNeed('')
       setResponseDraft('')
     } catch (error) {
@@ -157,6 +167,13 @@ export default function StoryPage() {
 
   const choose = async (choice: string) => {
     if (!story || requestLock.current || finished || (story.journey && (!reconciled || story.journey.pending))) return
+    const sendsToAi = Boolean(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1))
+    if (sendsToAi && !hasExplicitConsent(aiConsent)) {
+      setStoryError('Review the AI disclosure and check the consent box before sending your response.')
+      return
+    }
+    const consentVersion = sendsToAi ? MUSE_AI_CONSENT_VERSION : undefined
+    if (sendsToAi) setAiConsent(false)
     requestLock.current = true
     setStoryError('')
     setIsGenerating(true)
@@ -165,12 +182,12 @@ export default function StoryPage() {
     try {
       if (story.journey) {
         setReconciled(false)
-        await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice })
+        await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice, consentVersion })
         setResponseDraft('')
         return
       }
       const nextStory = story.generation === 'ai' && story.currentStep < story.scenes.length - 1
-        ? await requestStory({ action: 'continue', story, answer: choice })
+        ? await requestStory({ action: 'continue', story, answer: choice, consentVersion })
         : answerPersonalStory(story, choice)
       persistStory(nextStory)
       setResponseDraft('')
@@ -186,8 +203,50 @@ export default function StoryPage() {
     if (responseDraft.trim()) choose(responseDraft)
   }
 
+  const deleteSavedJourney = async () => {
+    if (!story?.journey || requestLock.current) return
+    const confirmed = window.confirm(
+      'Permanently delete this personal journey from the server? This cannot be undone. If deletion succeeds, this journey will also be removed from this browser’s story library and compatibility copy. Other saved stories and your profile memories will not be changed.'
+    )
+    if (!confirmed) return
+
+    requestLock.current = true
+    setIsGenerating(true)
+    setStoryError('')
+    setStoryNotice('')
+    stopSpeaking()
+    stopRecording()
+    let serverDeleted = false
+    try {
+      const result = await requestJourney({
+        action: 'delete',
+        id: story.id,
+        capability: story.journey.capability
+      })
+      if (result.deleted !== true) throw new Error('The server did not confirm deletion. Your saved story was kept.')
+      serverDeleted = true
+      if (preparation?.id === story.id) {
+        window.localStorage.removeItem(PREPARATION_KEY)
+        setPreparation(null)
+      }
+      removeLibraryEntry('personal', story.id)
+      setStory(null)
+      setNeed('')
+      setResponseDraft('')
+      setReconciled(false)
+      setStoryNotice('The personal journey was deleted from the server and removed from this browser.')
+    } catch (error) {
+      setStoryError(serverDeleted
+        ? `The server deleted this journey, but this browser could not remove its saved copy. Your story text remains visible here. ${error instanceof Error ? error.message : 'Try removing the browser entry from Story Library.'}`
+        : error instanceof Error ? error.message : 'The journey could not be deleted. Your saved story was kept.')
+    } finally {
+      requestLock.current = false
+      setIsGenerating(false)
+    }
+  }
+
   const toggleRecording = () => {
-    interaction.dictate('response', value => setResponseDraft(value.slice(0, story?.journey ? 800 : 600)))
+    interaction.dictate('response', value => { setResponseDraft(value.slice(0, story?.journey ? 800 : 600)); setAiConsent(false) })
   }
 
   return (
@@ -224,24 +283,27 @@ export default function StoryPage() {
               <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>Choose your mood.</h1>
               {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}><Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Add personal touches in Myself</Link> (optional).</p> : null}
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
-                {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => setSelectedMood(mood.key)} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
+                {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
               <label style={{ display: 'block', marginTop: '1rem' }}>Approximate duration
-                <select aria-label="Approximate duration" value={duration} disabled={isGenerating || Boolean(preparation)} onChange={event => setDuration(Number(event.target.value))}>
+                <select aria-label="Approximate duration" value={duration} disabled={isGenerating || Boolean(preparation)} onChange={event => { setDuration(Number(event.target.value)); setAiConsent(false) }}>
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
                 </select>
               </label>
               <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
-                <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => setChoiceMode(event.target.value as StoryChoiceMode)}>
+                <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => { setChoiceMode(event.target.value as StoryChoiceMode); setAiConsent(false) }}>
                   <option value="free">Write or speak freely</option>
                   <option value="suggested">Choose from 3–5 actions</option>
                 </select>
               </label>
               <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>What do you need? (optional)
-                <textarea value={need} onChange={(event) => setNeed(event.target.value)} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
+                <textarea value={need} onChange={(event) => { setNeed(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
-              {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => setUseProfile(event.target.checked)} /> Send my latest five memories to AI</label> : null}
+              {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Send my latest five memories to AI</label> : null}
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
+              <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+                I understand that my need and story settings will be sent to Muse&apos;s configured AI provider to generate this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days.
+              </ExplicitConsent>
               <details style={{ marginTop: '1rem' }}>
                 <summary>Privacy and limits</summary>
                 <p>Your need and selected memories go to the configured AI provider. Duration is approximate, not a timer. The last successful response concludes the story; failed final attempts cannot be retried or refunded.</p>
@@ -263,6 +325,11 @@ export default function StoryPage() {
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey ? 'What do you do or say?' : scene?.question}</h3>
+                {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) ? (
+                  <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+                    I understand that this new response is sent to Muse&apos;s configured AI provider to generate the next part of my story, which is kept on Muse&apos;s server for up to 30 days.
+                  </ExplicitConsent>
+                ) : null}
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>Each choice uses one AI attempt.</p>
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
@@ -271,7 +338,7 @@ export default function StoryPage() {
                   {!story.journey.choices?.length ? <p>Sync progress to load actions.</p> : null}
                 </> : <>
                 <label>Editable response
-                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => { setResponseDraft(event.target.value); setAiConsent(false) }} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
                 <label>Dictation language <select value={dictationLanguage} disabled={isGenerating || isRecording} onChange={event => setDictationLanguage(event.target.value)}>
                   <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option><option value="es-ES">Español</option>
@@ -289,7 +356,11 @@ export default function StoryPage() {
                 </> : null}
               </article>
               {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'Attempt limit reached, including failures. Your last scene is saved; no extra AI call is made.' : 'Your story is complete.'} You can still listen or reopen it.</div> : null}
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}><button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button><Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link></div>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
+                <button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button>
+                <Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link>
+                {story.journey ? <button type="button" disabled={isGenerating} onClick={() => void deleteSavedJourney()} style={{ padding: '0.8rem 1rem', cursor: isGenerating ? 'not-allowed' : 'pointer' }}>{isGenerating ? 'Working…' : 'Delete saved journey from server'}</button> : null}
+              </div>
             </section>
           )}
         </div>

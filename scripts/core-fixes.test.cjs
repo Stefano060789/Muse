@@ -10,6 +10,7 @@ let passed = 0
 async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
 
 async function main() {
+  process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
     'src/lib/profile.ts', 'src/lib/personalStoryGenerator.ts',

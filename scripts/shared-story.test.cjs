@@ -16,6 +16,7 @@ async function check(name, run) {
 }
 
 async function main() {
+  process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
     'src/lib/sharedStory.ts', 'src/lib/sharedStoryGenerator.ts', 'src/pages/api/shared-story.ts',
@@ -315,12 +316,17 @@ async function main() {
       status: (value) => { status = value; return res },
       json: (value) => { result = value; return res }
     }
-    await selectedHandler({ method, body, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
+    await selectedHandler({ method, body: { consentVersion: '2026-10-14', ...body }, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
     assert.equal(responseHeaders['Cache-Control'], 'no-store')
     return { status, body: result }
   }
   let created
   let playerSession
+  await check('shared generation rejects missing or stale processing consent before provider access', async () => {
+    for (const consentVersion of [undefined, null, 'old-version']) {
+      assert.equal((await api({ action: 'create', brief, consentVersion })).status, 400)
+    }
+  })
   await check('API creates separate owner/play capabilities and stores only hashes', async () => {
     created = await api({ action: 'create', brief })
     assert.equal(created.status, 201)

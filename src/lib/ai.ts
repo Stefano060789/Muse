@@ -9,13 +9,26 @@ type GenerateParams = {
 async function callGroq(prompt: string) {
   const apiKey = process.env.LLM_API_KEY
   if (!apiKey) throw new Error('LLM_API_KEY not set')
+  if (prompt.length > 12000) throw new Error('Daily message input exceeds the permitted size')
+  await reserveAiAttempt()
   const body = { model: 'groq-llama2-13b-chat', input: prompt, max_output_tokens: 220 }
-  const res = await fetch('https://api.groq.ai/v1/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) throw new Error(`Groq error: ${res.status} ${await res.text()}`)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45000)
+  let res: Response
+  try {
+    res = await fetch('https://api.groq.ai/v1/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(body), signal: controller.signal
+    })
+  } catch {
+    await reportOperation('provider-failure')
+    throw new Error('Daily message provider is unavailable')
+  } finally { clearTimeout(timeout) }
+  if (!res.ok) {
+    await reportOperation('provider-failure')
+    throw new Error('Daily message provider is unavailable')
+  }
   const json = await res.json()
   const output = (json?.output && Array.isArray(json.output) && json.output[0]?.content) || json?.output_text || json?.text || ''
   return String(output).trim()
@@ -47,3 +60,4 @@ export async function generateDailyMessage(params: GenerateParams) {
   const content = await callGroq(prompt)
   return { content, promptHash: hashCode(prompt) }
 }
+import { reserveAiAttempt, reportOperation } from './operations'

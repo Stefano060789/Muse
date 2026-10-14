@@ -9,6 +9,8 @@ import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStor
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryReveal'
+import ExplicitConsent from '../components/ExplicitConsent'
+import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
   formatMediaSize, parseMediaDeclaration, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
   type SharedMediaKind, type SharedMediaSummary
@@ -95,6 +97,7 @@ export default function SharedStoryPage() {
   const [sessionToken, setSessionToken] = useState('')
   const [guess, setGuess] = useState('')
   const [actionText, setActionText] = useState('')
+  const [aiConsent, setAiConsent] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -298,6 +301,11 @@ export default function SharedStoryPage() {
 
   const generate = async (event: FormEvent) => {
     event.preventDefault()
+    if (!hasExplicitConsent(aiConsent)) {
+      setError('Review the AI disclosure and check the consent box before preparing this story.')
+      return
+    }
+    setAiConsent(false)
     setBusy(true)
     setError('')
     setNotice('')
@@ -319,7 +327,8 @@ export default function SharedStoryPage() {
       }
       const preparedBrief = { ...brief, narration: brief.narration.trim() || DEFAULT_NARRATION, assistanceHints, alternativeAnswers }
       const { media: _media, mediaRequired: _required, ...story } = await request<CreatorStory & MediaState>({
-        action: 'create', brief: preparedBrief, ...(declaration ? { finalMedia: { mime: declaration.mime, size: declaration.size } } : {})
+        action: 'create', brief: preparedBrief, consentVersion: MUSE_AI_CONSENT_VERSION,
+        ...(declaration ? { finalMedia: { mime: declaration.mime, size: declaration.size } } : {})
       }, creatorCode)
       setBrief(story.brief)
       setAssistanceHintsText((story.brief.assistanceHints ?? []).join('\n'))
@@ -354,6 +363,11 @@ export default function SharedStoryPage() {
 
   const adventureAction = async (refresh = false, selectedChoice?: string) => {
       if (!player?.adventure) return
+      if (!refresh && !hasExplicitConsent(aiConsent)) {
+        setError('Review the AI disclosure and check the consent box before sending this action.')
+        return
+      }
+      if (!refresh) setAiConsent(false)
       setBusy(true)
       setError('')
       interaction.stopRecording()
@@ -365,10 +379,13 @@ export default function SharedStoryPage() {
           const saved = window.localStorage.getItem(storageKey)
           // Persist before sending. Network retries and tabs reuse the same ID;
           // a changed draft cannot silently turn a retry into another paid call.
-          const attempt = saved ? JSON.parse(saved) : { requestId: crypto.randomUUID(), revision: player.adventure.revision, text: selectedChoice ?? actionText.trim() }
-          if (!saved) window.localStorage.setItem(storageKey, JSON.stringify(attempt))
+          const attempt = {
+            ...(saved ? JSON.parse(saved) : { requestId: crypto.randomUUID(), revision: player.adventure.revision, text: selectedChoice ?? actionText.trim() }),
+            consentVersion: MUSE_AI_CONSENT_VERSION
+          }
+          window.localStorage.setItem(storageKey, JSON.stringify(attempt))
           if (saved) setActionText(attempt.text)
-          submission = { action: 'adventure', token: playToken, sessionToken, ...attempt }
+          submission = { action: 'adventure', token: playToken, sessionToken, ...attempt, consentVersion: MUSE_AI_CONSENT_VERSION }
         }
         const response = await fetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submission) })
         const data = await response.json()
@@ -433,8 +450,8 @@ export default function SharedStoryPage() {
   const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
-      <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => setBrief({ ...brief, [key]: event.target.value })} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
-      <button type="button" aria-label={interaction.recordingTarget === key ? `Stop dictation: ${label}` : `Dictate: ${label}`} disabled={busy} onClick={() => interaction.dictate(key, (value) => setBrief((current) => ({ ...current, [key]: value.slice(0, max) })), key === 'creatorName' || key === 'recipientName')} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
+      <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
+      <button type="button" aria-label={interaction.recordingTarget === key ? `Stop dictation: ${label}` : `Dictate: ${label}`} disabled={busy} onClick={() => interaction.dictate(key, (value) => { setBrief((current) => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
         {interaction.recordingTarget === key ? 'Stop dictation' : 'Dictate'}
       </button>
       {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
@@ -447,7 +464,7 @@ export default function SharedStoryPage() {
     return (
       <div style={{ marginBottom: '1.2rem' }}>
         <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label} (optional)</label>
-        <textarea id={`brief-${key}`} value={value} onChange={event => update(event.target.value)} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder="One entry per line" aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
+        <textarea id={`brief-${key}`} value={value} onChange={event => { update(event.target.value); setAiConsent(false) }} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder="One entry per line" aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
         <p id={`brief-${key}-help`}>{description} Max {maxEntries} lines, {maxEntryLength} characters each.</p>
       </div>
     )
@@ -458,6 +475,8 @@ export default function SharedStoryPage() {
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const playerLink = shareDetails?.url || ''
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
+  const adventureCanSubmit = Boolean(player?.adventure &&
+    (player.adventure.pending || (player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0)))
 
   const shareOnDevice = async () => {
     if (!shareDetails || shareDetails.localOnly || sharing) return
@@ -551,15 +570,18 @@ export default function SharedStoryPage() {
                   <h3>Your journey</h3><p>{player.adventure.turn.state.progress}</p>
                   {(['inventory', 'discoveries', 'relationships'] as const).map(key => <div key={key}><h4>{key}</h4><ul>{player.adventure!.turn!.state[key].map(item => <li key={item}>{item}</li>)}</ul></div>)}
                 </section> : null}
-                {player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0 ? player.adventure.choiceMode === 'suggested' ? <section aria-label="Suggested actions">
+                {adventureCanSubmit ? <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+                  I understand this action is sent to Muse&apos;s configured AI provider to generate the next turn, and the shared story is kept on Muse&apos;s server for up to 30 days.
+                </ExplicitConsent> : null}
+                {adventureCanSubmit ? player.adventure.choiceMode === 'suggested' ? <section aria-label="Suggested actions">
                   <h3>What do you do next?</h3>
                   <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'left' }}>{choice}</button>)}</div>
                   {!player.adventure.choices?.length && !player.adventure.pending ? <p>Refresh progress to load the current actions.</p> : null}
                   {player.adventure.pending ? <button disabled={busy} onClick={() => void adventureAction()} style={buttonStyle}>Check same submission (no new attempt)</button> : null}
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
-                  <label htmlFor="adventure-action">What do you do?<textarea id="adventure-action" value={actionText} onChange={event => setActionText(event.target.value)} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
+                  <label htmlFor="adventure-action">What do you do?<textarea id="adventure-action" value={actionText} onChange={event => { setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
                   <p>Review your text before sending.</p>
-                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => setActionText(value.slice(0, 800)))} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? 'Stop dictation' : 'Dictate action'}</button>
+                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? 'Stop dictation' : 'Dictate action'}</button>
                   {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? 'Listening - speak now; review the text before submitting.' : 'Starting microphone - please wait.'}</p> : null}
                   <button disabled={busy || (!actionText.trim() && !player.adventure.pending)} style={primaryStyle}>{player.adventure.pending ? 'Retry same submission / check status' : 'Submit action (uses one attempt)'}</button>
                 </form> : <p>Action limit reached. Use hints or try the final answer below. You can still listen.</p>}
@@ -596,7 +618,7 @@ export default function SharedStoryPage() {
                 ) : null}
                 <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
                   <label style={{ fontWeight: 700 }}>What is the answer?<input value={guess} onChange={(event) => setGuess(event.target.value)} maxLength={200} required style={fieldStyle} disabled={busy} /></label>
-                  <p>Only creator-approved answers unlock the surprise. Case, punctuation and spacing are ignored.</p>
+                  <p>Your guess is sent to Muse to compare with the creator&apos;s answer, not to AI. Only creator-approved answers unlock the surprise. Case, punctuation and spacing are ignored.</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !guess.trim()} style={primaryStyle}>{busy ? 'Checking...' : 'Try this answer'}</button>
                     <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? 'Stop dictation' : 'Dictate your answer'}</button>
@@ -759,16 +781,19 @@ export default function SharedStoryPage() {
                 {textField('goal', 'What should they find or solve?', 'Find the hiding place of the letter.', 600)}
                 {textField('recipientHints', 'Personal touches', 'Favourite places, shared memories, inside jokes...', 1500, true)}
                 <label style={{ fontWeight: 700 }}>Story length
-                  <select value={brief.durationMinutes} onChange={(event) => setBrief({ ...brief, durationMinutes: Number(event.target.value) })} style={fieldStyle} disabled={busy}>
+                  <select value={brief.durationMinutes} onChange={(event) => { setBrief({ ...brief, durationMinutes: Number(event.target.value) }); setAiConsent(false) }} style={fieldStyle} disabled={busy}>
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>About {duration} minutes</option>)}
                   </select>
                 </label>
                 <label style={{ fontWeight: 700 }}>How should the recipient interact?
-                  <select aria-label="Story interaction" value={brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic'} disabled={busy} onChange={event => setBrief(current => {
-                    const { adventure, ...rest } = current
+                  <select aria-label="Story interaction" value={brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic'} disabled={busy} onChange={event => {
                     const mode = event.target.value
-                    return mode === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: mode === 'suggested' ? 'suggested' : 'free' } }
-                  })} style={fieldStyle}>
+                    setBrief(current => {
+                      const { adventure, ...rest } = current
+                      return mode === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: mode === 'suggested' ? 'suggested' : 'free' } }
+                    })
+                    setAiConsent(false)
+                  }} style={fieldStyle}>
                     <option value="classic">Classic clues (no live AI)</option>
                     <option value="free">Write or speak freely (live AI)</option>
                     <option value="suggested">Choose from 3-5 actions (live AI)</option>
@@ -776,7 +801,7 @@ export default function SharedStoryPage() {
                 </label>
                 {brief.adventure ? <>
                   <label htmlFor="adventure-budget">Total live AI action budget (all recipients)
-                    <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => setBrief({ ...brief, adventure: { ...brief.adventure!, actionBudget: Number(event.target.value) } })} style={fieldStyle} />
+                    <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { setBrief({ ...brief, adventure: { ...brief.adventure!, actionBudget: Number(event.target.value) } }); setAiConsent(false) }} style={fieldStyle} />
                   </label>
                   <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
@@ -791,7 +816,7 @@ export default function SharedStoryPage() {
                 <p>Message, photo or video: revealed after a correct answer.</p>
                 {textField('message', 'Final message', 'Your hidden message...', 2000, Boolean(mediaFile))}
                 <label style={{ fontWeight: 700 }}>Photo or video (optional)
-                  <input type="file" accept={SHARED_MEDIA_ACCEPT} disabled={busy} onChange={event => { chooseFile(event.target.files?.[0] ?? null); event.target.value = '' }} style={fieldStyle} />
+                  <input type="file" accept={SHARED_MEDIA_ACCEPT} disabled={busy} onChange={event => { chooseFile(event.target.files?.[0] ?? null); setAiConsent(false); event.target.value = '' }} style={fieldStyle} />
                 </label>
                 {mediaFile ? <p role="status">Selected: {mediaFile.name} ({formatMediaSize(mediaFile.size)}). <button type="button" disabled={busy} onClick={() => chooseFile(null)} style={{ ...buttonStyle, fontSize: '0.85rem' }}>Remove file</button></p> : null}
                 <p>One file: JPEG/PNG/WebP up to {formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)}; MP4/WebM up to {formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES)}. Uploaded privately after preparation, never sent to AI. No video autoplay.</p>
@@ -807,8 +832,12 @@ export default function SharedStoryPage() {
               <details style={{ marginBottom: '1rem' }}>
                 <summary>Privacy and limits</summary>
                 <p>Your written brief, including answers, hints and message, goes to the configured AI provider and stays on the server for up to 30 days. Media goes only to private storage and is deleted with the story. Hints need no AI calls. Avoid confidential or sensitive details about others.</p>
+                <p>Expired records may be physically cleaned only when later requests trigger cleanup. Backups are retained separately.</p>
                 <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype. Each story allows {SHARED_MEDIA_ATTEMPTS_PER_STORY} photo/video upload attempts.</p>
               </details>
+              <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server for up to 30 days. Any photo or video is stored privately and is not sent to AI.
+              </ExplicitConsent>
               <button disabled={busy} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading your ${mediaFile?.type.startsWith('video/') ? 'video' : 'photo'}… ${upload.progress}%` : 'Muse is preparing the mystery...' : 'Prepare story with AI'}</button>
             </form>
           </section>

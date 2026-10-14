@@ -1,8 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { extractProfileKeypoints, readMuseProfile, writeMuseProfile } from '../../lib/profileStorage'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { apiSafety } from '../../lib/operations'
+
+export const config = { api: { bodyParser: { sizeLimit: '20kb' } } }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Cache-Control', 'no-store')
+  if (!await apiSafety(req, res)) return
   if (!requireCreatorAccess(req, res)) return
   if (req.method === 'GET') {
     return res.status(200).json(await readMuseProfile())

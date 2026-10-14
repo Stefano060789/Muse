@@ -8,6 +8,7 @@ import { SharedStoryError } from '../../lib/sharedStory'
 import { storyRepository, storyStorageMode } from '../../lib/storyRepository'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
 import { localMediaPath } from '../../lib/sharedMediaStore'
+import { apiSafety, reportOperation } from '../../lib/operations'
 
 // Local SQLite mode only: receives the creator's file directly from the device
 // into private storage outside public/. Hosted mode uploads straight to a
@@ -23,6 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', 'PUT')
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  if (!await apiSafety(req, res)) return
   const origin = req.headers.origin
   if (origin) {
     try {
@@ -84,6 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (part) await fs.unlink(part).catch(() => undefined)
     if (error instanceof SharedStoryError) return res.status(error.status).json({ error: error.message })
     console.error('Shared media upload failed', error instanceof Error ? error.name : 'Unknown error')
+    await reportOperation('storage-failure')
     return res.status(500).json({ error: 'The upload failed. Your story is unchanged; please try again.' })
   }
 }

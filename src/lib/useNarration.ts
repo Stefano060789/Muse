@@ -5,6 +5,7 @@ import {
   voiceKey, voiceKeyName, type NarrationMetadata, type NarrationPreferences, type NarrationStyle
 } from './narration'
 import { StoryAmbience } from './storyAmbience'
+import { MUSE_AI_CONSENT_VERSION } from './legalContact'
 import {
   DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES, narrativeDelivery, parseImmersivePreferences, storySoundscape,
   type ImmersivePreferences, type NarrationContext
@@ -35,6 +36,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [activeText, setActiveText] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [cloudConsent, setCloudConsent] = useState(false)
   const [preferenceNotice, setPreferenceNotice] = useState('')
   const [immersive, setImmersive] = useState<ImmersivePreferences>({ ...DEFAULT_IMMERSIVE_PREFERENCES })
   const [ambientNotice, setAmbientNotice] = useState('')
@@ -235,7 +237,10 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       setStatus('speaking')
       next()
     }
-    if (provider === 'browser') { await browser(); return }
+    if (provider === 'browser' || !cloudConsent) {
+      if (provider !== 'browser') setNotice('Cloud narration needs your consent. Using free browser voices.')
+      await browser(); return
+    }
     setStatus('loading')
     const controller = new AbortController()
     request.current = controller
@@ -243,7 +248,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     try {
       const response = await fetch('/api/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language }), signal: controller.signal
+        body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION }), signal: controller.signal
       })
       if (!response.ok) throw new Error('Provider unavailable')
       const blob = await response.blob()
@@ -389,7 +394,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     status, speaking: status === 'speaking', loading: status === 'loading', paused: status === 'paused', busy: status !== 'idle',
     activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider,
     speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
-    immersive, setImmersivePreference, ambientNotice, ambientKind,
+    immersive, setImmersivePreference, ambientNotice, ambientKind, cloudConsent,
+    setCloudConsent: (value: boolean) => { stop(); setCloudConsent(value) },
     source: styleOverride !== 'auto' ? 'Manual style' : aiStyle ? 'AI-selected style' : `Legacy ${mood ? 'mood' : 'story'} fallback (not AI-selected)`
   }
 }

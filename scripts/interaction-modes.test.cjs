@@ -64,7 +64,7 @@ async function main() {
   let client = 0
   async function api(handler, body) {
     const res = { statusCode: 200, setHeader() {}, status(status) { this.statusCode = status; return this }, json(body) { this.body = body; return this } }
-    await handler({ method: 'POST', headers: { host: 'localhost', 'x-muse-creator-code': code }, socket: { remoteAddress: `fixture-${++client}` }, body }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost', 'x-muse-creator-code': code }, socket: { remoteAddress: `fixture-${++client}` }, body: { consentVersion: '2026-10-14', ...body } }, res)
     return { status: res.statusCode, body: res.body }
   }
   const createPersonal = (duration, choiceMode = 'suggested') => api(personal, {
