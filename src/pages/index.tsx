@@ -4,17 +4,17 @@ import Link from 'next/link'
 const features = [
   {
     title: 'Myself',
-    description: 'Tell Muse what matters to you. Your key points stay in this browser and help every interaction feel more personal.',
+    description: 'Save what matters to you.',
     href: '/myself'
   },
   {
     title: 'My Story',
-    description: 'Choose what you need today and receive an interactive story that changes through your answers.',
+    description: 'Shape a story with your choices.',
     href: '/story'
   },
   {
     title: 'Shared Story',
-    description: 'Give Muse your idea, setting, personal clues, and a hidden message. AI prepares a mystery for someone else to solve.',
+    description: 'Create a mystery with a hidden surprise.',
     href: '/shared'
   }
 ]
@@ -80,7 +80,7 @@ export default function Home() {
               Stories that meet you where you are.
             </h1>
             <p style={{ fontSize: '1.25rem', lineHeight: 1.6, maxWidth: 620 }}>
-              A quiet space where Muse remembers what matters, understands what you need, and creates stories you can shape.
+              Create a story for yourself or someone else.
             </p>
 
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
@@ -114,7 +114,7 @@ export default function Home() {
                   fontWeight: 600
                 }}
               >
-                See how it works
+                Explore
               </a>
             </div>
           </div>
@@ -128,10 +128,9 @@ export default function Home() {
               boxShadow: '0 12px 30px rgba(45, 41, 38, 0.06)'
             }}
           >
-            <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.7 }}>The Muse experience</p>
-            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>Three spaces. Your way to interact.</h2>
+            <h2 style={{ margin: '0.5rem 0 1rem', fontSize: '2rem' }}>Your story. Your way.</h2>
             <p style={{ lineHeight: 1.7, margin: 0 }}>
-              Start with Myself, choose a mood in My Story, or create a Shared Story for someone else to solve. Type or speak, read or listen.
+              Read or listen. Type or speak.
             </p>
           </aside>
         </section>
@@ -172,7 +171,6 @@ export default function Home() {
             }}
           >
             <div>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '0.72rem', opacity: 0.8 }}>Ready when you are</p>
               <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem' }}>Start your shared story</h3>
             </div>
             <Link

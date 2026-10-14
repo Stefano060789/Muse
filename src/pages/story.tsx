@@ -11,10 +11,10 @@ const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
 const moods: Array<{ key: PersonalStoryMood; title: string; description: string }> = [
-  { key: 'adventure', title: 'Adventure', description: 'I want movement, courage, and something new.' },
-  { key: 'relaxed', title: 'Relax', description: 'I need softness, quiet, and room to breathe.' },
-  { key: 'curious', title: 'Curious', description: 'I want a question or a new perspective.' },
-  { key: 'hopeful', title: 'Hopeful', description: 'I need help finding a next small possibility.' }
+  { key: 'adventure', title: 'Adventure', description: 'Try something new.' },
+  { key: 'relaxed', title: 'Relax', description: 'Slow down.' },
+  { key: 'curious', title: 'Curious', description: 'Discover a new perspective.' },
+  { key: 'hopeful', title: 'Hopeful', description: 'Find a way forward.' }
 ]
 
 export default function StoryPage() {
@@ -34,7 +34,12 @@ export default function StoryPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(false)
   const requestLock = useRef(false)
-  const narrator = useNarration(story || {}, story?.mood || selectedMood)
+  const narrator = useNarration(story || {}, story?.mood || selectedMood, {
+    progress: story?.journey ? story.journey.revision / story.journey.maxTurns
+      : story ? story.currentStep / Math.max(1, story.scenes.length - 1) : 0,
+    ending: story?.journey ? story.journey.status === 'concluded' : Boolean(story && story.currentStep >= story.scenes.length - 1),
+    sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
+  })
   const stopSpeaking = narrator.stop
   const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
   const stopRecording = interaction.stopRecording
@@ -200,22 +205,24 @@ export default function StoryPage() {
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
-          <label style={{ display: 'block', marginBottom: '1rem' }}>Creator access code (if required by this deployment)
+          <label style={{ display: 'block', marginBottom: '1rem' }}>Creator access code (if required)
             <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={isGenerating} onChange={event => { setCreatorCode(event.target.value); setReconciled(false) }} style={{ display: 'block', padding: '0.6rem', width: '100%', maxWidth: 400 }} />
           </label>
-          <p>The code stays in page memory only. Saved personal capabilities are private and remain in this browser.</p>
-          <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
+          <p>Code never saved. Keep this browser private.</p>
+          <details style={{ marginBottom: '1rem' }}>
+            <summary>Audio settings</summary>
+            <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
+          </details>
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
-            <button onClick={reconcile} disabled={isGenerating}>Resume / reconcile saved progress (no AI call)</button>
-            {!reconciled || story?.journey?.pending ? <p>Reconcile before sending a response. Pending or uncertain attempts are never automatically retried. Stale attempts expire after 90 seconds and stay consumed.</p> : null}
-            {preparation ? <p>Saved preparation awaiting reconciliation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon preparation (does not refund attempts)</button></p> : null}
+            <button onClick={reconcile} disabled={isGenerating}>Sync saved progress (no AI call)</button>
+            {!reconciled || story?.journey?.pending ? <p>Sync before responding. Pending attempts expire after 90 seconds without a refund; they are not automatically retried.</p> : null}
+            {preparation ? <p>Unfinished preparation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon (no refund)</button></p> : null}
           </div> : null}
           {!story ? (
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story</p>
-              <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What kind of story do you need today?</h1>
-              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>Choose your mood, then how you want to interact. Write your own actions or pick from Muse's suggestions. Either way, the story responds to what you choose.</p>
-              {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}>Want it to feel more personal? <Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Tell Muse about yourself first.</Link></p> : null}
+              <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>Choose your mood.</h1>
+              {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}><Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Add personal touches in Myself</Link> (optional).</p> : null}
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
                 {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => setSelectedMood(mood.key)} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
@@ -226,16 +233,20 @@ export default function StoryPage() {
               </label>
               <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
                 <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => setChoiceMode(event.target.value as StoryChoiceMode)}>
-                  <option value="free">Free choice - write or speak your action</option>
-                  <option value="suggested">Suggested choices - pick from 3 to 5 actions</option>
+                  <option value="free">Write or speak freely</option>
+                  <option value="suggested">Choose from 3–5 actions</option>
                 </select>
               </label>
-              <p>Muse narrates the consequences in either mode. Suggestions come with each scene, with no extra AI request.</p>
-              <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>Optionally tell Muse what you need
+              <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>What do you need? (optional)
                 <textarea value={need} onChange={(event) => setNeed(event.target.value)} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
-              {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => setUseProfile(event.target.checked)} /> Include my latest five Myself key points in the AI request</label> : null}
-              <p>Your need and, only if selected, profile key points go to the configured AI provider. Opening and compact plan use one generation; each response uses one AI call, up to {duration * 3 / 5} attempts including failures. Time is approximate, never a cutoff timer. The final successful response at the cap concludes the story. Failed final attempts cannot be retried or refunded. Browser narration is free; browser dictation may use your browser&apos;s speech service.</p>
+              {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => setUseProfile(event.target.checked)} /> Send my latest five memories to AI</label> : null}
+              <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
+              <details style={{ marginTop: '1rem' }}>
+                <summary>Privacy and limits</summary>
+                <p>Your need and selected memories go to the configured AI provider. Duration is approximate, not a timer. The last successful response concludes the story; failed final attempts cannot be retried or refunded.</p>
+                <p>Your creator code is never saved. Private story access stays in this browser. Browser narration is free; narration and dictation may use online speech services.</p>
+              </details>
               <button onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.95rem 1.3rem', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>{isGenerating ? 'Muse is writing your story...' : 'Create my story →'}</button>
             </section>
           ) : (
@@ -253,11 +264,11 @@ export default function StoryPage() {
                 {!finished ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey ? 'What do you do or say?' : scene?.question}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
-                  <p>Choose an action. Muse will narrate its consequences (one response attempt).</p>
+                  <p>Each choice uses one AI attempt.</p>
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
                     {story.journey.choices?.map(choice => <button key={choice} disabled={isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
                   </div>
-                  {!story.journey.choices?.length ? <p>Reconcile saved progress to load the available actions.</p> : null}
+                  {!story.journey.choices?.length ? <p>Sync progress to load actions.</p> : null}
                 </> : <>
                 <label>Editable response
                 <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
@@ -277,7 +288,7 @@ export default function StoryPage() {
                 </> : null}
                 </> : null}
               </article>
-              {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'The allowance is exhausted, including failed attempts. The last available narration remains saved; no additional AI conclusion is charged.' : 'Your story has reached its conclusion.'} Narration and library reopening remain available.</div> : null}
+              {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'Attempt limit reached, including failures. Your last scene is saved; no extra AI call is made.' : 'Your story is complete.'} You can still listen or reopen it.</div> : null}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}><button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button><Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link></div>
             </section>
           )}

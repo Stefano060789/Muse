@@ -221,6 +221,10 @@ invalid settings or storage failures do not silently fall back.
 
 ## Browser story library
 
+Pages use short labels and essential instructions. Audio settings and longer
+privacy/storage explanations are expandable; AI attempt costs, media limits
+and private-link warnings remain alongside the relevant actions.
+
 `/library` keeps multiple personal stories (including answers and progress)
 and private shared-story management entries in this browser. Reopening a
 legacy personal story is local. New personal journeys reconcile authoritative
@@ -491,18 +495,45 @@ Styles available for selection:
 
 Claude chooses allowlisted `narrationStyle` and `narrationLanguage` metadata while writing
 the story, without another paid AI request. New browser preferences default
-to Warm instead of following a potentially suspenseful story mood. All presets
-keep natural pitch (1) and adjust only pace gently. Automatic voice selection
+to **Follow this story (recommended)**. Expressive delivery uses local rules for
+small sentence-level pace, pitch and volume changes, reflecting story style,
+current progress, questions and quieter moments, with a softer conclusion.
+The ranges are deliberately gentle (pace 0.86-1.12, pitch 0.96-1.06); browser
+engines can ignore these controls and cannot guarantee human emotional delivery.
+Turning expressive delivery off restores constant preset pace and natural pitch.
+Automatic voice selection
 stays stable across moods, respects the story locale, and prefers voices labelled
 natural/neural/enhanced/premium, then the device default and gentle fallbacks.
 Voice names are hints, not a guarantee of audio quality. Manual voice choices
-take precedence. Preview the selected voice or use **Use gentle recommended
+take precedence. Preview the selected voice or use **Follow story with recommended
 voice** to reset style and voice while keeping the selected language.
-Existing saved choices remain intact; **Follow story mood (AI)** is opt-in.
+Existing saved choices, including the previous Warm default, remain intact.
+
+The default **Follow scene** soundscape detects simple rain, wind,
+water and crowd/cafe cues in the text currently being spoken (English, German and Italian
+keywords); it does not inspect private answers, future scenes or creator briefs.
+Unmatched scenes have no background sound. These are local Web Audio synthesis,
+not realistic recorded crowds, music, downloaded assets or paid AI sound effects.
+The crowd option is an abstract filtered murmur with no intelligible voices.
+Choose a fixed soundscape or Off, and adjust independent voice/background levels.
+The background is softly faded in and reduced beneath speech, never starts
+before a Play gesture, and stops with speech, scene changes, dictation or leaving
+the page. Pausing suspends it. Audio failures are visible and leave text readable.
+Settings are remembered separately under `muse.narration.immersive.v1`; changing
+them stops playback before the next listen. Unsupported Web Audio falls back
+explicitly to voice-only. No new account, environment variable or database
+migration is required. Run `npm run test:narration` and `npm run test:ambience`.
+
+This free immersive mode does not enable premium narration or run paid comparisons.
+The existing operator-configured ElevenLabs mode remains separate and still
+incurs generation costs per request; do not enable it for production recipients
+until private caching, capability authorization and spending caps are implemented.
+Realistic licensed crowd/footstep recordings and premium voice comparison remain
+future work; no commercial quality claim is made for local synthesized ambience.
 
 Narration can be paused and resumed, or stopped to restart from the beginning.
 Style, language and manual voice preferences are remembered locally; keeping
-style on **Follow story mood (AI)** preserves AI choice for each new story. The browser voice
+style on **Follow this story (recommended)** preserves story choice for each new story. The browser voice
 selector is bounded to the screen width, including narrow phone layouts.
 Unavailable speech input and microphone failures are reported explicitly;
 users can continue by typing.

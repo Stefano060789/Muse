@@ -35,10 +35,14 @@ export default function LibraryPage() {
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}><Link href="/">Muse</Link><Link href="/story">My Story</Link><Link href="/shared#new">New Shared Story</Link></nav>
           <h1>Story Library</h1>
-          <p>Saved in this browser only — not an account or cloud backup. Personal stories include your answers and progress. Shared entries include private management tokens, story details, and secrets in browser storage; anyone with access to this browser may access them.</p>
-          <p>Shared stories live on the server and may expire or be deleted remotely. Removing a browser entry does not delete the remote story. Use its management page to delete it remotely.</p>
-          <p>Personal journeys also keep authoritative progress on the server for 30 days. Their saved capability is private; reopening requires the creator access code (never saved). Reopening reconciles progress without an AI call. Removing a browser entry does not reset its server allowance.</p>
-          {error && <div role="alert"><p>{error} No entries are shown when saved data cannot be read; this does not mean it was deleted.</p><button onClick={refresh}>Retry loading browser library</button></div>}
+          <p>Saved in this browser, not backed up. Keep this browser private.</p>
+          <details>
+            <summary>Privacy and storage</summary>
+            <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
+            <p>Server stories last up to 30 days. Removing an entry does not delete its server story or reset its allowance. Delete shared stories from their management page.</p>
+            <p>Personal journeys require your creator code to reopen; it is never saved. Reopening syncs server progress without an AI call.</p>
+          </details>
+          {error && <div role="alert"><p>{error} Unreadable entries are hidden, not deleted.</p><button onClick={refresh}>Retry</button></div>}
           {!ready && <p role="status">Loading this browser&apos;s library…</p>}
           {ready && !error && !entries.length && <p>No stories saved here yet. <Link href="/story">Create a personal story</Link> or <Link href="/shared#new">create a shared story</Link>.</p>}
           {entries.map(entry => (
@@ -50,7 +54,7 @@ export default function LibraryPage() {
                   : `Personal · ${entry.story.responses.length >= entry.story.scenes.length ? 'Completed' : `Scene ${entry.story.currentStep + 1} of ${entry.story.scenes.length}`}`
                 : `Shared · ${Date.parse(entry.story.expiresAt) <= Date.now() ? 'Expiry date passed' : `Expires ${new Date(entry.story.expiresAt).toLocaleDateString()}`} · Remote availability not checked`}</p>
               <p>Saved {new Date(entry.updatedAt).toLocaleString()}</p>
-              {entry.kind === 'shared' && entry.story.brief.adventure ? <p>Live adventure · 12 actions per playthrough · {entry.story.brief.adventure.actionBudget} total AI attempts approved (including failures). Remaining budget is checked when playing.</p> : null}
+              {entry.kind === 'shared' && entry.story.brief.adventure ? <p>12 actions per playthrough · {entry.story.brief.adventure.actionBudget} total AI attempts, including failures.</p> : null}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 {entry.kind === 'personal'
                   ? <button onClick={() => openPersonal(entry.id)}>Continue personal story</button>

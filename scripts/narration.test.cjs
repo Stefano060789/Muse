@@ -166,7 +166,13 @@ async function main() {
     }
     const listeners = new Map(), spoken = []
     let voiceList = availableVoices, cancels = 0
-    const calls = []
+    const calls = [], ambientCalls = []
+    class FakeAmbience {
+      async start(kind, volume) { ambientCalls.push(['start', kind, volume]); if (options.ambientFailure) throw new Error('No audio device') }
+      async pause() { ambientCalls.push(['pause']) }
+      async resume() { ambientCalls.push(['resume']) }
+      stop() { ambientCalls.push(['stop']) }
+    }
     const synth = {
       paused: false,
       getVoices: () => voiceList,
@@ -184,10 +190,11 @@ async function main() {
     delete require.cache[require.resolve(modulePath)]
     const originalLoad = Module._load
     let useNarration
-    try { Module._load = function (id, ...args) { return id === 'react' ? react : originalLoad.call(this, id, ...args) }; useNarration = require(modulePath).useNarration } finally { Module._load = originalLoad }
-    const render = () => { cursor = 0; current = useNarration(metadata); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
+    try { Module._load = function (id, ...args) { return id === 'react' ? react : id === './storyAmbience' ? { StoryAmbience: FakeAmbience } : originalLoad.call(this, id, ...args) }; useNarration = require(modulePath).useNarration } finally { Module._load = originalLoad }
+    let context = options.context || {}
+    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
     render(); render()
-    return { render, spoken, listeners, synth, calls, get cancels() { return cancels }, setMetadata(value) { metadata = value; render(); return render() }, updateVoices(value) { voiceList = value; listeners.get('voiceschanged')?.() }, dispose() { slots.forEach(slot => { slot?.cleanup?.(); if (slot) slot.cleanup = undefined }) } }
+    return { render, spoken, listeners, synth, calls, ambientCalls, get cancels() { return cancels }, setContext(value) { context = value; render(); return render() }, setMetadata(value) { metadata = value; render(); return render() }, updateVoices(value) { voiceList = value; listeners.get('voiceschanged')?.() }, dispose() { slots.forEach(slot => { slot?.cleanup?.(); if (slot) slot.cleanup = undefined }) } }
   }
   await check('browser mode makes zero TTS requests and completes sentence chunks without stuck state', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
@@ -232,7 +239,7 @@ async function main() {
   await check('voiceschanged updates actual voices; empty, unsupported and missing-language paths are explicit', async () => {
     const hook = mount({}, [])
     try {
-      assert.equal(hook.render().source, 'Manual style')
+      assert.match(hook.render().source, /Legacy/)
       await hook.render().speak('Preview.')
       assert.match(hook.render().error, /No browser voices/)
       assert.equal(hook.render().speaking, false)
@@ -297,19 +304,112 @@ async function main() {
   }
   const stored = value => ({ [NARRATION_PREFERENCES_KEY]: typeof value === 'string' ? value : JSON.stringify(value) })
 
+  const immersiveLib = require(path.join(output, 'lib', 'immersiveNarration.js'))
+  await check('immersive settings validate bounds and preserve valid fields without overwriting old voice preferences', () => {
+    const { parseImmersivePreferences, DEFAULT_IMMERSIVE_PREFERENCES } = immersiveLib
+    assert.deepEqual(parseImmersivePreferences(null), { preferences: DEFAULT_IMMERSIVE_PREFERENCES, invalid: false })
+    for (const raw of ['bad', 'null', '[]', '{"version":2}', '{"version":1,"voiceVolume":2}', '{"version":1,"ambientVolume":-1}', '{"version":1,"soundscape":"explosion"}']) {
+      assert.equal(parseImmersivePreferences(raw).invalid, true)
+    }
+    const result = parseImmersivePreferences('{"version":1,"expressive":false,"voiceVolume":0,"ambientVolume":0.3,"soundscape":"rain"}')
+    assert.equal(result.invalid, false)
+    assert.equal(result.preferences.voiceVolume, 0)
+    assert.equal(result.preferences.expressive, false)
+    const old = mount({ narrationStyle: 'suspenseful' }, voices, true, { storage: memoryStorage(stored({ version: 1, style: 'warm' })) })
+    try { assert.equal(old.render().style, 'warm') } finally { old.dispose() }
+  })
+  await check('local scene cues and expressive delivery are bounded, contextual and independently switchable', () => {
+    const { storySoundscape, narrativeDelivery, DEFAULT_IMMERSIVE_PREFERENCES: prefs } = immersiveLib
+    assert.equal(storySoundscape('Rain taps the window.', 'auto'), 'rain')
+    assert.equal(storySoundscape('La pioggia cade.', 'auto'), 'rain')
+    assert.equal(storySoundscape('Der Wind weht.', 'auto'), 'wind')
+    assert.equal(storySoundscape('Waves cross the sea.', 'auto'), 'water')
+    assert.equal(storySoundscape('A bustling marketplace.', 'auto'), 'crowd')
+    assert.equal(storySoundscape('A private indoor mystery.', 'auto'), 'none')
+    assert.equal(storySoundscape('Rain taps the window.', 'none'), 'none')
+    assert.equal(storySoundscape('A quiet room.', 'water'), 'water')
+    const opening = narrativeDelivery('A path opens.', 'adventurous', { progress: 0 }, prefs)
+    const late = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8 }, prefs)
+    const quiet = narrativeDelivery('She whispers softly.', 'adventurous', {}, prefs)
+    const ending = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8, ending: true }, prefs)
+    assert.ok(late.rate > opening.rate)
+    assert.ok(ending.rate < late.rate)
+    assert.ok(quiet.volume < opening.volume)
+    assert.ok(narrativeDelivery('What lies ahead?', 'curious', {}, prefs).pitch > 1)
+    assert.deepEqual(narrativeDelivery('She whispers?', 'warm', { ending: true }, { ...prefs, expressive: false }), { rate: NARRATION_PRESETS.warm.rate, pitch: 1, volume: prefs.voiceVolume })
+    for (const style of NARRATION_STYLES) for (const progress of [-10, 0, 0.5, 1, 20, NaN, Infinity]) {
+      const d = narrativeDelivery('Run! She whispers quietly. Why?', style, { progress, ending: true }, prefs)
+      assert.ok(d.rate >= 0.86 && d.rate <= 1.12)
+      assert.ok(d.pitch >= 0.96 && d.pitch <= 1.06)
+      assert.ok(d.volume >= 0 && d.volume <= 1)
+    }
+  })
+  await check('free soundscapes start only on Play, duck beneath speech and follow pause/resume/scene changes', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    let fetches = 0
+    global.fetch = async () => { fetches++; throw new Error('No paid calls') }
+    const storage = memoryStorage()
+    const hook = mount({ narrationStyle: 'curious' }, voices, true, { storage, context: { sceneKey: 'one', progress: 0 } })
+    try {
+      assert.equal(hook.ambientCalls.length, 0)
+      await hook.render().speak('Rain taps the window. What is outside?')
+      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.08 * 0.55])
+      assert.equal(hook.spoken[0].volume, 0.9)
+      hook.render().pause()
+      assert.equal(hook.ambientCalls.at(-1)[0], 'pause')
+      hook.render().resume()
+      assert.equal(hook.ambientCalls.at(-1)[0], 'resume')
+      hook.spoken[0].onend()
+      assert.ok(hook.spoken[1].pitch > 1)
+      hook.setContext({ sceneKey: 'two', progress: 0.5 })
+      assert.equal(hook.render().busy, false)
+      assert.equal(hook.ambientCalls.at(-1)[0], 'stop')
+      hook.render().setImmersivePreference('soundscape', 'none')
+      hook.render().setImmersivePreference('voiceVolume', 0.5)
+      await hook.render().speak('Rain falls.')
+      assert.equal(hook.spoken.at(-1).volume, 0.5)
+      assert.equal(hook.ambientCalls.filter(x => x[0] === 'start').length, 1)
+      assert.equal(JSON.parse(storage.data.get(immersiveLib.IMMERSIVE_PREFERENCES_KEY)).voiceVolume, 0.5)
+      hook.render().setImmersivePreference('soundscape', 'rain')
+      hook.render().setImmersivePreference('voiceVolume', 0.05)
+      hook.render().setImmersivePreference('ambientVolume', 0.3)
+      await hook.render().speak('A soft scene.')
+      assert.ok(hook.ambientCalls.filter(x => x[0] === 'start').at(-1)[2] < 0.01, 'quiet voice also lowers the background')
+      hook.render().setImmersivePreference('voiceVolume', 0)
+      const starts = hook.ambientCalls.filter(x => x[0] === 'start').length
+      await hook.render().speak('Muted rain.')
+      assert.equal(hook.ambientCalls.filter(x => x[0] === 'start').length, starts, 'muted narration cannot leave background running')
+      assert.equal(hook.spoken.at(-1).volume, 0)
+      assert.equal(fetches, 0)
+    } finally { hook.dispose() }
+  })
+  await check('ambient failures visibly fall back to speech and cancellation cannot start stale narration', async () => {
+    const hook = mount({}, voices, true, { storage: memoryStorage(), ambientFailure: true })
+    try {
+      await hook.render().speak('A breeze passes.')
+      assert.match(hook.render().ambientNotice, /could not start/)
+      assert.equal(hook.spoken.length, 1)
+      hook.render().stop()
+      const pending = hook.render().speak('The rain falls.')
+      hook.render().stop()
+      await pending
+      assert.equal(hook.spoken.length, 1)
+      assert.equal(hook.render().busy, false)
+    } finally { hook.dispose() }
+  })
   await check('preference parsing is versioned, validated per field, and absent data is a valid default', () => {
     assert.equal(NARRATION_PREFERENCES_KEY, 'muse.narration.preferences.v1')
-    assert.deepEqual(parseNarrationPreferences(null), { preferences: { style: 'warm', language: '', voice: '' }, invalid: false })
-    assert.deepEqual(parseNarrationPreferences('{"version":1}'), { preferences: { style: 'warm', language: '', voice: '' }, invalid: false })
+    assert.deepEqual(parseNarrationPreferences(null), { preferences: { style: 'auto', language: '', voice: '' }, invalid: false })
+    assert.deepEqual(parseNarrationPreferences('{"version":1}'), { preferences: { style: 'auto', language: '', voice: '' }, invalid: false })
     const key = voiceKey(voices[0])
     const round = parseNarrationPreferences(serializeNarrationPreferences({ style: 'playful', language: 'de-DE', voice: key }))
     assert.deepEqual(round, { preferences: { style: 'playful', language: 'de-DE', voice: key }, invalid: false })
     assert.equal(parseNarrationPreferences('{"version":1,"language":"en_us"}').preferences.language, 'en-US')
     for (const raw of ['not json', '[]', 'null', '{"version":2,"style":"warm"}', '{"style":"warm"}']) {
-      assert.deepEqual(parseNarrationPreferences(raw), { preferences: { style: 'warm', language: '', voice: '' }, invalid: true })
+      assert.deepEqual(parseNarrationPreferences(raw), { preferences: { style: 'auto', language: '', voice: '' }, invalid: true })
     }
     const partial = parseNarrationPreferences(JSON.stringify({ version: 1, style: 'evil', language: 'de-DE', voice: 'x\u0000|y|z' }))
-    assert.deepEqual(partial, { preferences: { style: 'warm', language: 'de-DE', voice: '' }, invalid: true })
+    assert.deepEqual(partial, { preferences: { style: 'auto', language: 'de-DE', voice: '' }, invalid: true })
     assert.equal(parseNarrationPreferences(JSON.stringify({ version: 1, language: '<script>' })).invalid, true)
     assert.equal(parseNarrationPreferences(JSON.stringify({ version: 1, voice: 'v'.repeat(600) + '|a|b' })).invalid, true)
   })
@@ -322,7 +422,7 @@ async function main() {
       assert.equal(hook.render().style, 'warm')
       assert.equal(hook.render().preferenceNotice, '')
       assert.equal(storage.writes.length, 0, 'mount must not write preferences')
-      assert.equal(hook.setMetadata({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }).style, 'warm')
+      assert.equal(hook.setMetadata({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }).style, 'suspenseful')
       hook.render().setStyle('playful')
       assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'playful', language: '', voice: '' })
       hook.render().setStyle('auto')
@@ -351,7 +451,7 @@ async function main() {
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { storage: denied })
     try {
       assert.match(hook.render().preferenceNotice, /could not be read/)
-      assert.equal(hook.render().styleOverride, 'warm')
+      assert.equal(hook.render().styleOverride, 'auto')
       hook.render().setStyle('calm')
       assert.equal(hook.render().style, 'calm', 'the choice still applies for this page')
       assert.match(hook.render().preferenceNotice, /could not be remembered/)
@@ -365,7 +465,7 @@ async function main() {
     const second = mount({ narrationStyle: 'warm' }, voices, true, { storage: invalid })
     try {
       assert.match(second.render().preferenceNotice, /invalid and were ignored/)
-      assert.equal(second.render().styleOverride, 'warm')
+      assert.equal(second.render().styleOverride, 'auto')
       assert.equal(second.render().language, 'it-IT', 'valid fields survive')
       assert.equal(invalid.data.get(NARRATION_PREFERENCES_KEY), raw, 'invalid data is not overwritten on load')
       assert.equal(invalid.writes.length, 0)
@@ -551,6 +651,7 @@ async function main() {
       voices, supported: true, styleOverride: 'auto', languageOverride: '', selectedVoice: '', style: 'warm', language: 'en-US', voice: voices[2],
       status: 'idle', speaking: false, loading: false, paused: false, busy: false, activeText: '', canPause: false,
       error: '', notice: '', preferenceNotice: '', voiceNotice: '', provider: 'browser', source: 'AI-selected style',
+      immersive: { expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.08 }, ambientKind: 'none', ambientNotice: '', setImmersivePreference() {},
       speak: async () => {}, stop() {}, pause() {}, resume() {}, setStyle() {}, setLanguage() {}, setVoice() {}, resetVoice() {}
     }
     const button = (narrator, text = 'Scene two text.', label = 'Listen to scene two') => renderToStaticMarkup(createElement(controls.NarrationButton, { narrator, text, label }))
@@ -573,24 +674,24 @@ async function main() {
     const longVoice = { ...voice('Microsoft Extremely Long Natural Online Voice Name With Many Words (English United States)', 'en-US'), localService: false }
     const html = renderToStaticMarkup(createElement(controls.default, { narrator: { ...speaking, voices: [...voices, longVoice], voiceNotice: 'Remembered voice gone.', preferenceNotice: 'Storage blocked.' } }))
     const selects = html.match(/<select[^>]*>/g)
-    assert.equal(selects.length, 3)
+    assert.equal(selects.length, 4)
     for (const select of selects) {
       assert.match(select, /width:100%/)
       assert.match(select, /max-width:100%/)
       assert.match(select, /min-width:0/)
     }
-    assert.equal((html.match(/<label style="[^"]*min-width:0[^"]*max-width:100%/g) || []).length, 3)
+    assert.equal((html.match(/<label style="[^"]*min-width:0[^"]*max-width:100%/g) || []).length, 6)
     assert.match(html, /<aside[^>]*box-sizing:border-box[^>]*max-width:100%[^>]*min-width:0/)
     assert.match(html, /minmax\(min\(100%, 11rem\), 1fr\)/)
     assert.match(html, /Remembered voice gone\./)
     assert.match(html, /Storage blocked\./)
     assert.match(html, /aria-label="Pause narration: current story narration"/)
     assert.match(html, /Preview selected style<\/button>/)
-    assert.match(html, /<option value="auto" selected="">Follow story mood \(AI\)<\/option>/)
-    assert.match(html, /Use gentle recommended voice/)
+    assert.match(html, /<option value="auto" selected="">Follow this story \(recommended\)<\/option>/)
+    assert.match(html, /Follow story with recommended voice/)
     for (const style of NARRATION_STYLES) assert.ok(html.includes(`<option value="${style}">${style}</option>`))
   })
-  await check('gentle reset stops playback and remembers natural delivery without changing language', async () => {
+  await check('story-following reset stops playback without changing language or saved manual preferences on load', async () => {
     const storage = memoryStorage(stored({ version: 1, style: 'suspenseful', language: 'de-DE', voice: voiceKey(voices[5]) }))
     const hook = mount({ narrationStyle: 'suspenseful', narrationLanguage: 'en-US' }, voices, true, { storage })
     try {
@@ -598,11 +699,11 @@ async function main() {
       hook.render().resetVoice()
       const state = hook.render()
       assert.equal(state.busy, false)
-      assert.equal(state.style, 'warm')
+      assert.equal(state.style, 'suspenseful')
       assert.equal(state.language, 'de-DE')
       assert.equal(state.selectedVoice, '')
       assert.equal(state.voice.name, 'Microsoft Hedda')
-      assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'warm', language: 'de-DE', voice: '' })
+      assert.deepEqual(JSON.parse(storage.data.get(NARRATION_PREFERENCES_KEY)), { version: 1, style: 'auto', language: 'de-DE', voice: '' })
     } finally { hook.dispose() }
   })
   await check('shared reveal renders the message as escaped text and media only from the authorized media prop', () => {
@@ -612,7 +713,7 @@ async function main() {
     const narrator = { busy: false, activeText: '', speak() {}, stop() {} }
     const message = '<img src="file:///private-gallery/photo.jpg" onerror="alert(1)">\n![photo](https://example.invalid/photo.jpg)\nYou are wonderful.'
     const html = renderToStaticMarkup(createElement(Reveal, { message, narrator, beforeSpeak() {} }))
-    assert.match(html, /You found it\. Here is your message\./)
+    assert.match(html, /<h2>Your surprise<\/h2>/)
     assert.match(html, /&lt;img/)
     assert.match(html, /You are wonderful\./)
     assert.ok(!/<(?:img|picture|video|iframe|object|embed|script)\b/i.test(html))

@@ -5,11 +5,11 @@ export type VoiceInfo = { name: string; lang: string; voiceURI: string; localSer
 
 export const NARRATION_PRESETS: Record<NarrationStyle, { rate: number; pitch: number; voices: string[]; description: string }> = {
   calm: { rate: 0.95, pitch: 1, voices: ['zira', 'katja', 'elsa'], description: 'Quiet and unhurried, with a natural voice.' },
-  warm: { rate: 0.98, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Gentle and welcoming, without pitch effects.' },
+  warm: { rate: 0.98, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Gentle and welcoming.' },
   curious: { rate: 1, pitch: 1, voices: ['mark', 'katja', 'cosimo'], description: 'Thoughtful and conversational.' },
   adventurous: { rate: 1.05, pitch: 1, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Energetic, with a natural voice.' },
-  playful: { rate: 1.04, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Light and lively, without pitch effects.' },
-  suspenseful: { rate: 0.97, pitch: 1, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Measured, without a lowered or ominous voice.' }
+  playful: { rate: 1.04, pitch: 1, voices: ['zira', 'hedda', 'elsa'], description: 'Light and lively.' },
+  suspenseful: { rate: 0.97, pitch: 1, voices: ['david', 'stefan', 'michael', 'cosimo'], description: 'Measured and thoughtful, without frightening effects.' }
 }
 
 export function validateNarrationLanguage(value: unknown): string {
@@ -64,7 +64,7 @@ export function voiceKeyName(key: string): string { return key.split('|').slice(
 export const NARRATION_PREFERENCES_KEY = 'muse.narration.preferences.v1'
 export const NARRATION_PREFERENCES_VERSION = 1
 export type NarrationPreferences = { style: NarrationStyle | 'auto'; language: string; voice: string }
-export const DEFAULT_NARRATION_PREFERENCES: NarrationPreferences = { style: 'warm', language: '', voice: '' }
+export const DEFAULT_NARRATION_PREFERENCES: NarrationPreferences = { style: 'auto', language: '', voice: '' }
 
 export function normalizeNarrationLanguagePreference(value: unknown): string {
   if (value === '') return ''

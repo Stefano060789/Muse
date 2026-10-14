@@ -96,9 +96,9 @@ export default function MicrophoneCheck({ beforeTest, stopSignal }: { beforeTest
   }
 
   return <details style={{ padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, marginBottom: '1rem' }}>
-    <summary>Microphone not working? Test audio input</summary>
-    <p>This 10-second test uses your browser's default microphone. Audio is analysed on this device only: nothing is recorded, saved or sent. It stops automatically, or when you stop it, start dictating, or leave the page.</p>
-    <p>Dictation uses the browser's default microphone too. Select it in Chrome's microphone settings or Windows Sound settings; speech recognition cannot select a device through this app.</p>
+    <summary>Test microphone</summary>
+    <p>10-second local test. Nothing is recorded or sent.</p>
+    <p>Change your default microphone in browser or system settings.</p>
     <button type="button" onClick={() => void test()}>{active || starting ? 'Stop microphone test' : 'Test microphone for 10 seconds'}</button>
     {active ? <div><label>Input level <meter min={0} max={100} value={level} aria-label="Microphone input level" /> {level}%</label></div> : null}
     {message ? <p role="status">{message}</p> : null}

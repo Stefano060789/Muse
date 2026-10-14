@@ -26,7 +26,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   const text = message?.trim() ? message : ''
   const label = media?.kind === 'video' ? 'video' : media ? 'photo' : 'message'
   return <section aria-label={`Your revealed ${label}`} style={style}>
-    <h2>{media ? `You found it. Here is your surprise ${label}.` : 'You found it. Here is your message.'}</h2>
+    <h2>Your surprise</h2>
     {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{text}</p>}
     {media?.state === 'loading' && <p role="status">Loading your surprise {label}…</p>}
     {media?.state === 'error' && <p role="alert">
@@ -40,6 +40,6 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
         onLoadedMetadata={event => { if (resumeAt.current > 0 && resumeAt.current < event.currentTarget.duration) event.currentTarget.currentTime = resumeAt.current }}
         aria-label="The creator's surprise video"
         style={{ display: 'block', width: '100%', maxHeight: '70vh', borderRadius: 12, margin: '12px 0', background: '#000' }} />)}
-    {text && <NarrationButton narrator={narrator} text={text} label="Play the final message" beforeSpeak={beforeSpeak} />}
+    {text && <NarrationButton narrator={narrator} text={text} label="Play the final message" beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />}
   </section>
 }

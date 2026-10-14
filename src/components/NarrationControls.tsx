@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
-import { NARRATION_PRESETS, NARRATION_STYLES, voiceKey, type NarrationStyle } from '../lib/narration'
+import { NARRATION_STYLES, voiceKey, type NarrationStyle } from '../lib/narration'
 import type { useNarration } from '../lib/useNarration'
+import type { NarrationContext } from '../lib/immersiveNarration'
 
 type Narrator = ReturnType<typeof useNarration>
 
@@ -20,13 +21,13 @@ function PlaybackButtons({ narrator, label }: { narrator: Narrator; label: strin
   </>
 }
 
-export function NarrationButton({ narrator, text, beforeSpeak, label = 'Listen to this scene' }: { narrator: Narrator; text: string; beforeSpeak?: () => void; label?: string }) {
+export function NarrationButton({ narrator, text, beforeSpeak, label = 'Listen to this scene', context }: { narrator: Narrator; text: string; beforeSpeak?: () => void; label?: string; context?: NarrationContext }) {
   const current = narrator.busy && narrator.activeText === text
   const elsewhere = narrator.busy && !current
   return <div style={rowStyle}>
     {current ? <PlaybackButtons narrator={narrator} label={label} />
       : <button type="button" style={buttonStyle} disabled={!text.trim() || elsewhere} title={elsewhere ? 'Stop the current narration before listening to this.' : undefined}
-        onClick={() => { beforeSpeak?.(); void narrator.speak(text) }}>{label}</button>}
+        onClick={() => { beforeSpeak?.(); void narrator.speak(text, context) }}>{label}</button>}
   </div>
 }
 
@@ -40,29 +41,50 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
   const playingElsewhere = narrator.busy && narrator.activeText !== preview
   return <aside aria-label="Narration settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
     <p style={{ marginTop: 0 }}><strong>Narration: {narrator.style}</strong> · {narrator.source}</p>
-    <p>{narrator.provider === 'browser' ? 'Browser voices · no narration credits or new account needed.' : 'ElevenLabs mode · uses the configured provider voice; browser selection applies to fallback.'}</p>
+    <p>{narrator.provider === 'browser' ? 'Free browser narration.' : 'ElevenLabs voice; browser voice is the fallback.'}</p>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>Voice style <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
-        <option value="auto">Follow story mood (AI)</option>
+        <option value="auto">Follow this story (recommended)</option>
         {NARRATION_STYLES.map((style) => <option key={style} value={style}>{style}</option>)}
       </select></label>
       <label style={fieldStyle}>Language <select style={selectStyle} value={narrator.languageOverride} onChange={(event) => narrator.setLanguage(event.target.value)}>
-        <option value="">Story language (Auto: {narrator.languageOverride ? 'AI / legacy' : narrator.language})</option>
+        <option value="">Story language ({narrator.languageOverride ? 'auto' : narrator.language})</option>
         {languages.map((language) => <option key={language} value={language}>{language}</option>)}
       </select></label>
       <label style={fieldStyle}>Browser voice <select style={selectStyle} value={matching.some((voice) => voiceKey(voice) === narrator.selectedVoice) ? narrator.selectedVoice : ''} onChange={(event) => narrator.setVoice(event.target.value)}>
-        <option value="">Recommended (natural voice when available)</option>
+        <option value="">Recommended voice</option>
         {matching.map((voice) => <option key={voiceKey(voice)} value={voiceKey(voice)}>{voice.name} · {voice.lang}{voice.localService ? ' · local' : ''}</option>)}
       </select></label>
     </div>
-    <p>{NARRATION_PRESETS[narrator.style].description} Rate {NARRATION_PRESETS[narrator.style].rate} · pitch {NARRATION_PRESETS[narrator.style].pitch}. Actual browser voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none available for this language'}.</p>
-    <p>Warm is the gentle default. All styles keep the voice's natural pitch; story mood no longer changes the automatic speaker. Natural-sounding voices are preferred when available, but quality depends on your device. Preview before listening.</p>
-    <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Use gentle recommended voice</button>
-    <p>Your style, language and voice choices are remembered in this browser only. Reset keeps your chosen language. Browser voices labelled natural may use an online speech service.</p>
+    <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device.</p>
+    <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Follow story with recommended voice</button>
+    <fieldset style={{ margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 8, minWidth: 0 }}>
+      <legend>Immersive audio</legend>
+      <label><input type="checkbox" checked={narrator.immersive.expressive} onChange={event => narrator.setImmersivePreference('expressive', event.target.checked)} /> Expressive pacing and tone</label>
+      <div style={rowStyle}>
+        <label style={fieldStyle}>Background sound <select style={selectStyle} value={narrator.immersive.soundscape} onChange={event => narrator.setImmersivePreference('soundscape', event.target.value as typeof narrator.immersive.soundscape)}>
+          <option value="auto">Follow scene</option>
+          <option value="none">Off · voice only</option>
+          <option value="rain">Soft rain</option>
+          <option value="wind">Gentle wind</option>
+          <option value="water">Flowing water</option>
+          <option value="crowd">Soft crowd murmur (synthetic)</option>
+        </select></label>
+        <label style={fieldStyle}>Voice volume · {Math.round(narrator.immersive.voiceVolume * 100)}%
+          <input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={narrator.immersive.voiceVolume} onChange={event => narrator.setImmersivePreference('voiceVolume', Number(event.target.value))} />
+        </label>
+        <label style={fieldStyle}>Background level · {Math.round(narrator.immersive.ambientVolume * 100)}%
+          <input aria-label="Background volume" type="range" min="0" max="0.3" step="0.01" value={narrator.immersive.ambientVolume} onChange={event => narrator.setImmersivePreference('ambientVolume', Number(event.target.value))} />
+        </label>
+      </div>
+      <p>Sounds are synthetic, local and free. Auto follows scene text. After changing settings, press Play.</p>
+      {narrator.ambientKind !== 'none' && narrator.busy ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+      {narrator.ambientNotice ? <p role="status">{narrator.ambientNotice}</p> : null}
+    </fieldset>
+    <p>Settings stay in this browser. Reset keeps your language. Some voices use online speech services.</p>
     {narrator.voiceNotice ? <p role="status">{narrator.voiceNotice}</p> : null}
     {narrator.preferenceNotice ? <p role="status">{narrator.preferenceNotice}</p> : null}
     {narrator.supported === false ? <p role="alert">Browser speech is unsupported here. You can still read the story.</p> : narrator.supported && !narrator.voices.length ? <p role="status">Waiting for browser voices. If none appear, check your OS speech settings or try another browser.</p> : null}
-    <p>Preview: {preview}</p>
     <NarrationButton narrator={narrator} text={preview} label="Preview selected style" beforeSpeak={beforeSpeak} />
     {playingElsewhere ? <div style={rowStyle}><PlaybackButtons narrator={narrator} label="current story narration" /></div> : null}
     {narrator.error ? <p role="alert">{narrator.error}</p> : null}

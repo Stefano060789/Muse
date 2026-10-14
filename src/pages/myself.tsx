@@ -56,7 +56,7 @@ export default function MyselfPage() {
     try {
       const profile = saveMuseProfile(about)
       applyProfile(profile)
-      setMessage('Saved in this browser. My Story uses your latest five key points only when you choose to include them.')
+      setMessage('Saved in this browser.')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not save your memories. Keep a copy of your text.')
     }
@@ -156,11 +156,11 @@ export default function MyselfPage() {
             <Link href="/" style={{ color: '#2d2926', textDecoration: 'none' }}>Home</Link>
           </header>
           <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>Myself</p>
-          <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>Let Muse get to know you.</h1>
-          <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Speak or write about what is happening in your life, what you need today, and the people, places, or rituals that matter. Muse keeps up to 20 key points in this browser. My Story includes your latest five only when you opt in.</p>
+          <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What matters to you?</h1>
+          <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Include your latest five in My Story only if you choose.</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>
             <label style={{ display: 'block', fontWeight: 700 }}>What should Muse remember?
-              <textarea value={about} onChange={(event) => setAbout(event.target.value)} rows={8} placeholder="For example: I am feeling restless after moving to a new city. I feel restored by long walks, music, and honest conversations…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
+              <textarea value={about} onChange={(event) => setAbout(event.target.value)} rows={8} placeholder="People, places, feelings, things you love…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
             </label>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
               <button onClick={save} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>Save what matters</button>
@@ -170,14 +170,14 @@ export default function MyselfPage() {
             {error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{error}</p> : null}
           </section>
           <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
-            <h2 style={{ marginTop: 0 }}>Muse is keeping these key points</h2>
+            <h2 style={{ marginTop: 0 }}>Your memories</h2>
             {keypoints.length > 0 ? <ul style={{ lineHeight: 1.8, paddingLeft: '1.25rem' }}>{keypoints.map((keypoint, index) => <li key={keypoint} style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block' }}>Memory {index + 1}<input aria-label={`Memory ${index + 1}`} value={drafts[index] || ''} maxLength={180} onChange={(event) => setDrafts((current) => current.map((point, position) => position === index ? event.target.value : point))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.65rem', font: 'inherit' }} /></label>
               <button onClick={() => changeMemory(index)} style={{ marginTop: '0.5rem', marginRight: '0.5rem' }}>Save memory {index + 1}</button>
               <button onClick={() => changeMemory(index, true)}>Remove memory {index + 1}</button>
-            </li>)}</ul> : <p style={{ marginBottom: 0, opacity: 0.7 }}>Save something about yourself and Muse will keep the important points here.</p>}
-            <p>Removing memories affects future opt-in requests, not existing stories or information already sent to the AI provider.</p>
-            <button onClick={forget}>Forget everything in my profile</button>
+            </li>)}</ul> : <p style={{ marginBottom: 0, opacity: 0.7 }}>No memories yet.</p>}
+            <p>Removing memories does not erase existing stories or data already sent to AI.</p>
+            <button onClick={forget}>Forget all memories</button>
           </section>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
             <Link href="/story" style={{ background: '#2d2926', color: '#fffaf6', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none', fontWeight: 700 }}>Create My Story →</Link>

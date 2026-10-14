@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  DEFAULT_NARRATION_PREFERENCES, legacyNarrationStyle, narrationChunks, NARRATION_PREFERENCES_KEY, NARRATION_PRESETS, NARRATION_STYLES,
+  DEFAULT_NARRATION_PREFERENCES, legacyNarrationStyle, narrationChunks, NARRATION_PREFERENCES_KEY, NARRATION_STYLES,
   normalizeNarrationLanguagePreference, parseNarrationPreferences, selectNarrationVoice, serializeNarrationPreferences, validateNarrationLanguage,
   voiceKey, voiceKeyName, type NarrationMetadata, type NarrationPreferences, type NarrationStyle
 } from './narration'
+import { StoryAmbience } from './storyAmbience'
+import {
+  DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES, narrativeDelivery, parseImmersivePreferences, storySoundscape,
+  type ImmersivePreferences, type NarrationContext
+} from './immersiveNarration'
 
 export type NarrationStatus = 'idle' | 'loading' | 'speaking' | 'paused'
 
@@ -20,7 +25,7 @@ function readStoredPreferences(): { preferences: NarrationPreferences; notice: s
   return { preferences: parsed.preferences, notice: parsed.invalid ? STORAGE_INVALID_NOTICE : '' }
 }
 
-export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
+export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [supported, setSupported] = useState<boolean | null>(null)
   const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>(DEFAULT_NARRATION_PREFERENCES.style)
@@ -31,6 +36,12 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [preferenceNotice, setPreferenceNotice] = useState('')
+  const [immersive, setImmersive] = useState<ImmersivePreferences>({ ...DEFAULT_IMMERSIVE_PREFERENCES })
+  const [ambientNotice, setAmbientNotice] = useState('')
+  const [ambientKind, setAmbientKind] = useState('none')
+  const ambience = useRef<StoryAmbience | null>(null)
+  const immersiveRef = useRef(immersive)
+  immersiveRef.current = immersive
   const active = useRef(0)
   const mounted = useRef(false)
   const audio = useRef<HTMLAudioElement | null>(null)
@@ -87,6 +98,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     paused.current = false
     pendingAdvance.current = null
     mode.current = null
+    ambience.current?.stop()
+    ambience.current = null
     if (utterance.current) {
       utterance.current.onend = null
       utterance.current.onerror = null
@@ -129,6 +142,11 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     setLanguageOverride(stored.preferences.language)
     setSelectedVoice(stored.preferences.voice)
     setPreferenceNotice(stored.notice)
+    try {
+      const saved = parseImmersivePreferences(window.localStorage.getItem(IMMERSIVE_PREFERENCES_KEY))
+      setImmersive(saved.preferences)
+      if (saved.invalid) setPreferenceNotice(STORAGE_INVALID_NOTICE)
+    } catch { setPreferenceNotice(STORAGE_READ_NOTICE) }
     const synth = window.speechSynthesis
     setSupported(Boolean(synth && typeof SpeechSynthesisUtterance !== 'undefined'))
     const refresh = () => setVoices(synth?.getVoices() || [])
@@ -145,6 +163,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
   }, [release])
 
   useEffect(() => { stop() }, [style, language, selectedVoice, metadata.narrationStyle, metadata.narrationLanguage, stop])
+  useEffect(() => { stop() }, [context.sceneKey, stop])
 
   const persist = (next: NarrationPreferences) => {
     try {
@@ -153,22 +172,42 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     } catch { setPreferenceNotice(STORAGE_WRITE_NOTICE) }
   }
 
-  const speak = async (text: string) => {
+  const speak = async (text: string, playbackContext: NarrationContext = context) => {
     stop()
     setError('')
     setNotice('')
+    setAmbientNotice('')
+    setAmbientKind('none')
     if (!text.trim()) { setError('There is no text to narrate.'); return }
     const id = active.current
     setActiveText(text)
+    setStatus('loading')
     const valid = () => mounted.current && active.current === id
     const finish = (message = '') => { if (valid()) fail(message) }
-    const browser = () => {
+    const browser = async () => {
       if (!valid()) return
       if (!supported) { finish('Browser narration is not supported here. You can still read the story.'); return }
       if (!voice) {
         finish(voices.length ? `No browser voice is available for ${language}. Choose an available language or add a voice in your OS settings.` : 'No browser voices are available yet. Wait for voices to load, then try again, or check your OS speech settings.')
         return
       }
+      const sound = storySoundscape(text, immersive.soundscape)
+      if (sound !== 'none' && immersive.ambientVolume > 0 && immersive.voiceVolume > 0) {
+        const engine = new StoryAmbience()
+        ambience.current = engine
+        try {
+          // Lower the sound bed under narration, with no independent idle playback.
+          await engine.start(sound, immersive.ambientVolume * 0.55 * Math.min(1, immersive.voiceVolume / 0.9))
+          if (!valid()) { engine.stop(); return }
+          setAmbientKind(sound)
+        } catch {
+          engine.stop()
+          if (!valid()) return
+          ambience.current = null
+          setAmbientNotice('Ambient audio could not start in this browser. Narration continues without background sound.')
+        }
+      }
+      if (!valid()) return
       const chunks = narrationChunks(text)
       let index = 0
       const next = () => {
@@ -182,8 +221,10 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
         utterance.current = current
         current.voice = voice
         current.lang = voice.lang
-        current.rate = NARRATION_PRESETS[style].rate
-        current.pitch = NARRATION_PRESETS[style].pitch
+        const delivery = narrativeDelivery(current.text, style, playbackContext, immersiveRef.current)
+        current.rate = delivery.rate
+        current.pitch = delivery.pitch
+        current.volume = delivery.volume
         current.onstart = () => { if (valid() && !paused.current) setStatus('speaking') }
         current.onend = () => { if (valid() && utterance.current === current) next() }
         current.onerror = () => finish('Browser narration failed. You can retry or keep reading.')
@@ -194,7 +235,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
       setStatus('speaking')
       next()
     }
-    if (provider === 'browser') { browser(); return }
+    if (provider === 'browser') { await browser(); return }
     setStatus('loading')
     const controller = new AbortController()
     request.current = controller
@@ -230,7 +271,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
       if (url.current) URL.revokeObjectURL(url.current)
       url.current = ''
       setNotice('ElevenLabs narration is unavailable; falling back to your selected browser voice.')
-      browser()
+      await browser()
     }
   }
 
@@ -249,6 +290,13 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
       }
     } catch { setError('Narration could not be paused. You can stop it instead.'); return }
     paused.current = true
+    const engine = ambience.current
+    void engine?.pause().catch(() => {
+      if (ambience.current !== engine) return
+      engine.stop()
+      ambience.current = null
+      if (mounted.current) setAmbientNotice('Ambient audio could not pause and was stopped.')
+    })
     suspendTimer()
     setStatus('paused')
   }
@@ -258,6 +306,13 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     const id = active.current
     const finishIfCurrent = (message: string) => { if (mounted.current && active.current === id) fail(message) }
     paused.current = false
+    const engine = ambience.current
+    void engine?.resume().catch(() => {
+      if (ambience.current !== engine) return
+      engine.stop()
+      ambience.current = null
+      if (mounted.current) setAmbientNotice('Ambient audio could not resume. Narration continues without background sound.')
+    })
     setStatus('speaking')
     if (mode.current === 'audio') {
       const player = audio.current
@@ -301,9 +356,23 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
   }
   const resetVoice = () => {
     stop()
-    setStyleOverride('warm')
+    setStyleOverride('auto')
     setSelectedVoice('')
-    persist({ style: 'warm', language: languageOverride, voice: '' })
+    persist({ style: 'auto', language: languageOverride, voice: '' })
+  }
+
+  const setImmersivePreference = <K extends keyof ImmersivePreferences>(key: K, value: ImmersivePreferences[K]) => {
+    const next = { ...immersive, [key]: value }
+    if (parseImmersivePreferences(JSON.stringify({ version: 1, ...next })).invalid || !SOUNDSCAPES.includes(next.soundscape)) {
+      setError('Choose a valid audio setting within the displayed limits.')
+      return
+    }
+    stop()
+    setImmersive(next)
+    try {
+      window.localStorage.setItem(IMMERSIVE_PREFERENCES_KEY, JSON.stringify({ version: 1, ...next }))
+      setPreferenceNotice('')
+    } catch { setPreferenceNotice(STORAGE_WRITE_NOTICE) }
   }
 
   let voiceNotice = ''
@@ -320,6 +389,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string) {
     status, speaking: status === 'speaking', loading: status === 'loading', paused: status === 'paused', busy: status !== 'idle',
     activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider,
     speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
+    immersive, setImmersivePreference, ambientNotice, ambientKind,
     source: styleOverride !== 'auto' ? 'Manual style' : aiStyle ? 'AI-selected style' : `Legacy ${mood ? 'mood' : 'story'} fallback (not AI-selected)`
   }
 }
