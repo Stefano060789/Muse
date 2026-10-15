@@ -26,7 +26,7 @@ function readStoredPreferences(): { preferences: NarrationPreferences; notice: s
   return { preferences: parsed.preferences, notice: parsed.invalid ? STORAGE_INVALID_NOTICE : '' }
 }
 
-export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}) {
+export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}, options: { browserOnly?: boolean } = {}) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [supported, setSupported] = useState<boolean | null>(null)
   const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>(DEFAULT_NARRATION_PREFERENCES.style)
@@ -57,7 +57,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const mode = useRef<'browser' | 'audio' | null>(null)
   const paused = useRef(false)
   const pendingAdvance = useRef<(() => void) | null>(null)
-  const provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'browser'
+  const provider = !options.browserOnly && process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'browser'
   const aiStyle = NARRATION_STYLES.includes(metadata.narrationStyle as NarrationStyle) ? metadata.narrationStyle : undefined
   const style = styleOverride === 'auto' ? aiStyle || legacyNarrationStyle(mood) : styleOverride
   let inferredLanguage = 'en-US'

@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { normalizeSharedAnswer, SharedStoryError, type SharedStoryBrief } from './sharedStory'
 import type { StoredStory } from './storyRepository'
 import { generateStoryJson } from './storyProvider'
+import { assertStoryNarrationLanguage, storyLanguageInstruction, storyWordCount } from './storyLanguage'
 import {
   freeformSystemPrompt, parseSuggestedChoices, validatePlayerChoiceSelection,
   type StoryChoiceMode
@@ -73,7 +74,15 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
     if (typeof input !== 'string' || !input.trim() || input.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input)) throw invalid()
     return input.trim()
   }
-  const result = object(value, keys)
+  let turnValue = value
+  if (brief.language) {
+    const envelope = object(value, ['narrationLanguage', 'turn'])
+    try { assertStoryNarrationLanguage(envelope.narrationLanguage, brief.language) } catch (error) {
+      throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid adventure language response.', 502)
+    }
+    turnValue = envelope.turn
+  }
+  const result = object(turnValue, keys)
   const state = object(result.state, ['inventory', 'discoveries', 'relationships', 'progress'])
   const list = (input: unknown) => {
     if (!Array.isArray(input) || input.length > 8) throw invalid()
@@ -87,7 +96,7 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
     state: { inventory: list(state.inventory), discoveries: list(state.discoveries), relationships: list(state.relationships), progress: bounded(state.progress, 300) },
     ...(choices ? { choices } : {})
   }
-  const words = turn.narration.split(/\s+/).length
+  const words = storyWordCount(turn.narration, brief.language)
   if (words < 30 || words > 180) throw invalid()
   assertAdventurePrivacy(JSON.stringify(turn), brief)
   return turn
@@ -96,7 +105,7 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
 export async function generateAdventureTurn(story: StoredStory, view: AdventureView, text: string): Promise<AdventureTurn> {
   const plan = story.content.scenes.map(scene => ({ title: scene.title.slice(0, 80), clue: scene.clue.slice(0, 200), context: scene.body.slice(0, 350) }))
   const input = {
-    title: story.content.title, style: story.content.narrationStyle, language: story.content.narrationLanguage,
+    title: story.content.title, style: story.content.narrationStyle, language: story.brief.language ?? story.content.narrationLanguage,
     plan, state: view.turn?.state ?? { inventory: [], discoveries: [], relationships: [], progress: 'The journey begins.' },
     recentNarration: view.turn?.narration ?? story.content.scenes[0].body.slice(0, 1000),
     action: text, actionsRemaining: view.actionsRemaining
@@ -118,7 +127,9 @@ export async function generateAdventureTurn(story: StoredStory, view: AdventureV
     mode === 'suggested' && !isConcluding
       ? 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"},"choices":["...","...","..."]}.'
       : 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"}}.',
-    'State lists: at most 8 unique entries each, each at most 120 characters; progress at most 300 characters. Narration at most 1800 characters. No extra keys.'
+    'State lists: at most 8 unique entries each, each at most 120 characters; progress at most 300 characters. Narration at most 1800 characters. No extra keys.',
+    storyLanguageInstruction(story.brief.language),
+    story.brief.language ? 'For this explicit language, wrap the requested turn JSON in exactly {"narrationLanguage":"' + story.brief.language + '","turn":{...the requested turn...}}. No other outer keys.' : ''
   ].join('\n')
   return parseAdventureTurn(await generateStoryJson(system, input, 1600), story.brief, mode, isConcluding)
 }

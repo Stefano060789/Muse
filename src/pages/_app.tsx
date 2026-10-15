@@ -1,6 +1,7 @@
 import type { AppProps } from 'next/app'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import SiteFooter from '../components/SiteFooter'
+import AppInstallSupport from '../components/AppInstallSupport'
 import '../styles/globals.css'
 
 type ErrorBoundaryState = {
@@ -60,6 +61,7 @@ class ClientErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <ClientErrorBoundary>
+      <AppInstallSupport />
       <Component {...pageProps} />
       <SiteFooter />
     </ClientErrorBoundary>

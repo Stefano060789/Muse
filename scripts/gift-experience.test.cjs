@@ -10,7 +10,7 @@ function moduleFrom(relative) {
   const file = path.join(root, relative)
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
   const result = { exports: {} }
-  new Function('module', 'exports', 'require', code)(result, result.exports, require)
+  new Function('module', 'exports', 'require', code)(result, result.exports, id => id.startsWith('.') ? moduleFrom(path.join(path.dirname(relative), id + '.ts')) : require(id))
   return result.exports
 }
 const drafts = moduleFrom('src/lib/storyGift.ts')
@@ -51,7 +51,9 @@ check('draft restore validates options without requiring a finished brief', () =
   value.brief.adventure = { actionBudget: 12, choiceMode: 'suggested' }
   value.brief.unlockPolicy = 'allow-skip'
   assert.equal(drafts.parseGiftDraft(value).brief.adventure.choiceMode, 'suggested')
-  for (const patch of [{ durationMinutes: 99 }, { gift: { ...brief.gift, occasion: 'forged' } }, { adventure: { actionBudget: -1, choiceMode: 'free' } }, { solution: 'a'.repeat(201) }]) {
+  value.brief.language = 'zh-CN'
+  assert.equal(drafts.parseGiftDraft(value).brief.language, 'zh-CN')
+  for (const patch of [{ language: 'xx-YY' }, { durationMinutes: 99 }, { gift: { ...brief.gift, occasion: 'forged' } }, { adventure: { actionBudget: -1, choiceMode: 'free' } }, { solution: 'a'.repeat(201) }]) {
     assert.throws(() => drafts.parseGiftDraft({ ...draft(), brief: { ...brief, ...patch } }))
   }
 })

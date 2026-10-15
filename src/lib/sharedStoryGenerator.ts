@@ -2,6 +2,7 @@ import { parseGeneratedStory, sceneCountForDuration, SharedStoryError, type Shar
 import { generateStoryJson } from './storyProvider'
 import { NARRATION_AI_INSTRUCTION } from './narration'
 import { assertAdventurePrivacy } from './sharedAdventure'
+import { storyLanguageInstruction } from './storyLanguage'
 
 export { storyProviderConfig as sharedStoryProviderConfig } from './storyProvider'
 
@@ -33,7 +34,8 @@ export async function generateSharedStory(brief: SharedStoryBrief): Promise<Shar
     'Total narration and clue length must be ' + (brief.durationMinutes * 60) + '-' + (brief.durationMinutes * 110) + ' words.',
     'Target duration includes reading/listening and thinking; it is an estimate, not a countdown.',
     'Do not include the final reveal; the server will reveal the creator message after a correct guess.',
-    NARRATION_AI_INSTRUCTION
+    NARRATION_AI_INSTRUCTION,
+    storyLanguageInstruction(brief.language)
   ].join('\n')
   const { gift: _gift, ...generationBrief } = brief
   const generated = await generateStoryJson(system, generationBrief, Math.min(9000, brief.durationMinutes * 400 + 1000))

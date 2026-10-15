@@ -26,6 +26,52 @@ The full product definition lives in four documents:
 
 ## Gifts inside Shared Story
 
+### Simple start and app installation
+
+The home screen starts with **A story for me** and **A story for someone**.
+Myself is optional, not an onboarding requirement; the existing local library
+remains one tap away. **Try a free sample** opens an original, fictional
+two-scene gift at `/demo`: no AI generation, paid TTS, story storage, or account.
+Sample narration always uses browser speech, even when cloud TTS is configured.
+Browser speech availability and connectivity depend on the device.
+
+Muse includes a web manifest, original home-screen icons and a production-only,
+network-only service worker. Install using the browser prompt/menu; on iPhone,
+open Safari's Share menu and choose Add to Home Screen. This is an installable
+website, not an App Store release. Internet is still required. The worker does
+not cache private pages, API responses or media. Existing local drafts/library
+remain browser-local and unencrypted; installation adds no cross-device sync.
+The recipient-only development gateway allows only the exact public app assets,
+not creation, demo, or paid APIs.
+
+Before sending a new recipient link, review the cover and every prepared scene,
+confirm that the clues/accepted answers are fair, and check the attachments.
+This deterministic preview makes no provider call or recipient progress.
+Live-adventure previews show the prepared plan, not simulated AI actions.
+Pending uploads, missing reveals and expired stories block sending. The private
+management link remains accessible independently of the checklist. After a
+reveal, recipients have a quiet **Make a story for someone** link that starts a
+blank creation flow without copying the recipient capability or surprise.
+
+### Story languages
+
+New personal and shared stories offer **English, Mandarin Chinese, Hindi,
+Spanish and Arabic**. Generation/continuations and narration metadata follow
+the chosen language, with localized recipient controls and RTL shared-story
+content for Arabic. Sender-written names, hints, answers, dedications and final
+messages are preserved, not translated: write them in the intended language.
+General app navigation, advanced settings and some errors remain English.
+Saved stories without a language retain their existing behavior; reusing or
+restoring a brief preserves its explicit language. No new database migration
+is needed because language is saved inside existing JSON records.
+
+Browser narration/dictation require matching device voice/language support.
+These language choices are not a claim of professionally reviewed translations
+or provider story quality. Real multilingual user testing remains a launch gate.
+Run `npm run test:onboarding` for sample, pre-send and installation checks;
+`npm run test:languages` covers language validation, persistence, deterministic
+feedback and mocked generation/continuations without paid provider calls.
+
 Choose Birthday, Our memories, A surprise, Just because, or My own idea.
 Occasions provide editable starting prompts, not an additional paid AI call.
 Gift recipients see a personal cover and explicitly open the story; nothing
@@ -63,6 +109,20 @@ are validated for format, size and duration on both client and server.
 Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
 recording and creator/recipient UI checks; `npm run test:gifting` covers
 private voice/reply authorization and persistence without paid provider calls.
+
+## Plans and billing preview
+
+`/billing` presents proposed Free, EUR 3.99 one-off Gift, EUR 8.99/month Plus
+and later EUR 89.99/year Plus plans. Plus proposes 10 creations and 120 AI
+interactions per billing month, shared across personal stories and gifts;
+one-off gifts propose up to 12 shared live actions. Premium cloud narration
+is excluded. The home page links to this preview without adding onboarding.
+
+All plans are clearly marked as proposed and unavailable to purchase. There
+is no checkout, payment collection, subscription, billing identity or new
+allowance enforcement. Current prototype access and safety limits are
+unchanged. Final taxes/terms, secure customer identity, server-side allowance
+accounting and verified payment integration are required before paid launch.
 
 ## Local setup
 

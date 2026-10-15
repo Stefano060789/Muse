@@ -1,6 +1,7 @@
 import { useRef, type CSSProperties } from 'react'
 import NarrationControls, { NarrationButton } from './NarrationControls'
 import type { SharedMediaKind } from '../lib/sharedStoryMedia'
+import { recipientCopy } from '../lib/storyLanguage'
 
 type Narrator = Parameters<typeof NarrationControls>[0]['narrator']
 
@@ -12,7 +13,7 @@ export type RevealMedia = {
   url?: string
 }
 
-export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style }: {
+export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style, language }: {
   message?: string
   media?: RevealMedia | null
   narrator: Narrator
@@ -20,26 +21,28 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   onMediaError?: () => void
   onRetryMedia?: () => void
   style?: CSSProperties
+  language?: Parameters<typeof recipientCopy>[0]
 }) {
   // When an expired private URL is refreshed, playback resumes where it stopped.
   const resumeAt = useRef(0)
   const text = message?.trim() ? message : ''
   const label = media?.kind === 'video' ? 'video' : media ? 'photo' : 'message'
+  const copy = recipientCopy(language)
   return <section aria-label={`Your revealed ${label}`} style={style}>
-    <h2>Your surprise</h2>
+    <h2>{copy.surprise}</h2>
     {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{text}</p>}
-    {media?.state === 'loading' && <p role="status">Loading your surprise {label}…</p>}
+    {media?.state === 'loading' && <p role="status">{language ? copy.revealLoading : `Loading your surprise ${label}…`}</p>}
     {media?.state === 'error' && <p role="alert">
-      The {label} could not be loaded. {onRetryMedia && <button type="button" onClick={onRetryMedia}>Try again</button>}
+      {language ? copy.revealError : `The ${label} could not be loaded.`} {onRetryMedia && <button type="button" onClick={onRetryMedia}>{copy.retry}</button>}
     </p>}
     {media?.state === 'ready' && media.url && (media.kind === 'photo'
-      ? <img src={media.url} alt="The creator's surprise photo" onError={onMediaError} referrerPolicy="no-referrer"
+      ? <img src={media.url} alt={language ? copy.surprisePhoto : "The creator's surprise photo"} onError={onMediaError} referrerPolicy="no-referrer"
         style={{ display: 'block', maxWidth: '100%', maxHeight: '70vh', borderRadius: 12, margin: '12px 0' }} />
       : <video src={media.url} controls preload="metadata" playsInline onError={onMediaError}
         onTimeUpdate={event => { resumeAt.current = event.currentTarget.currentTime }}
         onLoadedMetadata={event => { if (resumeAt.current > 0 && resumeAt.current < event.currentTarget.duration) event.currentTarget.currentTime = resumeAt.current }}
-        aria-label="The creator's surprise video"
+        aria-label={language ? copy.surpriseVideo : "The creator's surprise video"}
         style={{ display: 'block', width: '100%', maxHeight: '70vh', borderRadius: 12, margin: '12px 0', background: '#000' }} />)}
-    {text && <NarrationButton narrator={narrator} text={text} label="Play the final message" beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />}
+    {text && <NarrationButton narrator={narrator} text={text} label={language ? copy.playMessage : 'Play the final message'} beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />}
   </section>
 }

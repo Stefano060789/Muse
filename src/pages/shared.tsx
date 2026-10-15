@@ -12,6 +12,8 @@ import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryRe
 import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
+import PreSendCheck from '../components/PreSendCheck'
+import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
 import { GIFT_OCCASIONS, loadGiftDraft, removeGiftDraft, saveGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
@@ -32,7 +34,7 @@ const cardStyle: CSSProperties = { padding: '1.5rem', border: '1px solid #d9cfc5
 const buttonStyle: CSSProperties = { padding: '0.8rem 1.1rem', borderRadius: 999, border: '1px solid #d9cfc5', cursor: 'pointer', fontSize: '1rem' }
 const primaryStyle: CSSProperties = { ...buttonStyle, background: '#2d2926', color: '#fffaf6' }
 const DEFAULT_NARRATION = 'A warm, playful mystery told in the second person, with gentle suspense.'
-const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', message: '', durationMinutes: 5, assistanceHints: [], alternativeAnswers: [] }
+const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
 const idleUpload: UploadState = { phase: 'idle', progress: 0 }
 const mediaLabel = (kind: SharedMediaKind) => kind === 'video' ? 'video' : 'photo'
 type AssistanceField = 'assistanceHints' | 'alternativeAnswers'
@@ -137,6 +139,7 @@ export default function SharedStoryPage() {
   const [draftStatus, setDraftStatus] = useState('')
   const [draftUnreadable, setDraftUnreadable] = useState(false)
   const [creatorStep, setCreatorStep] = useState(0)
+  const [sendReady, setSendReady] = useState('')
   const creatorForm = useRef<HTMLFormElement>(null)
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const objectUrls = useRef<string[]>([])
@@ -150,6 +153,18 @@ export default function SharedStoryPage() {
       : creator?.ownerToken || 'new'
   })
   const interaction = useStoryInteraction(narrator.stop, dictationLanguage)
+  const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
+  const confirmShareReady = () => {
+    if (creator && sendReady === creator.ownerToken && Date.parse(creator.expiresAt) > Date.now() && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
+    setError('Review the pre-send checks and finish uploads before sharing an unexpired story.')
+    return false
+  }
+  const recipientText = recipientCopy(player?.language)
+  const recipientLanguage = storyLanguage(player?.language)
+  useEffect(() => {
+    const language = player?.language || brief.language
+    if (language) { interaction.stopRecording(); setDictationLanguage(language) }
+  }, [player?.language, brief.language])
 
   useEffect(() => {
     let active = true
@@ -286,6 +301,7 @@ export default function SharedStoryPage() {
       setAlternativeAnswersText('')
     }
     setCreator(null)
+    setSendReady('')
     setOwnerMedia(null)
     setOwnerPreview(null)
     setMediaFile(null)
@@ -543,7 +559,7 @@ export default function SharedStoryPage() {
   }
 
   const act = async (action: 'guess' | 'next' | 'hint' | 'skip') => {
-    if (action === 'skip' && !window.confirm('Reveal the surprise without solving? This playthrough will be marked Revealed without solving, not solved.')) return
+    if (action === 'skip' && !window.confirm(recipientText.skipConfirm)) return
     setBusy(true)
     setError('')
     interaction.stopRecording()
@@ -602,7 +618,8 @@ export default function SharedStoryPage() {
       }
   }
 
-  const copy = async (value: string) => {
+  const copy = async (value: string, recipient = false) => {
+    if (recipient && !confirmShareReady()) return
     try {
       if (!navigator.clipboard) throw new Error('Clipboard is unavailable. Select and copy the link below.')
       await navigator.clipboard.writeText(value)
@@ -615,6 +632,7 @@ export default function SharedStoryPage() {
 
   const creatorAction = async (action: 'share' | 'delete') => {
     if (!creator) return
+    if (action === 'share' && !confirmShareReady()) return
     setBusy(true)
     setError('')
     narrator.stop()
@@ -645,7 +663,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
@@ -669,7 +687,7 @@ export default function SharedStoryPage() {
     )
   }
 
-  const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} beforeSpeak={interaction.stopRecording} />
+  const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} label={player ? recipientText.playScene : undefined} beforeSpeak={interaction.stopRecording} />
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const playerLink = shareDetails?.url || ''
@@ -681,6 +699,7 @@ export default function SharedStoryPage() {
 
   const shareOnDevice = async () => {
     if (!shareDetails || shareDetails.localOnly || sharing) return
+    if (!confirmShareReady()) return
     setSharing(true)
     setError('')
     narrator.stop()
@@ -732,152 +751,154 @@ export default function SharedStoryPage() {
         </section> : null}
         {!showGiftCover ? <details style={{ marginBottom: '1rem' }}>
           <summary>Audio and microphone settings</summary>
+          {playToken ? <p lang={recipientLanguage.code} dir={recipientLanguage.dir}>{recipientText.settingsDisclosure}</p> : null}
           <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
           <section aria-label="Voice input settings">
           <p>Dictation fills editable text, not a saved recording. It may use your browser&apos;s online speech service.</p>
           <label>Dictation language <select value={dictationLanguage} onChange={event => { interaction.stopRecording(); setDictationLanguage(event.target.value) }}>
-            <option value="en-US">English</option><option value="it-IT">Italian</option><option value="de-DE">German</option><option value="fr-FR">French</option><option value="es-ES">Spanish</option>
+            {STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}
+            <option value="it-IT">Italian</option><option value="de-DE">German</option><option value="fr-FR">French</option>
           </select></label>
           <MicrophoneCheck stopSignal={voiceRecording ? 'gift-voice-recording' : interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
         </details> : null}
         {loading ? <p role="status">Opening your private story...</p> : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
-          <section>
+          <section lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.8rem' }}>A story made for you</p>
-              <h1 style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>For {player.recipientName}</h1>
-              <p>From {player.creatorName}, with a little mystery.</p>
+              <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.8rem' }}>{recipientText.madeForYou}</p>
+              <h1 style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
+              <p>{recipientText.from(player.creatorName)}</p>
               {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
-              <p>About {player.durationMinutes} minutes. Take it at your own pace.</p>
-              <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>Open my story</button>
-              <p style={{ fontSize: '0.9rem' }}>No account needed. Nothing plays automatically.</p>
+              <p>{recipientText.duration(player.durationMinutes)}</p>
+              <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>{recipientText.openStory}</button>
+              <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>
             </article> : <>
-            <p>A story from {player.creatorName} for {player.recipientName}</p>
+            <p>{recipientText.storyFrom(player.creatorName, player.recipientName)}</p>
             <h1 style={{ fontSize: '2.5rem' }}>{player.title}</h1>
             <p style={{ lineHeight: 1.7 }}>{player.description}</p>
-            <p>About {player.durationMinutes} minutes, at your pace.</p>
+            <p>{recipientText.duration(player.durationMinutes)}</p>
             {!player.solved && !player.skipped ? <div role="group" aria-label="Story experience" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
-              <button aria-pressed={experience === 'read'} onClick={() => { narrator.stop(); setExperience('read') }} style={experience === 'read' ? primaryStyle : buttonStyle}>Read the story</button>
-              <button aria-pressed={experience === 'listen'} onClick={() => { narrator.stop(); setExperience('listen') }} style={experience === 'listen' ? primaryStyle : buttonStyle}>Listen to the story</button>
+              <button aria-pressed={experience === 'read'} onClick={() => { narrator.stop(); setExperience('read') }} style={experience === 'read' ? primaryStyle : buttonStyle}>{recipientText.read}</button>
+              <button aria-pressed={experience === 'listen'} onClick={() => { narrator.stop(); setExperience('listen') }} style={experience === 'listen' ? primaryStyle : buttonStyle}>{recipientText.listen}</button>
             </div> : null}
-            {!player.solved && !player.skipped && experience === 'listen' ? <p>Tap Play to listen.</p> : null}
+            {!player.solved && !player.skipped && experience === 'listen' ? <p>{recipientText.tapPlay}</p> : null}
             {player.solved || player.skipped ? (
               <article style={cardStyle}>
-                <p><strong>{player.skipped ? 'Revealed without solving' : 'Solved'}</strong></p>
+                <p><strong>{player.skipped ? recipientText.skipped : recipientText.solved}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
-                  onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} />
+                  onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} language={player.language} />
                 {player.voice ? <section aria-label="A voice message for you">
-                  <h3>A familiar voice</h3>
-                  {voiceUrl ? <audio controls preload="metadata" src={voiceUrl} onPlay={() => { narrator.stop(); interaction.stopRecording() }} onError={() => { setVoiceUrl(''); setVoiceError('The voice message could not play. Reload it or try your device browser.') }} style={{ maxWidth: '100%' }} aria-label="The sender's voice message" /> : null}
+                  <h3>{recipientText.voiceTitle}</h3>
+                  {voiceUrl ? <audio controls preload="metadata" src={voiceUrl} onPlay={() => { narrator.stop(); interaction.stopRecording() }} onError={() => { setVoiceUrl(''); setVoiceError(recipientText.voiceError) }} style={{ maxWidth: '100%' }} aria-label={recipientText.voiceTitle} /> : null}
                   {voiceError ? <p role="alert">{voiceError}</p> : null}
-                  <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? 'Reload voice message' : 'Load voice message'}</button>
+                  <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? recipientText.reloadVoice : recipientText.loadVoice}</button>
                 </section> : null}
-                {player.adventure?.turn ? <><h3>Your journey so far</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
+                {player.adventure?.turn ? <><h3>{recipientText.yourJourney}</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
                 <div style={{ marginTop: '1rem' }}>
                   {player.adventure ? <p>Your keepsake contains the available scenes and latest adventure turn, not a transcript of every live action.</p> : null}
                   <StoryKeepsake story={{ title: player.title, creatorName: player.creatorName, recipientName: player.recipientName, dedication: player.gift?.dedication,
                     scenes: [...player.discoveries, player.scene, ...(player.adventure?.turn ? [{ title: 'Your adventure', body: player.adventure.turn.narration }] : [])].map(scene => ({ title: scene.title, body: scene.body })), message: player.message }} />
                 </div>
                 {player.gift?.allowReply ? <details style={{ marginTop: '1.5rem' }}>
-                  <summary>Send a little thank-you</summary>
-                  <p>Optional. Your written reply goes privately to {player.creatorName}, not to AI. It stays with the story until expiry or deletion. No read receipts.</p>
-                  {replySent ? <p role="status">Reply sent. You can edit it below and send again to replace it.</p> : null}
+                  <summary>{recipientText.reply}</summary>
+                  <p>{recipientText.replyPrivacy(player.creatorName)}</p>
+                  {replySent ? <p role="status">{recipientText.replySent}</p> : null}
                   <form onSubmit={event => { event.preventDefault(); void sendReply() }}>
-                    <label htmlFor="gift-reply">Your message<textarea id="gift-reply" maxLength={1000} required value={replyText} onChange={event => setReplyText(event.target.value)} disabled={busy} rows={3} style={fieldStyle} /></label>
-                    <button type="submit" disabled={busy || !replyText.trim()} style={{ ...primaryStyle, marginTop: 12 }}>{busy ? 'Sending...' : replySent ? 'Update my reply' : 'Send privately'}</button>
+                    <label htmlFor="gift-reply">{recipientText.replyLabel}<textarea id="gift-reply" maxLength={1000} required value={replyText} onChange={event => setReplyText(event.target.value)} disabled={busy} rows={3} style={fieldStyle} /></label>
+                    <button type="submit" disabled={busy || !replyText.trim()} style={{ ...primaryStyle, marginTop: 12 }}>{replySent ? recipientText.updateReply : recipientText.sendReply}</button>
                   </form>
                 </details> : null}
+                <p style={{ marginTop: '1.5rem' }}><a href="/shared?create=1#new" style={{ color: 'inherit', display: 'inline-block', padding: '0.75rem 0' }}>{recipientText.makeStory}</a></p>
               </article>
             ) : (
               <>
               {player.adventure ? <article style={cardStyle}>
-                <h2>{player.adventure.turn ? 'Your adventure continues' : player.scene.title}</h2>
+                <h2>{player.adventure.turn ? recipientText.adventureContinues : player.scene.title}</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.adventure.turn?.narration || player.scene.body}</p>
-                <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label="Play adventure narration" beforeSpeak={interaction.stopRecording} />
-                <p>Actions left: {player.adventure.actionsRemaining}/12. Shared AI budget: {player.adventure.budgetRemaining}/{player.adventure.budget}.</p>
-                <p>Each action uses one attempt, even if it fails. Guesses, hints and browser audio use none.</p>
+                <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={interaction.stopRecording} />
+                <p>{recipientText.adventureBudget(player.adventure.actionsRemaining, player.adventure.budgetRemaining, player.adventure.budget)}</p>
+                <p>{recipientText.actionCost}</p>
                 {player.adventure.turn ? <section aria-label="Adventure state">
-                  <h3>Your journey</h3><p>{player.adventure.turn.state.progress}</p>
-                  {(['inventory', 'discoveries', 'relationships'] as const).map(key => <div key={key}><h4>{key}</h4><ul>{player.adventure!.turn!.state[key].map(item => <li key={item}>{item}</li>)}</ul></div>)}
+                  <h3>{recipientText.yourJourney}</h3><p>{player.adventure.turn.state.progress}</p>
+                  {(['inventory', 'discoveries', 'relationships'] as const).map(key => <div key={key}><h4>{recipientText.adventureStateLabels[key]}</h4><ul>{player.adventure!.turn!.state[key].map(item => <li key={item}>{item}</li>)}</ul></div>)}
                 </section> : null}
                 {adventureCanSubmit ? <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                  I understand this action is sent to Muse&apos;s configured AI provider to generate the next turn, and the shared story is kept on Muse&apos;s server for up to 30 days.
+                  {recipientText.aiActionConsent}
                 </ExplicitConsent> : null}
                 {adventureCanSubmit ? player.adventure.choiceMode === 'suggested' ? <section aria-label="Suggested actions">
-                  <h3>What do you do next?</h3>
-                  <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'left' }}>{choice}</button>)}</div>
-                  {!player.adventure.choices?.length && !player.adventure.pending ? <p>Refresh progress to load the current actions.</p> : null}
-                  {player.adventure.pending ? <button disabled={busy} onClick={() => void adventureAction()} style={buttonStyle}>Check same submission (no new attempt)</button> : null}
+                  <h3>{recipientText.yourAction}</h3>
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}</div>
+                  {!player.adventure.choices?.length && !player.adventure.pending ? <p>{recipientText.refreshProgress}</p> : null}
+                  {player.adventure.pending ? <button disabled={busy} onClick={() => void adventureAction()} style={buttonStyle}>{recipientText.retrySubmission}</button> : null}
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
-                  <label htmlFor="adventure-action">What do you do?<textarea id="adventure-action" value={actionText} onChange={event => { setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
-                  <p>Review your text before sending.</p>
-                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? 'Stop dictation' : 'Dictate action'}</button>
-                  {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? 'Listening - speak now; review the text before submitting.' : 'Starting microphone - please wait.'}</p> : null}
-                  <button disabled={busy || (!actionText.trim() && !player.adventure.pending)} style={primaryStyle}>{player.adventure.pending ? 'Retry same submission / check status' : 'Submit action (uses one attempt)'}</button>
-                </form> : <p>Action limit reached. Use hints or try the final answer below. You can still listen.</p>}
-                {player.adventure.pending ? <p role="status">Processing. Disconnected attempts expire within 90 seconds without a refund.</p> : null}
-                <button disabled={busy} onClick={() => void adventureAction(true)} style={buttonStyle}>Refresh adventure progress</button>
+                  <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onChange={event => { setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
+                  <p>{recipientText.reviewGuess}</p>
+                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? recipientText.stopDictation : recipientText.dictateAction}</button>
+                  {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
+                  <button disabled={busy || (!actionText.trim() && !player.adventure.pending)} style={primaryStyle}>{player.adventure.pending ? recipientText.retrySubmission : recipientText.submitAction}</button>
+                </form> : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
+                {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
+                <button disabled={busy} onClick={() => void adventureAction(true)} style={buttonStyle}>{recipientText.refreshProgress}</button>
               </article> : <article style={cardStyle}>
-                  <p>Scene {player.sceneIndex + 1} of {player.sceneCount}</p>
+                  <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
                   <h2>{player.scene.title}</h2>
                   {experience === 'read' ? <>
                     <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
-                    <p style={{ lineHeight: 1.7 }}><strong>Clue:</strong> {player.scene.clue}</p>
-                  </> : <details><summary>Show scene transcript and clue</summary><p style={{ lineHeight: 1.8 }}>{player.scene.body}</p><p><strong>Clue:</strong> {player.scene.clue}</p></details>}
-                  <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label="Play this scene" beforeSpeak={interaction.stopRecording} />
+                    <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {player.scene.clue}</p>
+                  </> : <details><summary>{recipientText.read}</summary><p style={{ lineHeight: 1.8 }}>{player.scene.body}</p><p><strong>{recipientText.clue}:</strong> {player.scene.clue}</p></details>}
+                  <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
                   {player.sceneIndex + 1 < player.sceneCount ? <>
-                    <h3>What would you like to do next?</h3>
-                    <p>All choices follow the same clue trail.</p>
+                    <h3>{recipientText.next}</h3>
                     <div style={{ display: 'grid', gap: '0.75rem' }}>
-                      {(player.scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <button key={choice} disabled={busy} onClick={() => void act('next')} style={{ ...buttonStyle, textAlign: 'left' }}>{busy ? 'Opening the next scene...' : choice}</button>)}
+                      {(player.scene.choices || [recipientText.next]).map(choice => <button key={choice} disabled={busy} onClick={() => void act('next')} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}
                     </div>
-                  </> : <p>Final clue. Try your answer below.</p>}
+                  </> : <p>{recipientText.tryAnswer}</p>}
                 </article>}
                 {player.discoveries.length > 0 ? (
                   <details style={cardStyle}>
-                    <summary>Earlier discoveries ({player.discoveries.length})</summary>
+                    <summary>{recipientText.earlier} ({player.discoveries.length})</summary>
                     {player.discoveries.map((scene, index) => (
                       <article key={index}>
                         <h3>{scene.title}</h3>
                         <p style={{ lineHeight: 1.8 }}>{scene.body}</p>
-                        <p><strong>Clue:</strong> {scene.clue}</p>
+                        <p><strong>{recipientText.clue}:</strong> {scene.clue}</p>
                         {audioButton(`${scene.body} ${scene.clue}`)}
                       </article>
                     ))}
                   </details>
                 ) : null}
                 <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
-                  <label style={{ fontWeight: 700 }}>What is the answer?<input value={guess} onChange={(event) => setGuess(event.target.value)} maxLength={200} required style={fieldStyle} disabled={busy} /></label>
-                  <p>Your guess is sent to Muse to compare with the creator&apos;s answer, not to AI. Case, punctuation and spacing are ignored. {player.canSkip ? 'The sender also allows a confirmed skip under Need help.' : 'Only creator-approved answers unlock the surprise.'}</p>
+                  <label style={{ fontWeight: 700 }}>{recipientText.answer}<input value={guess} onChange={(event) => setGuess(event.target.value)} maxLength={200} required style={fieldStyle} disabled={busy} /></label>
+                  <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <button disabled={busy || !guess.trim()} style={primaryStyle}>{busy ? 'Checking...' : 'Try this answer'}</button>
-                    <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? 'Stop dictation' : 'Dictate your answer'}</button>
+                    <button disabled={busy || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
+                    <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? recipientText.stopDictation : recipientText.dictateAnswer}</button>
                   </div>
-                  <p>Review before sending. Up to 30 guesses.</p>
-                  {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? 'Listening - speak now.' : 'Starting microphone - please wait.'}</p> : null}
+                  <p>{recipientText.reviewGuess}</p>
+                  {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                 </form>
               </>
             )}
             {!player.solved && !player.skipped ? <details style={cardStyle}>
-              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Need help?</summary>
-              <p>There is no rush. You can pause now and resume later using this same link in this same browser, before the story expires. Keep browser storage; private browsing or clearing it may start a new playthrough.</p>
-              <p>Try the hints below, revisit earlier clues, or contact {player.creatorName} using the app or conversation where they sent your link. Muse does not send messages to the sender.</p>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{recipientText.needHelp}</summary>
+              <p>{recipientText.pauseHelp}</p>
+              <p>{recipientText.contactSender(player.creatorName)}</p>
               {player.canSkip ? <>
-                <p>The sender allows you to reveal the surprise without solving. Confirmation is required; it will not count as solved. No AI call or paid attempt is used.</p>
-                <button disabled={busy} onClick={() => void act('skip')} style={buttonStyle}>Reveal without solving...</button>
-              </> : <p>The sender chose Solve to unlock. Ask them for a gentle clue if you are stuck.</p>}
-              {!player.hintsRemaining && !player.revealedHints.length ? <p>The sender has not added any hints.</p> : null}
+                <p>{recipientText.skipHelp}</p>
+                <button disabled={busy} onClick={() => void act('skip')} style={buttonStyle}>{recipientText.skip}</button>
+              </> : <p>{recipientText.solveHelp}</p>}
+              {!player.hintsRemaining && !player.revealedHints.length ? <p>{recipientText.noHints}</p> : null}
             </details> : null}
             {(player.revealedHints.length > 0 || (!player.solved && !player.skipped && player.hintsRemaining > 0)) ? (
               <article style={cardStyle}>
-                <h2>Hints</h2>
+                <h2>{recipientText.hintTitle}</h2>
                 {player.revealedHints.length > 0 ? (
                   <ol>{player.revealedHints.map((hint, index) => <li key={index} style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{hint}</li>)}</ol>
-                ) : <p>Hints use no guesses and do not advance the story.</p>}
+                ) : <p>{recipientText.hintsNoCost}</p>}
                 {!player.solved && !player.skipped && player.hintsRemaining > 0 ? (
-                  <button disabled={busy} onClick={() => void act('hint')} style={buttonStyle}>Request next hint ({player.hintsRemaining} remaining)</button>
-                ) : player.hintsRemaining === 0 ? <p>All available hints have been revealed.</p> : null}
+                  <button disabled={busy} onClick={() => void act('hint')} style={buttonStyle}>{recipientText.showHint} ({recipientText.hintRemaining(player.hintsRemaining)})</button>
+                ) : player.hintsRemaining === 0 ? <p>{recipientText.hintsExhausted}</p> : null}
               </article>
             ) : null}
             {player.feedback ? <p role="status">{player.feedback}</p> : null}
@@ -979,6 +1000,8 @@ export default function SharedStoryPage() {
               <p role="status">Attach your photo or video above to unlock sharing.</p>
             </article> : <article style={cardStyle}>
               <h2>Share story</h2>
+              <PreSendCheck key={creator.ownerToken} story={creator} hasMedia={Boolean(ownerMedia)} hasVoice={Boolean(ownerVoice)} uploadPending={Boolean(mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading')} onReady={markSendReady} />
+              {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && Date.parse(creator.expiresAt) > Date.now() ? <>
               <p>Anyone with the recipient link can play. Keep the management link to yourself. Links expire on {new Date(creator.expiresAt).toLocaleDateString()}.</p>
               <details style={{ marginBottom: '1rem' }}>
                 <summary>Local testing: HTTPS tunnel</summary>
@@ -1001,8 +1024,8 @@ export default function SharedStoryPage() {
               </details>
               {playerLink ? <>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
-                  <a href={playerLink} target="_blank" rel="noopener noreferrer" onClick={narrator.stop} style={{ ...primaryStyle, textDecoration: 'none' }}>Open recipient story</a>
-                  <button onClick={() => copy(playerLink)} style={buttonStyle}>Copy recipient link</button>
+                  <a href={playerLink} target="_blank" rel="noopener noreferrer" onClick={event => { if (!confirmShareReady()) event.preventDefault(); narrator.stop() }} style={{ ...primaryStyle, textDecoration: 'none' }}>Open recipient story</a>
+                  <button onClick={() => copy(playerLink, true)} style={buttonStyle}>Copy recipient link</button>
                 </div>
                 <p>Test in a private window for fresh progress.</p>
                 <label>Recipient link<input readOnly value={playerLink} style={fieldStyle} onFocus={(event) => event.target.select()} /></label>
@@ -1013,20 +1036,21 @@ export default function SharedStoryPage() {
                     <p role="status">Local link: works only on this computer. External sharing is disabled.</p>
                   ) : (
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                      <a href={shareDetails.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={narrator.stop} style={{ ...buttonStyle, color: 'inherit' }}>Share on WhatsApp</a>
+                      <a href={shareDetails.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={event => { if (!confirmShareReady()) event.preventDefault(); narrator.stop() }} style={{ ...buttonStyle, color: 'inherit' }}>Share on WhatsApp</a>
                       {canDeviceShare ? <button disabled={busy || sharing} onClick={() => void shareOnDevice()} style={buttonStyle}>{sharing ? 'Opening sharing...' : 'Share with another app'}</button> : null}
                     </div>
                   )}
                   <p>Confirm sending in your sharing app. Only the recipient link is shared, not private answers or reveals. Audio uses their device&apos;s voices.</p>
                 </>
               ) : null}
-              <details style={{ marginTop: '1rem' }}>
-                <summary>Your private management link</summary>
-                <input aria-label="Private management link" readOnly value={managementLink} style={fieldStyle} onFocus={(event) => event.target.select()} />
-                <button onClick={() => copy(managementLink)} style={{ ...buttonStyle, marginTop: '0.5rem' }}>Copy management link</button>
-              </details>
               <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>
+              </> : null}
             </article>}
+            <details style={cardStyle}>
+              <summary>Your private management link</summary>
+              <input aria-label="Private management link" readOnly value={managementLink} style={fieldStyle} onFocus={(event) => event.target.select()} />
+              <button onClick={() => copy(managementLink)} style={{ ...buttonStyle, marginTop: '0.5rem' }}>Copy management link</button>
+            </details>
             <details style={{ marginTop: '1.5rem' }}>
               <summary>Delete this story</summary>
               <p>This permanently removes the story and disables both links.</p>
@@ -1076,6 +1100,18 @@ export default function SharedStoryPage() {
                 </div>
                 {textField('creatorName', 'Your name', 'Person A', 80)}
                 {textField('recipientName', 'Recipient name', 'Person B', 80)}
+                <div>
+                  <label htmlFor="shared-language" style={{ fontWeight: 700 }}>Story language</label>
+                  <select id="shared-language" value={brief.language ?? ''} disabled={busy} style={fieldStyle} onChange={event => {
+                    const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
+                    if (!language) return
+                    setBrief(current => ({ ...current, language: language.code })); setAiConsent(false)
+                  }}>
+                    {!brief.language ? <option value="">Keep original language (saved brief)</option> : null}
+                    {STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}
+                  </select>
+                </div>
+                <p>Generated scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; Muse keeps your words unchanged. App settings and errors may remain English.</p>
               </div>
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

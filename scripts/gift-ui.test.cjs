@@ -10,10 +10,11 @@ function source(relative) {
 }
 function plainModule(relative) {
   const result = { exports: {} }
-  new Function('module', 'exports', 'require', source(relative))(result, result.exports, require)
+  new Function('module', 'exports', 'require', source(relative))(result, result.exports, id => id.startsWith('.') ? plainModule(path.join(path.dirname(relative), id + '.ts')) : require(id))
   return result.exports
 }
 const gifts = plainModule('src/lib/storyGift.ts')
+const language = plainModule('src/lib/storyLanguage.ts')
 function flatten(node) {
   if (node === null || node === undefined || typeof node === 'boolean') return []
   if (Array.isArray(node)) return node.flatMap(flatten)
@@ -55,6 +56,7 @@ async function mount(hash, player = null, owner = null) {
       saveGiftDraft: draft => gifts.saveGiftDraft(draft, storage), removeGiftDraft: () => gifts.removeGiftDraft(storage)
     }
     if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
+    if (id.endsWith('/storyLanguage')) return plainModule('src/lib/storyLanguage.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory() {} }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({ stopRecording() {}, recordingTarget: null, error: '' }) }
@@ -113,6 +115,11 @@ async function main() {
   creator.timers.at(-1)()
   const saved = gifts.loadGiftDraft(creator.browser.localStorage)
   assert.equal(saved.brief.gift.occasion, 'birthday')
+  assert.equal(saved.brief.language, 'en-US')
+  creator.field('shared-language').props.onChange({ target: { value: 'ar-SA' } })
+  await creator.flush()
+  creator.timers.at(-1)()
+  assert.equal(gifts.loadGiftDraft(creator.browser.localStorage).brief.language, 'ar-SA')
   assert.equal(saved.brief.creatorName, 'Sender')
   await creator.click('Continue')
   assert.ok(creator.nodes().some(node => label(node) === 'Step 2 of 3: Shape the story'))
@@ -126,9 +133,9 @@ async function main() {
     gift: { occasion: 'birthday', dedication: 'A note', allowReply: true }
   }
   const recipient = await mount('#play=fixture', player)
-  assert.ok(recipient.button('Open my story'))
+  assert.ok(recipient.button(language.recipientCopy().openStory))
   assert.equal(recipient.nodes().some(node => node.props.id === 'gift-reply'), false)
-  await recipient.click('Open my story')
+  await recipient.click(language.recipientCopy().openStory)
   recipient.field('gift-reply').props.onChange({ target: { value: 'A private thanks' } })
   await recipient.flush()
   const submit = () => recipient.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
@@ -137,16 +144,27 @@ async function main() {
   assert.ok(recipient.nodes().some(node => label(node) === 'Test reply failure'))
   submit(); await recipient.flush()
   assert.equal(recipient.requests.filter(request => request.action === 'reply').length, 2)
-  assert.ok(recipient.button('Update my reply'))
+  assert.ok(recipient.button(language.recipientCopy().updateReply))
+  assert.ok(recipient.nodes().some(node => node.type === 'a' && node.props.href === '/shared?create=1#new'))
+  const arabic = await mount('#play=arabic-fixture', { ...player, language: 'ar-SA' })
+  assert.ok(arabic.nodes().some(node => node.type === 'section' && node.props.lang === 'ar-SA' && node.props.dir === 'rtl'))
+  assert.ok(arabic.button(language.recipientCopy('ar-SA').openStory))
   console.log('PASS gift cover gates the player and private reply failures preserve text for retry')
   const owner = await mount('#manage=fixture', null, {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
-    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2026-11-15T00:00:00.000Z'
+    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2099-11-15T00:00:00.000Z'
   })
+  assert.ok(owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'Management access is independent of pre-send checks')
+  const rotateLabel = 'Replace recipient link (invalidates the previous one)'
+  assert.equal(owner.nodes().some(node => node.type === 'button' && label(node) === rotateLabel), false)
+  const check = owner.nodes().find(node => node.type === '../components/PreSendCheck')
+  check.props.onReady(true); await owner.flush()
+  assert.ok(owner.button(rotateLabel))
   const voiceComponent = owner.nodes().find(node => node.type === '../components/GiftVoiceRecorder')
   assert.ok(voiceComponent)
   voiceComponent.props.onChange(new File([new Uint8Array(32044)], 'test.wav', { type: 'audio/wav' }))
   await owner.flush()
+  assert.equal(owner.nodes().some(node => node.type === 'button' && label(node) === rotateLabel), false, 'Pending replacement immediately closes recipient sharing')
   await owner.click('Upload replacement recording')
   assert.deepEqual(owner.requests.filter(request => request.action.startsWith('voice-')).map(request => request.action), ['voice-start', 'voice-finish'])
   const initialRequests = owner.requests.length

@@ -10,6 +10,7 @@ import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
+import { STORY_LANGUAGES, storyLanguage, type StoryLanguageCode } from '../lib/storyLanguage'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -28,6 +29,7 @@ export default function StoryPage() {
   const [responseDraft, setResponseDraft] = useState('')
   const [duration, setDuration] = useState(10)
   const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
+  const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const [creatorCode, setCreatorCode] = useState('')
   const [dictationLanguage, setDictationLanguage] = useState('en-US')
   const [reconciled, setReconciled] = useState(false)
@@ -152,7 +154,7 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
       setNeed('')
       setResponseDraft('')
     } catch (error) {
@@ -290,6 +292,12 @@ export default function StoryPage() {
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
                 </select>
               </label>
+              <label style={{ display: 'block', marginTop: '1rem' }}>Story language
+                <select aria-label="Story language" value={language} disabled={isGenerating || Boolean(preparation)} onChange={event => { setLanguage(event.target.value as StoryLanguageCode); setAiConsent(false) }}>
+                  {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+                </select>
+              </label>
+              <p>The story and its actions stay in this language. Device narration depends on installed voices.</p>
               <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
                 <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => { setChoiceMode(event.target.value as StoryChoiceMode); setAiConsent(false) }}>
                   <option value="free">Write or speak freely</option>
@@ -314,10 +322,10 @@ export default function StoryPage() {
           ) : (
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
-              <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
-              <p style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
+              <h1 lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
+              <p lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
               <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
-              <article style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
+              <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
                 <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
                 <p style={{ fontSize: '1.15rem', lineHeight: 1.85 }}>{scene?.body}</p>
@@ -341,7 +349,7 @@ export default function StoryPage() {
                 <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => { setResponseDraft(event.target.value); setAiConsent(false) }} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
                 <label>Dictation language <select value={dictationLanguage} disabled={isGenerating || isRecording} onChange={event => setDictationLanguage(event.target.value)}>
-                  <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option><option value="es-ES">Español</option>
+                  {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}<option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option>
                 </select></label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>

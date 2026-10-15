@@ -193,10 +193,23 @@ async function main() {
     let useNarration
     try { Module._load = function (id, ...args) { return id === 'react' ? react : id === './storyAmbience' ? { StoryAmbience: FakeAmbience } : originalLoad.call(this, id, ...args) }; useNarration = require(modulePath).useNarration } finally { Module._load = originalLoad }
     let context = options.context || {}
-    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
+    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context, { browserOnly: options.browserOnly }); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
     render(); render()
     return { render, spoken, listeners, synth, calls, ambientCalls, get cancels() { return cancels }, setContext(value) { context = value; render(); return render() }, setMetadata(value) { metadata = value; render(); return render() }, updateVoices(value) { voiceList = value; listeners.get('voiceschanged')?.() }, dispose() { slots.forEach(slot => { slot?.cleanup?.(); if (slot) slot.cleanup = undefined }) } }
   }
+  await check('free sample overrides the paid ElevenLabs provider with browser speech', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
+    let fetches = 0
+    global.fetch = async () => { fetches++; throw new Error('Paid TTS forbidden') }
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { browserOnly: true })
+    try {
+      await hook.render().speak('A free fictional sample.')
+      assert.equal(fetches, 0)
+      assert.equal(hook.spoken.length, 1)
+      hook.spoken[0].onend()
+      assert.equal(hook.render().busy, false)
+    } finally { hook.dispose() }
+  })
   await check('browser mode makes zero TTS requests and completes sentence chunks without stuck state', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     let fetches = 0

@@ -8,6 +8,12 @@ html {
 
 body {
   margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+:focus-visible {
+  outline: 3px solid #866341;
+  outline-offset: 3px;
 }
 
 button,

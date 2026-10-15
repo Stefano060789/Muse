@@ -1,6 +1,7 @@
 import { parseNarrationMetadata, type NarrationMetadata } from './narration'
 import type { SharedMediaKind, SharedMediaMime, SharedVoiceSummary } from './sharedStoryMedia'
 import { parseStoryChoiceMode, parseSuggestedChoices, type StoryChoiceMode } from './freeformStory'
+import { assertStoryNarrationLanguage, parseStoryLanguage, recipientCopy, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 
 export const SHARED_STORY_DURATIONS = [5, 10, 15, 20] as const
 
@@ -11,6 +12,7 @@ export type SharedStoryGift = {
 }
 
 export type SharedStoryBrief = {
+  language?: StoryLanguageCode
   creatorName: string
   recipientName: string
   narration: string
@@ -35,6 +37,7 @@ export function parseSharedSceneChoices(value: unknown): string[] | undefined {
 }
 export type SharedStoryContent = NarrationMetadata & { title: string; description: string; scenes: SharedStoryScene[] }
 export type SharedStoryPlayer = NarrationMetadata & {
+  language?: StoryLanguageCode
   title: string
   description: string
   creatorName: string
@@ -80,10 +83,15 @@ function text(value: unknown, label: string, max: number, optional = false): str
 
 export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessage?: boolean } = {}): SharedStoryBrief {
   const input = record(value)
+  let language: StoryLanguageCode | undefined
+  try { language = parseStoryLanguage(input.language) } catch (error) {
+    throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid story language.')
+  }
   if (!SHARED_STORY_DURATIONS.some((duration) => duration === input.durationMinutes)) {
     throw new SharedStoryError('Choose a duration of 5, 10, 15, or 20 minutes.')
   }
   const brief = {
+    ...(language ? { language } : {}),
     creatorName: text(input.creatorName, 'Your name', 80),
     recipientName: text(input.recipientName, 'Recipient name', 80),
     narration: text(input.narration, 'Narration style', 600),
@@ -195,11 +203,12 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
   if ([...solutions, message, ...privateHints].filter(Boolean).some(secret => (' ' + publicText + ' ').includes(' ' + secret + ' '))) {
     throw new SharedStoryError('The generated narration exposed the answer or final message. Try generating again.', 502)
   }
-  const words = scenes.map((scene) => scene.body + ' ' + scene.clue).join(' ').split(/\s+/).length
+  const words = storyWordCount(scenes.map((scene) => scene.body + ' ' + scene.clue).join(' '), brief.language)
   if (words < brief.durationMinutes * 60 || words > brief.durationMinutes * 110) {
     throw new SharedStoryError('The AI returned a story outside the requested narration length. Try generating again.', 502)
   }
   try {
+    assertStoryNarrationLanguage(input.narrationLanguage, brief.language)
     return { title, description, scenes, ...parseNarrationMetadata(input, true) }
   } catch (error) {
     throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid AI narration metadata.', 502)
@@ -217,7 +226,16 @@ export function sharedStoryPlayerView(
   const sceneIndex = Math.max(0, Math.min(state.current_scene, content.scenes.length - 1))
   const hints = brief.assistanceHints ?? []
   const revealed = Math.max(0, Math.min(state.revealed_hints ?? 0, hints.length))
+  const copy = brief.language ? recipientCopy(brief.language) : undefined
+  const feedbackLabels: Record<string, string> | undefined = copy ? {
+    'You solved it.': copy.feedbackSolved,
+    'Not quite. Explore the clues and try again.': copy.feedbackWrong,
+    'Revealed without solving': copy.feedbackSkipped
+  } : undefined
+  const localizedFeedback = feedback && feedbackLabels && Object.prototype.hasOwnProperty.call(feedbackLabels, feedback)
+    ? feedbackLabels[feedback] : feedback
   return {
+    ...(brief.language ? { language: brief.language } : {}),
     title: content.title,
     description: content.description,
     ...parseNarrationMetadata(content),
@@ -233,7 +251,7 @@ export function sharedStoryPlayerView(
     canSkip: brief.unlockPolicy === 'allow-skip' && !state.solved && !state.skipped,
     revealedHints: hints.slice(0, revealed),
     hintsRemaining: hints.length - revealed,
-    ...(feedback ? { feedback } : {}),
+    ...(localizedFeedback ? { feedback: localizedFeedback } : {}),
     ...(brief.gift ? { gift: brief.gift } : {}),
     ...((state.solved || state.skipped) && brief.message ? { message: brief.message } : {}),
     ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {}),

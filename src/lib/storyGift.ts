@@ -1,4 +1,5 @@
 import type { SharedStoryBrief } from './sharedStory'
+import { STORY_LANGUAGES } from './storyLanguage'
 
 export const GIFT_OCCASIONS = [
   { id: 'birthday', label: 'Birthday', question: 'What makes them special?', placeholder: 'A favourite memory, their little quirks, or something you admire...', idea: 'A birthday mystery inspired by the personal touches below.', goal: 'Follow the clues to discover a birthday surprise.' },
@@ -30,6 +31,11 @@ export function parseGiftDraft(value: unknown): GiftDraft {
   const fields = Object.fromEntries(Object.entries(limits).map(([key, max]) => [key, text(source[key], max)])) as Pick<SharedStoryBrief, keyof typeof limits>
   if (![5, 10, 15, 20].includes(Number(source.durationMinutes))) throw new Error('This draft has an invalid duration.')
   const brief: SharedStoryBrief = { ...fields, durationMinutes: Number(source.durationMinutes) }
+  if (source.language !== undefined) {
+    const language = STORY_LANGUAGES.find(item => item.code === source.language)
+    if (!language) throw new Error('This draft has an unsupported story language.')
+    brief.language = language.code
+  }
   if (source.unlockPolicy !== undefined) {
     if (source.unlockPolicy !== 'solve' && source.unlockPolicy !== 'allow-skip') throw new Error('This draft has an invalid reveal option.')
     brief.unlockPolicy = source.unlockPolicy

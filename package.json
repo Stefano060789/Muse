@@ -5,6 +5,9 @@
   "scripts": {
     "share:gateway": "node scripts/recipient-gateway.cjs",
     "test:gateway": "node scripts/recipient-gateway.test.cjs",
+    "test:onboarding": "node scripts/onboarding.test.cjs",
+    "test:billing": "node scripts/billing-preview.test.cjs",
+    "test:languages": "node scripts/story-language.test.cjs",
     "test:creator-access": "node scripts/creator-access.test.cjs",
     "test:personal-journey": "node scripts/personal-journey.test.cjs",
     "test:interaction": "node scripts/interaction-modes.test.cjs",

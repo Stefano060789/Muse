@@ -3,6 +3,7 @@ import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, 
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
 import { parseFreeformState, parseStoryChoiceMode, parseSuggestedChoices } from './freeformStory'
 import type { JourneyDuration, JourneySnapshot } from './personalJourney'
+import { assertStoryNarrationLanguage, parseStoryLanguage } from './storyLanguage'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
@@ -54,6 +55,8 @@ function narration(input: Record<string, unknown>): NarrationMetadata {
 
 export function validatePersonalStory(value: unknown): PersonalStory {
   const input = record(value)
+  const language = parseStoryLanguage(input.language)
+  assertStoryNarrationLanguage(input.narrationLanguage, language)
   const mood = input.mood
   if (mood !== 'adventure' && mood !== 'relaxed' && mood !== 'curious' && mood !== 'hopeful') throw new Error('Invalid story mood.')
   const scenes = list(input.scenes).map(value => {
@@ -82,6 +85,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
     }
   }
   return {
+    ...(language ? { language } : {}),
     id: identifier(input.id), mood, title: text(input.title), description: text(input.description),
     currentStep: input.currentStep, createdAt: date(input.createdAt), responses: strings(input.responses), scenes,
     ...(journey ? { journey } : {}),
@@ -100,10 +104,12 @@ export function validateCreatorStory(value: unknown): CreatorStory {
     return { title: text(scene.title), body: text(scene.body), clue: text(scene.clue), ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) }) }
   })
   if (!scenes.length) throw new Error('Missing shared story scenes.')
+  const brief = parseSharedStoryBrief(input.brief, { allowEmptyMessage: true })
+  assertStoryNarrationLanguage(content.narrationLanguage, brief.language)
   return {
     ownerToken: identifier(input.ownerToken),
     ...(input.playToken !== undefined ? { playToken: identifier(input.playToken) } : {}),
-    expiresAt: date(input.expiresAt), brief: parseSharedStoryBrief(input.brief, { allowEmptyMessage: true }),
+    expiresAt: date(input.expiresAt), brief,
     content: { title: text(content.title), description: text(content.description), scenes, ...narration(content) }
   }
 }

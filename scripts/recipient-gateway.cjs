@@ -23,7 +23,8 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
     const asset = /^\/_next\/static\/[A-Za-z0-9_./-]+$/.test(url.pathname) &&
       !url.pathname.split('/').includes('..')
     const api = req.method === 'POST' && url.pathname === '/api/shared-story' && !url.search
-    if (!api && !(req.method === 'GET' && (url.pathname === '/shared' || asset || url.pathname === '/favicon.ico'))) {
+    const appAsset = ['/manifest.webmanifest', '/sw.js', '/icons/muse-180.png', '/icons/muse-192.png', '/icons/muse-512.png', '/icons/muse-maskable-512.png'].includes(url.pathname) && !url.search
+    if (!api && !(req.method === 'GET' && (url.pathname === '/shared' || asset || appAsset || url.pathname === '/favicon.ico'))) {
       return fail(403, 'This address permits recipient playback only. Creation and management stay on the local Muse address.')
     }
     if (req.headers.origin) {
@@ -66,7 +67,7 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
       method: req.method, headers, timeout: 20000
     }, response => {
       res.statusCode = response.statusCode
-      for (const name of ['content-type', 'content-length', 'cache-control', 'content-security-policy', 'cross-origin-resource-policy', 'content-disposition']) {
+      for (const name of ['content-type', 'content-length', 'cache-control', 'content-security-policy', 'cross-origin-resource-policy', 'content-disposition', 'service-worker-allowed']) {
         if (response.headers[name]) res.setHeader(name, response.headers[name])
       }
       response.on('error', () => res.destroy())

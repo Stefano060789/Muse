@@ -3,9 +3,13 @@ import { SharedStoryError } from './sharedStory'
 import { generateStoryJson } from './storyProvider'
 import type { PersonalStory, PersonalStoryMood } from './story'
 import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata } from './narration'
+import { assertStoryNarrationLanguage, parseStoryLanguage, storyLanguageInstruction, type StoryLanguageCode } from './storyLanguage'
 
-function narration(value: Record<string, unknown>, required = false) {
-  try { return parseNarrationMetadata(value, required) } catch (error) {
+function narration(value: Record<string, unknown>, required = false, language?: StoryLanguageCode) {
+  try {
+    assertStoryNarrationLanguage(value.narrationLanguage, language)
+    return parseNarrationMetadata(value, required)
+  } catch (error) {
     throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid narration metadata.')
   }
 }
@@ -47,9 +51,16 @@ function scene(value: unknown): PersonalStory['scenes'][number] {
 
 export function parsePersonalStoryRequest(value: unknown) {
   const input = object(value)
+  const languageField = (value: unknown) => {
+    try {
+      const language = parseStoryLanguage(value)
+      return language ? { language } : {}
+    } catch (error) { throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid story language.') }
+  }
   if (input.action === 'create') {
     return {
       action: 'create' as const,
+      ...languageField(input.language),
       mood: mood(input.mood),
       need: text(input.need, 'Your current need', 1000, true),
       profileKeypoints: keypoints(input.profileKeypoints)
@@ -66,7 +77,8 @@ export function parsePersonalStoryRequest(value: unknown) {
   const createdAt = text(saved.createdAt, 'Creation date', 40)
   if (!Number.isFinite(Date.parse(createdAt))) throw new SharedStoryError('Personal story creation date is invalid.')
   const story: PersonalStory = {
-    ...narration(saved),
+    ...languageField(saved.language),
+    ...narration(saved, false, parseStoryLanguage(saved.language)),
     id: text(saved.id, 'Story ID', 80),
     createdAt,
     generation: 'ai',
@@ -96,13 +108,14 @@ const SYSTEM = [
 
 export async function generatePersonalStory(input: ReturnType<typeof parsePersonalStoryRequest>): Promise<PersonalStory> {
   if (input.action === 'create') {
-    const generated = await generateStoryJson(`${SYSTEM}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.`, input, 2600)
+    const generated = await generateStoryJson(`${SYSTEM}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
     try {
       const content = object(generated)
       if (!Array.isArray(content.scenes) || content.scenes.length !== 3) throw new SharedStoryError('The AI must return three personal story scenes.')
       return {
         id: randomUUID(), createdAt: new Date().toISOString(), generation: 'ai',
-        ...narration(content, true),
+        ...(input.language ? { language: input.language } : {}),
+        ...narration(content, true, input.language),
         title: text(content.title, 'Story title', 160),
         description: text(content.description, 'Story description', 500),
         mood: input.mood, need: input.need, profileKeypoints: input.profileKeypoints,
@@ -116,9 +129,10 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
   const { story, answer } = input
   const nextStep = story.currentStep + 1
   const generated = await generateStoryJson(
-    `${SYSTEM}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.`,
+    `${SYSTEM}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
     {
       mood: story.mood, need: story.need, profileKeypoints: story.profileKeypoints,
+      ...(story.language ? { language: story.language } : {}),
       title: story.title, description: story.description, responses: [...story.responses, answer],
       visitedScenes: story.scenes.slice(0, nextStep), plannedNextScene: story.scenes[nextStep],
       ...narration(story)
@@ -129,7 +143,7 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
     const nextScene = scene(content.scene)
     return {
       ...story, currentStep: nextStep, responses: [...story.responses, answer],
-      ...narration(content, true),
+      ...narration(content, true, story.language),
       scenes: story.scenes.map((current, index) => index === nextStep ? nextScene : current)
     }
   } catch (error) {

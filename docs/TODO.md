@@ -30,6 +30,7 @@ older planning and marketing documents describe a different product direction.
 ## Current product direction
 
 Exactly three areas: **Myself**, **My Story**, **Shared Story**.
+The home screen prioritizes two story-creation choices; Myself is optional.
 Written and audio interaction belong inside these areas; audio is not a
 fourth area. Older daily wellness and daily couple-beat plans are not the
 current MVP.
@@ -80,6 +81,45 @@ current MVP.
 - [ ] Consider cross-device profile/story storage only after the prototype is validated
 
 ## Before public launch
+
+### Billing preview
+
+- [x] Add a minimal responsive Plans & Billing page linked from home with
+      proposed Free, EUR 3.99 Gift, EUR 8.99 monthly Plus and EUR 89.99 annual
+      Plus (annual planned for later); 10 creations / 120 interactions monthly
+- [x] Clearly disable purchasing and disclose unchanged prototype access,
+      excluded premium narration and existing 30-day server access
+- [ ] Before paid launch, confirm final prices, taxes, cancellation/refund
+      terms, customer identity, payment provider and measured delivery costs
+- [ ] Implement verified checkout/webhooks and atomic server-side allowances
+      before offering purchases; never trust browser storage for entitlements
+
+### Minimal onboarding and app readiness
+
+- [x] Simplify home to two creation paths, a fictional free sample and optional
+      Myself; retain direct Story Library access
+- [x] Add a handcrafted two-scene demo with browser-only narration; no paid
+      generation/TTS or persistent story required
+- [x] Add install metadata, original icons, browser/iPhone installation
+      guidance and a production network-only worker; no private offline cache
+- [x] Add a quiet recipient-to-creator handoff after reveal without copying
+      the private link, content or recipient progress
+- [x] Add local pre-send scene review, answer/attachment confirmations and
+      pending-upload, missing-reveal and expiry guards; no AI preview calls
+- [x] Add explicit English, Mandarin Chinese, Hindi, Spanish and Arabic story
+      languages, language-preserving continuation and localized recipient
+      instructions; scope Arabic RTL to story content
+- [x] Pass focused automated checks, TypeScript and production build; browser
+      checks cover 320/390px and desktop home, complete sample without API
+      calls, Arabic RTL/handoff/draft restore, pre-send gating/management
+      access, and worker registration with no offline CacheStorage entries
+- [ ] Verify this release on the hosted deployment after commit/push;
+      no new SQL migration is required for language JSON metadata
+- [ ] Verify real Android installation and iPhone Add to Home Screen,
+      standalone launch and actual device voices/dictation; keep internet
+      requirement and browser-local storage limitations visible
+- [ ] Test generated clue quality and naturalness with speakers of all five
+      languages; mocked validation is not multilingual quality certification
 
 ### Gift experience rollout (15 October 2026)
 
