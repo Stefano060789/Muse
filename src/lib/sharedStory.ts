@@ -1,8 +1,14 @@
 import { parseNarrationMetadata, type NarrationMetadata } from './narration'
-import type { SharedMediaKind, SharedMediaMime } from './sharedStoryMedia'
+import type { SharedMediaKind, SharedMediaMime, SharedVoiceSummary } from './sharedStoryMedia'
 import { parseStoryChoiceMode, parseSuggestedChoices, type StoryChoiceMode } from './freeformStory'
 
 export const SHARED_STORY_DURATIONS = [5, 10, 15, 20] as const
+
+export type SharedStoryGift = {
+  occasion: 'birthday' | 'anniversary' | 'surprise' | 'just-because'
+  dedication: string
+  allowReply: boolean
+}
 
 export type SharedStoryBrief = {
   creatorName: string
@@ -18,6 +24,7 @@ export type SharedStoryBrief = {
   alternativeAnswers?: string[]
   unlockPolicy?: 'solve' | 'allow-skip'
   adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode }
+  gift?: SharedStoryGift
 }
 
 export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[] }
@@ -44,7 +51,9 @@ export type SharedStoryPlayer = NarrationMetadata & {
   hintsRemaining: number
   feedback?: string
   message?: string
+  gift?: SharedStoryGift
   media?: { kind: SharedMediaKind; mime: SharedMediaMime }
+  voice?: { mime: 'audio/wav'; size: number }
   adventure?: import('./sharedAdventure').AdventureView
 }
 
@@ -87,7 +96,8 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     assistanceHints: privateList(input.assistanceHints, 'Assistance hints', 3, 600),
     alternativeAnswers: privateList(input.alternativeAnswers, 'Approved alternative answers', 5, 200),
     ...(input.unlockPolicy === undefined ? {} : { unlockPolicy: parseUnlockPolicy(input.unlockPolicy) }),
-    ...(input.adventure === undefined ? {} : { adventure: parseAdventureBudget(input.adventure) })
+    ...(input.adventure === undefined ? {} : { adventure: parseAdventureBudget(input.adventure) }),
+    ...(input.gift === undefined ? {} : { gift: parseGift(input.gift) })
   }
 
   function parseUnlockPolicy(value: unknown): 'solve' | 'allow-skip' {
@@ -103,8 +113,37 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     const choiceMode = parseStoryChoiceMode(input.choiceMode)
     return { actionBudget: Number(input.actionBudget), choiceMode }
   }
+  function parseGift(value: unknown): SharedStoryGift {
+    const input = record(value)
+    if (Object.keys(input).some(key => !['occasion', 'dedication', 'allowReply'].includes(key)) ||
+        !['occasion', 'dedication', 'allowReply'].every(key => Object.prototype.hasOwnProperty.call(input, key))) {
+      throw new SharedStoryError('Gift details must include only an occasion, dedication, and reply preference.')
+    }
+    if (!['birthday', 'anniversary', 'surprise', 'just-because'].includes(String(input.occasion))) {
+      throw new SharedStoryError('Choose a supported gift occasion.')
+    }
+    if (typeof input.dedication !== 'string' || input.dedication.length > 240) {
+      throw new SharedStoryError('Gift dedication must be text of at most 240 characters.')
+    }
+    if (typeof input.allowReply !== 'boolean') {
+      throw new SharedStoryError('Choose whether the recipient may reply.')
+    }
+    return {
+      occasion: input.occasion as SharedStoryGift['occasion'],
+      dedication: input.dedication.trim(),
+      allowReply: input.allowReply
+    }
+  }
   if (!normalizeSharedAnswer(brief.solution) || (brief.message && !normalizeSharedAnswer(brief.message))) {
     throw new SharedStoryError('The answer and message must contain letters or numbers.')
+  }
+  if (brief.gift?.dedication) {
+    const dedication = normalizeSharedAnswer(brief.gift.dedication)
+    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints]
+      .map(normalizeSharedAnswer).filter(Boolean)
+    if (privateValues.some(value => (` ${dedication} `).includes(` ${value} `))) {
+      throw new SharedStoryError('Gift dedication must not reveal the secret answer, final message, or private hints.')
+    }
   }
   if (brief.alternativeAnswers.some(answer => !normalizeSharedAnswer(answer))) {
     throw new SharedStoryError('Approved alternative answers must contain letters or numbers.')
@@ -172,7 +211,8 @@ export function sharedStoryPlayerView(
   content: SharedStoryContent,
   state: { current_scene: number; solved: boolean; skipped?: boolean; revealed_hints?: number },
   feedback?: string,
-  media?: { kind: SharedMediaKind; mime: SharedMediaMime } | null
+  media?: { kind: SharedMediaKind; mime: SharedMediaMime } | null,
+  voice?: SharedVoiceSummary | null
 ): SharedStoryPlayer {
   const sceneIndex = Math.max(0, Math.min(state.current_scene, content.scenes.length - 1))
   const hints = brief.assistanceHints ?? []
@@ -194,7 +234,9 @@ export function sharedStoryPlayerView(
     revealedHints: hints.slice(0, revealed),
     hintsRemaining: hints.length - revealed,
     ...(feedback ? { feedback } : {}),
+    ...(brief.gift ? { gift: brief.gift } : {}),
     ...((state.solved || state.skipped) && brief.message ? { message: brief.message } : {}),
-    ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {})
+    ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {}),
+    ...((state.solved || state.skipped) && voice ? { voice: { mime: voice.mime, size: voice.size } } : {})
   }
 }

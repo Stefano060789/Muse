@@ -10,9 +10,12 @@ import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryReveal'
 import ExplicitConsent from '../components/ExplicitConsent'
+import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
+import StoryKeepsake from '../components/StoryKeepsake'
+import { GIFT_OCCASIONS, loadGiftDraft, removeGiftDraft, saveGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
-  formatMediaSize, parseMediaDeclaration, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
+  formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
   type SharedMediaKind, type SharedMediaSummary
 } from '../lib/sharedStoryMedia'
 
@@ -20,6 +23,9 @@ type PlayerResponse = { player: SharedStoryPlayer; sessionToken: string }
 type MediaState = { media: SharedMediaSummary | null; mediaRequired: boolean }
 type UploadTarget = { method: 'PUT'; url: string; headers: Record<string, string> }
 type UploadState = { phase: 'idle' | 'uploading' | 'failed'; progress: number; error?: string }
+type VoiceSummary = { mime: string; size: number }
+type GiftReply = { message: string; createdAt: string }
+type GiftState = { voice?: VoiceSummary | null; replies?: GiftReply[] }
 
 const fieldStyle: CSSProperties = { display: 'block', width: '100%', padding: '0.85rem', marginTop: '0.5rem', boxSizing: 'border-box', fontSize: '1rem', border: '1px solid #d9cfc5', borderRadius: 8, background: '#fff' }
 const cardStyle: CSSProperties = { padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 18, background: '#fffaf6', marginBottom: '1rem' }
@@ -116,6 +122,23 @@ export default function SharedStoryPage() {
   const [ownerMedia, setOwnerMedia] = useState<SharedMediaSummary | null>(null)
   const [ownerPreview, setOwnerPreview] = useState<RevealMedia | null>(null)
   const [revealMedia, setRevealMedia] = useState<RevealMedia | null>(null)
+  const [voiceFile, setVoiceFile] = useState<File | null>(null)
+  const [ownerVoice, setOwnerVoice] = useState<VoiceSummary | null>(null)
+  const [voiceUrl, setVoiceUrl] = useState('')
+  const [voiceError, setVoiceError] = useState('')
+  const [voiceUploading, setVoiceUploading] = useState(false)
+  const [voiceRecording, setVoiceRecording] = useState(false)
+  const [replies, setReplies] = useState<GiftReply[]>([])
+  const [replyText, setReplyText] = useState('')
+  const [replySent, setReplySent] = useState(false)
+  const [giftOpened, setGiftOpened] = useState(false)
+  const [pendingDraft, setPendingDraft] = useState<GiftDraft | null>(null)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftStatus, setDraftStatus] = useState('')
+  const [draftUnreadable, setDraftUnreadable] = useState(false)
+  const [creatorStep, setCreatorStep] = useState(0)
+  const creatorForm = useRef<HTMLFormElement>(null)
+  const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const objectUrls = useRef<string[]>([])
   const lastMediaRefresh = useRef(0)
   const creatorLocked = process.env.NEXT_PUBLIC_MUSE_CREATOR_LOCKED === 'true'
@@ -169,6 +192,9 @@ export default function SharedStoryPage() {
           setAssistanceHintsText((source.story.brief.assistanceHints ?? []).join('\n'))
           setAlternativeAnswersText((source.story.brief.alternativeAnswers ?? []).join('\n'))
           setNotice('Brief copied from Story Library. Review it before preparing a new story. Previous links and progress are unchanged; attach any media again.')
+          try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
+          setDraftReady(true)
+          setCreatorStep(0)
           window.history.replaceState(null, '', '/shared#new')
           return
         }
@@ -177,11 +203,13 @@ export default function SharedStoryPage() {
         const saved = matching?.kind === 'shared' ? matching.story : latestCreatorStory(libraryResult)
         const ownerToken = fragment.get('manage') || (fragment.has('new') ? null : saved?.ownerToken)
         if (ownerToken) {
-          const { media, mediaRequired: _required, ...result } = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'> & MediaState>({ action: 'manage', token: ownerToken }, creatorCode)
+          const { media, mediaRequired: _required, voice, replies: savedReplies, ...result } = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'> & MediaState & GiftState>({ action: 'manage', token: ownerToken }, creatorCode)
           if (!active) return
           const restored = { ...result, ownerToken, ...(saved?.ownerToken === ownerToken ? { playToken: saved.playToken } : {}) }
           setCreator(restored)
           setOwnerMedia(media ?? null)
+          setOwnerVoice(voice ?? null)
+          setReplies(savedReplies ?? [])
           setBrief(result.brief)
           setAssistanceHintsText((result.brief.assistanceHints ?? []).join('\n'))
           setAlternativeAnswersText((result.brief.alternativeAnswers ?? []).join('\n'))
@@ -190,6 +218,9 @@ export default function SharedStoryPage() {
           } catch (error) {
             setNotice(`${error instanceof Error ? error.message : 'This browser could not save your management link.'} Keep a copy of your private management link yourself.`)
           }
+        } else {
+          try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
+          setDraftReady(true)
         }
       } catch (error) {
         if (active) setError(error instanceof Error ? error.message : 'Could not open this story.')
@@ -200,6 +231,33 @@ export default function SharedStoryPage() {
     void initialize()
     return () => { active = false }
   }, [creatorCode, creatorLocked])
+
+  useEffect(() => {
+    if (!draftReady || pendingDraft || draftUnreadable || loading || creator || playToken || busy) return
+    if (![brief.creatorName, brief.recipientName, brief.setting, brief.solution, brief.message, brief.recipientHints, brief.gift?.dedication].some(value => value?.trim())) return
+    const timer = window.setTimeout(() => {
+      try {
+        saveGiftDraft({ version: 1, brief, assistanceHintsText, alternativeAnswersText, savedAt: new Date().toISOString() })
+        setDraftStatus('Draft saved on this device. Media and recordings must be attached again after reopening.')
+      } catch {
+        setDraftStatus('Draft could not be saved. Keep this page open or copy your writing before leaving.')
+      }
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy])
+
+  const chooseOccasion = (occasion?: GiftOccasion) => {
+    const chosen = GIFT_OCCASIONS.find(item => item.id === occasion)
+    setBrief(current => {
+      const { gift: _gift, ...rest } = current
+      if (!chosen) return rest
+      const presetSetting = !current.setting || GIFT_OCCASIONS.some(item => item.idea === current.setting)
+      const presetGoal = !current.goal || GIFT_OCCASIONS.some(item => item.goal === current.goal)
+      return { ...current, gift: { occasion: chosen.id, dedication: current.gift?.dedication ?? '', allowReply: current.gift?.allowReply ?? false },
+        setting: presetSetting ? chosen.idea : current.setting, goal: presetGoal ? chosen.goal : current.goal }
+    })
+    setAiConsent(false)
+  }
 
   const storeCreator = (story: CreatorStory) => {
     setCreator(story)
@@ -213,7 +271,7 @@ export default function SharedStoryPage() {
   }
 
   const startNewStory = (reuseBrief = false) => {
-    if (busy || !creator) return
+    if (busy || voiceRecording || voiceUploading || !creator) return
     try {
       saveLibraryCreatorStory(creator)
     } catch (error) {
@@ -231,6 +289,13 @@ export default function SharedStoryPage() {
     setOwnerMedia(null)
     setOwnerPreview(null)
     setMediaFile(null)
+    setVoiceFile(null)
+    setOwnerVoice(null)
+    setVoiceUrl('')
+    setVoiceError('')
+    setReplies([])
+    try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
+    setDraftReady(true)
     setUpload(idleUpload)
     setAiConsent(false)
     setError('')
@@ -267,6 +332,7 @@ export default function SharedStoryPage() {
     setUpload({ phase: 'uploading', progress: 0 })
     let uploadId = ''
     try {
+      validateVoiceBytes(new Uint8Array(await file.arrayBuffer()))
       const declaration = parseMediaDeclaration({ mime: file.type, size: file.size })
       const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'media-start', token: story.ownerToken, media: { mime: declaration.mime, size: declaration.size } }, creatorCode)
       uploadId = started.uploadId
@@ -276,6 +342,14 @@ export default function SharedStoryPage() {
       setOwnerMedia(finished.media)
       setOwnerPreview(null)
       setMediaFile(null)
+      setVoiceFile(null)
+      setOwnerVoice(null)
+      setVoiceUrl('')
+      setVoiceError('')
+      setReplies([])
+      setDraftReady(true)
+      setCreatorStep(0)
+      try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
       setUpload(idleUpload)
       setNotice(`Your ${mediaLabel(declaration.kind)} is attached privately. It unlocks only after a correct answer.`)
       return true
@@ -314,6 +388,67 @@ export default function SharedStoryPage() {
     }
   }
 
+    const uploadVoice = async (story: CreatorStory, file: File) => {
+      setVoiceUploading(true)
+      setVoiceError('')
+      let uploadId = ''
+      try {
+        const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'voice-start', token: story.ownerToken, voice: { mime: 'audio/wav', size: file.size } }, creatorCode)
+        uploadId = started.uploadId
+        await putFile(started.upload, file, creatorCode, () => undefined)
+        const finished = await request<GiftState>({ action: 'voice-finish', token: story.ownerToken, uploadId }, creatorCode)
+        uploadId = ''
+        setOwnerVoice(finished.voice ?? null)
+        setVoiceFile(null)
+        setVoiceUrl('')
+        setNotice('Your voice message is attached. It unlocks with the final reveal.')
+      } catch (error) {
+        setVoiceError(`${error instanceof Error ? error.message : 'Could not upload the recording.'} Your story is saved. Retry without generating again.`)
+        if (uploadId) {
+          try { await request({ action: 'voice-cancel', token: story.ownerToken, uploadId }, creatorCode) }
+          catch { setVoiceError(current => `${current} The unfinished upload could not be cancelled; it will expire automatically.`) }
+        }
+      } finally { setVoiceUploading(false) }
+    }
+
+    const loadVoice = async (owner = false) => {
+      setVoiceError('')
+      try {
+        const result = await requestMedia(owner && creator ? { action: 'voice-preview', token: creator.ownerToken } : { action: 'voice', token: playToken, sessionToken }, owner ? creatorCode : '')
+        setVoiceUrl(mediaUrl(result))
+      } catch (error) { setVoiceError(error instanceof Error ? error.message : 'Could not load the voice message. Try again.') }
+    }
+
+    const removeVoice = async () => {
+      if (!creator || !window.confirm('Remove your stored voice message? The written story and other media will remain.')) return
+      setBusy(true)
+      try {
+        await request({ action: 'voice-delete', token: creator.ownerToken }, creatorCode)
+        setOwnerVoice(null); setVoiceUrl(''); setVoiceError('')
+      } catch (error) { setVoiceError(error instanceof Error ? error.message : 'Could not remove the voice message.') }
+      finally { setBusy(false) }
+    }
+
+    const sendReply = async () => {
+      setBusy(true); setError('')
+      try {
+        await request({ action: 'reply', token: playToken, sessionToken, reply: replyText.trim() })
+        setReplySent(true)
+        setNotice('Your reply was sent privately to the sender.')
+      } catch (error) { setError(error instanceof Error ? error.message : 'Could not send your reply. Your text is kept here; try again.') }
+      finally { setBusy(false) }
+    }
+
+    const refreshReplies = async () => {
+      if (!creator) return
+      setBusy(true); setError('')
+      try {
+        const result = await request<GiftState>({ action: 'manage', token: creator.ownerToken }, creatorCode)
+        setReplies(result.replies ?? [])
+      } catch (error) { setError(error instanceof Error ? error.message : 'Could not load replies.') }
+      finally { setBusy(false) }
+    }
+
   const loadRevealMedia = useCallback(async (kind: SharedMediaKind) => {
     setRevealMedia(current => current?.url ? current : { kind, state: 'loading' })
     try {
@@ -339,8 +474,24 @@ export default function SharedStoryPage() {
     void loadRevealMedia(revealMedia.kind)
   }
 
+  const nextCreatorStep = () => {
+    const fields = creatorForm.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')
+    if (fields) {
+      for (const field of Array.from(fields)) {
+        if (!field.checkValidity()) { field.reportValidity(); return }
+      }
+    }
+    setCreatorStep(step => Math.min(2, step + 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const generate = async (event: FormEvent) => {
     event.preventDefault()
+    if (creatorStep < 2) { nextCreatorStep(); return }
+    if (voiceRecording || voiceUploading || pendingDraft || draftUnreadable) {
+      setError('Finish the recording and restore or discard any saved draft before preparing the story.')
+      return
+    }
     if (!hasExplicitConsent(aiConsent)) {
       setError('Review the AI disclosure and check the consent box before preparing this story.')
       return
@@ -352,6 +503,7 @@ export default function SharedStoryPage() {
     interaction.stopRecording()
     narrator.stop()
     try {
+      if (voiceFile) validateVoiceBytes(new Uint8Array(await voiceFile.arrayBuffer()))
       const declaration = mediaFile ? parseMediaDeclaration({ mime: mediaFile.type, size: mediaFile.size }) : null
       if (!declaration && !brief.message.trim()) throw new Error('Write a final message, attach a photo or video, or both.')
       const assistanceHints = assistanceLines(assistanceHintsText)
@@ -366,8 +518,11 @@ export default function SharedStoryPage() {
         throw new Error('Under Advanced options, approve an adventure AI action budget from 1 to 1000.')
       }
       const preparedBrief = { ...brief, narration: brief.narration.trim() || DEFAULT_NARRATION, assistanceHints, alternativeAnswers }
-      const { media: _media, mediaRequired: _required, ...story } = await request<CreatorStory & MediaState>({
+      try { saveGiftDraft({ version: 1, brief: preparedBrief, assistanceHintsText, alternativeAnswersText, savedAt: new Date().toISOString() }) }
+      catch { setDraftStatus('Draft could not be saved on this device. Keep the page open if preparation fails.') }
+      const { media: _media, mediaRequired: _required, voice: _voice, replies: _replies, ...story } = await request<CreatorStory & MediaState & GiftState>({
         action: 'create', brief: preparedBrief, consentVersion: MUSE_AI_CONSENT_VERSION,
+        ...(voiceFile ? { finalVoice: { mime: 'audio/wav', size: voiceFile.size } } : {}),
         ...(declaration ? { finalMedia: { mime: declaration.mime, size: declaration.size } } : {})
       }, creatorCode)
       setBrief(story.brief)
@@ -376,8 +531,10 @@ export default function SharedStoryPage() {
       setOwnerMedia(null)
       setOwnerPreview(null)
       storeCreator(story)
+      try { removeGiftDraft(); setDraftStatus('') } catch { setNotice('Story created, but the old draft could not be removed from this device. Discard it next time you create a story.') }
       window.history.replaceState(null, '', `/shared#manage=${story.ownerToken}`)
       if (mediaFile) await uploadMedia(story, mediaFile)
+      if (voiceFile) await uploadVoice(story, voiceFile)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not generate the story.')
     } finally {
@@ -488,10 +645,11 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
-      <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
+      {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
+        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
       <button type="button" aria-label={interaction.recordingTarget === key ? `Stop dictation: ${label}` : `Dictate: ${label}`} disabled={busy} onClick={() => interaction.dictate(key, (value) => { setBrief((current) => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
         {interaction.recordingTarget === key ? 'Stop dictation' : 'Dictate'}
       </button>
@@ -516,6 +674,8 @@ export default function SharedStoryPage() {
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const playerLink = shareDetails?.url || ''
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
+  const selectedOccasion = GIFT_OCCASIONS.find(item => item.id === brief.gift?.occasion)
+  const showGiftCover = Boolean(player?.gift && !giftOpened)
   const adventureCanSubmit = Boolean(player?.adventure &&
     (player.adventure.pending || (player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0)))
 
@@ -570,7 +730,7 @@ export default function SharedStoryPage() {
           }}>Use creator access code</button>
           {creatorCode ? <p role="status">Code entered; checked on your next request.</p> : null}
         </section> : null}
-        <details style={{ marginBottom: '1rem' }}>
+        {!showGiftCover ? <details style={{ marginBottom: '1rem' }}>
           <summary>Audio and microphone settings</summary>
           <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
           <section aria-label="Voice input settings">
@@ -578,27 +738,56 @@ export default function SharedStoryPage() {
           <label>Dictation language <select value={dictationLanguage} onChange={event => { interaction.stopRecording(); setDictationLanguage(event.target.value) }}>
             <option value="en-US">English</option><option value="it-IT">Italian</option><option value="de-DE">German</option><option value="fr-FR">French</option><option value="es-ES">Spanish</option>
           </select></label>
-          <MicrophoneCheck stopSignal={interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
+          <MicrophoneCheck stopSignal={voiceRecording ? 'gift-voice-recording' : interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
-        </details>
+        </details> : null}
         {loading ? <p role="status">Opening your private story...</p> : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
           <section>
+            {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
+              <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.8rem' }}>A story made for you</p>
+              <h1 style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>For {player.recipientName}</h1>
+              <p>From {player.creatorName}, with a little mystery.</p>
+              {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
+              <p>About {player.durationMinutes} minutes. Take it at your own pace.</p>
+              <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>Open my story</button>
+              <p style={{ fontSize: '0.9rem' }}>No account needed. Nothing plays automatically.</p>
+            </article> : <>
             <p>A story from {player.creatorName} for {player.recipientName}</p>
             <h1 style={{ fontSize: '2.5rem' }}>{player.title}</h1>
             <p style={{ lineHeight: 1.7 }}>{player.description}</p>
             <p>About {player.durationMinutes} minutes, at your pace.</p>
-            <div role="group" aria-label="Story experience" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+            {!player.solved && !player.skipped ? <div role="group" aria-label="Story experience" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
               <button aria-pressed={experience === 'read'} onClick={() => { narrator.stop(); setExperience('read') }} style={experience === 'read' ? primaryStyle : buttonStyle}>Read the story</button>
               <button aria-pressed={experience === 'listen'} onClick={() => { narrator.stop(); setExperience('listen') }} style={experience === 'listen' ? primaryStyle : buttonStyle}>Listen to the story</button>
-            </div>
-            {experience === 'listen' ? <p>Tap Play to listen.</p> : null}
+            </div> : null}
+            {!player.solved && !player.skipped && experience === 'listen' ? <p>Tap Play to listen.</p> : null}
             {player.solved || player.skipped ? (
               <article style={cardStyle}>
                 <p><strong>{player.skipped ? 'Revealed without solving' : 'Solved'}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
                   onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} />
+                {player.voice ? <section aria-label="A voice message for you">
+                  <h3>A familiar voice</h3>
+                  {voiceUrl ? <audio controls preload="metadata" src={voiceUrl} onPlay={() => { narrator.stop(); interaction.stopRecording() }} onError={() => { setVoiceUrl(''); setVoiceError('The voice message could not play. Reload it or try your device browser.') }} style={{ maxWidth: '100%' }} aria-label="The sender's voice message" /> : null}
+                  {voiceError ? <p role="alert">{voiceError}</p> : null}
+                  <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? 'Reload voice message' : 'Load voice message'}</button>
+                </section> : null}
                 {player.adventure?.turn ? <><h3>Your journey so far</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
+                <div style={{ marginTop: '1rem' }}>
+                  {player.adventure ? <p>Your keepsake contains the available scenes and latest adventure turn, not a transcript of every live action.</p> : null}
+                  <StoryKeepsake story={{ title: player.title, creatorName: player.creatorName, recipientName: player.recipientName, dedication: player.gift?.dedication,
+                    scenes: [...player.discoveries, player.scene, ...(player.adventure?.turn ? [{ title: 'Your adventure', body: player.adventure.turn.narration }] : [])].map(scene => ({ title: scene.title, body: scene.body })), message: player.message }} />
+                </div>
+                {player.gift?.allowReply ? <details style={{ marginTop: '1.5rem' }}>
+                  <summary>Send a little thank-you</summary>
+                  <p>Optional. Your written reply goes privately to {player.creatorName}, not to AI. It stays with the story until expiry or deletion. No read receipts.</p>
+                  {replySent ? <p role="status">Reply sent. You can edit it below and send again to replace it.</p> : null}
+                  <form onSubmit={event => { event.preventDefault(); void sendReply() }}>
+                    <label htmlFor="gift-reply">Your message<textarea id="gift-reply" maxLength={1000} required value={replyText} onChange={event => setReplyText(event.target.value)} disabled={busy} rows={3} style={fieldStyle} /></label>
+                    <button type="submit" disabled={busy || !replyText.trim()} style={{ ...primaryStyle, marginTop: 12 }}>{busy ? 'Sending...' : replySent ? 'Update my reply' : 'Send privately'}</button>
+                  </form>
+                </details> : null}
               </article>
             ) : (
               <>
@@ -692,17 +881,19 @@ export default function SharedStoryPage() {
               </article>
             ) : null}
             {player.feedback ? <p role="status">{player.feedback}</p> : null}
+            </>}
           </section>
         ) : <p>Could not open the story. Check the link or ask its creator for a new one.</p> : creator ? (
           <section>
             <p>Private creator preview</p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button disabled={busy} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
-              <button disabled={busy} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
+              <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
+              <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
             </div>
             <p>Sent stories stay active. Reopen them from <Link href="/library">Story Library</Link>.</p>
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
+            <StoryKeepsake story={{ title: creator.content.title, creatorName: creator.brief.creatorName, recipientName: creator.brief.recipientName, dedication: creator.brief.gift?.dedication, scenes: creator.content.scenes.map(scene => ({ title: scene.title, body: scene.body })), message: creator.brief.message }} />
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
             <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
             <p>Recipient access expires {new Date(creator.expiresAt).toLocaleString()}. The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
@@ -761,7 +952,28 @@ export default function SharedStoryPage() {
                 </button> : null}
                 <p>JPEG/PNG/WebP: {formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)} max. MP4/WebM: {formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES)} max. No AI upload or regeneration.</p>
               </section>
+              <details style={{ marginTop: '1rem' }}>
+                <summary>Your voice message (optional)</summary>
+                {ownerVoice ? <>
+                  <p>One private recording attached. Unlocks with the final reveal.</p>
+                  <button type="button" disabled={busy || voiceUploading} onClick={() => void loadVoice(true)} style={buttonStyle}>Preview stored recording</button>
+                  <button type="button" disabled={busy || voiceUploading} onClick={() => void removeVoice()} style={buttonStyle}>Remove stored recording</button>
+                  {voiceUrl ? <audio ref={storedVoiceAudio} controls src={voiceUrl} preload="metadata" aria-label="Stored voice preview" onPlay={() => narrator.stop()} onError={() => setVoiceError('Could not play this recording. Try reloading the preview.')} style={{ display: 'block', maxWidth: '100%', marginTop: 12 }} /> : null}
+                </> : null}
+                <GiftVoiceRecorder file={voiceFile} onChange={setVoiceFile} disabled={busy || voiceUploading} onActiveChange={setVoiceRecording} beforeRecord={() => { storedVoiceAudio.current?.pause(); narrator.stop(); interaction.stopRecording() }} />
+                {voiceError ? <p role="alert">{voiceError}</p> : null}
+                {voiceUploading ? <p role="status">Uploading your voice message privately...</p> : voiceFile ? <button type="button" disabled={busy || voiceRecording} onClick={() => void uploadVoice(creator, voiceFile)} style={primaryStyle}>{ownerVoice ? 'Upload replacement recording' : 'Attach recording'}</button> : null}
+              </details>
             </article>
+            {creator.brief.gift?.allowReply ? <details style={cardStyle}>
+              <summary>Private replies ({replies.length})</summary>
+              <p>Only messages recipients choose to send. No identities, read receipts or completion tracking.</p>
+              <button type="button" disabled={busy} style={buttonStyle} onClick={() => void refreshReplies()}>Refresh replies</button>
+              {!replies.length ? <p>No replies yet.</p> : replies.map((reply, index) => <article key={index} style={{ borderTop: '1px solid #d9cfc5', marginTop: 12 }}>
+                <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reply.message}</p>
+                <p><small>{new Date(reply.createdAt).toLocaleString()}</small></p>
+              </article>)}
+            </details> : null}
             {!creator.brief.message && !ownerMedia ? <article style={cardStyle}>
               <h2>Share story</h2>
               <p role="status">Attach your photo or video above to unlock sharing.</p>
@@ -818,24 +1030,60 @@ export default function SharedStoryPage() {
             <details style={{ marginTop: '1.5rem' }}>
               <summary>Delete this story</summary>
               <p>This permanently removes the story and disables both links.</p>
-              <button disabled={busy} onClick={() => creatorAction('delete')} style={buttonStyle}>Permanently delete story</button>
+              <button disabled={busy || voiceUploading || voiceRecording} onClick={() => creatorAction('delete')} style={buttonStyle}>Permanently delete story</button>
             </details>
           </section>
         ) : (
           <section>
             <h1 style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Your idea, their discovery.</h1>
             <p style={{ fontSize: '1.1rem', lineHeight: 1.7 }}>Create a mystery with a hidden surprise.</p>
-            <form onSubmit={generate}>
+            {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
+              <h2>Pick up where you left off?</h2>
+              <p>A draft is saved on this device from {new Date(pendingDraft.savedAt).toLocaleString()}. Voice recordings and media are not saved in drafts.</p>
+              <button type="button" style={primaryStyle} onClick={() => {
+                setBrief(pendingDraft.brief); setAssistanceHintsText(pendingDraft.assistanceHintsText); setAlternativeAnswersText(pendingDraft.alternativeAnswersText); setCreatorStep(0)
+                setPendingDraft(null); setAiConsent(false)
+              }}>Restore draft</button>
+              <button type="button" style={buttonStyle} onClick={() => {
+                try { removeGiftDraft(); setPendingDraft(null); setDraftStatus('Draft discarded.') } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
+              }}>Discard saved draft</button>
+            </aside> : null}
+            {draftStatus ? <p role="status" style={{ fontSize: '0.9rem' }}>{draftStatus}</p> : null}
+            {draftReady && !pendingDraft && !draftUnreadable ? <details style={{ marginBottom: '1rem' }}>
+              <summary>Draft privacy</summary>
+              <p>Your writing, including the answer and final message, is saved unencrypted in this browser only. Not suitable for a shared device. No files, recordings or consent are saved.</p>
+              <button type="button" disabled={busy || voiceRecording} style={buttonStyle} onClick={() => {
+                if (!window.confirm('Discard this draft and clear the form? Attached files and recordings will also be removed from this page. Existing sent stories are unchanged.')) return
+                try {
+                  removeGiftDraft()
+                  setBrief({ ...blankBrief }); setAssistanceHintsText(''); setAlternativeAnswersText(''); setCreatorStep(0)
+                  setVoiceFile(null); setMediaFile(null); setAiConsent(false); setDraftStatus('Draft discarded.')
+                } catch { setDraftStatus('Could not discard the draft. Check browser storage access.') }
+              }}>Discard draft and clear form</button>
+            </details> : null}
+            {draftUnreadable ? <button type="button" style={buttonStyle} onClick={() => {
+              try { removeGiftDraft(); setDraftUnreadable(false); setDraftStatus('Unreadable draft discarded.') } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
+            }}>Discard unreadable draft</button> : null}
+            <p aria-live="polite">Step {creatorStep + 1} of 3: {['Who it is for', 'Shape the story', 'Your surprise'][creatorStep]}</p>
+            <form ref={creatorForm} onSubmit={generate}>
+              <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
                 <h2>1. Who is it for?</h2>
+                <p>Start with a moment. You can make every detail your own.</p>
+                <div role="group" aria-label="Choose an occasion" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: '1.2rem' }}>
+                  {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{occasion.label}</button>)}
+                  <button type="button" disabled={busy} aria-pressed={!brief.gift} onClick={() => chooseOccasion()} style={!brief.gift ? primaryStyle : buttonStyle}>My own idea</button>
+                </div>
                 {textField('creatorName', 'Your name', 'Person A', 80)}
                 {textField('recipientName', 'Recipient name', 'Person B', 80)}
               </div>
+              </fieldset>
+              <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
                 <h2>2. The story</h2>
                 {textField('setting', 'Story idea and setting', 'A hidden letter in a room full of clues...', 3000)}
                 {textField('goal', 'What should they find or solve?', 'Find the hiding place of the letter.', 600)}
-                {textField('recipientHints', 'Personal touches', 'Favourite places, shared memories, inside jokes...', 1500, true)}
+                {textField('recipientHints', selectedOccasion?.question ?? 'Personal touches', selectedOccasion?.placeholder ?? 'Favourite places, shared memories, inside jokes...', 1500, true)}
                 <label style={{ fontWeight: 700 }}>Story length
                   <select value={brief.durationMinutes} onChange={(event) => { setBrief({ ...brief, durationMinutes: Number(event.target.value) }); setAiConsent(false) }} style={fieldStyle} disabled={busy}>
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>About {duration} minutes</option>)}
@@ -862,13 +1110,26 @@ export default function SharedStoryPage() {
                   <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
               </div>
+              </fieldset>
+              <fieldset hidden={creatorStep !== 2} disabled={busy || creatorStep !== 2} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <details style={cardStyle}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Make it a gift (optional)</summary>
+                {!brief.gift ? <p>Choose an occasion above to add a personal opening and optional replies.</p> : <>
+                  <label htmlFor="gift-dedication" style={{ display: 'block', marginTop: '1rem', fontWeight: 700 }}>A note on the cover
+                    <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={2} style={fieldStyle} placeholder="A little adventure, just for you." disabled={busy} onChange={event => { setBrief({ ...brief, gift: { ...brief.gift!, dedication: event.target.value } }); setAiConsent(false) }} />
+                  </label>
+                  <p>Visible before solving. Keep the secret answer and final surprise out of this note.</p>
+                  <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={brief.gift.allowReply} disabled={busy} onChange={event => { setBrief({ ...brief, gift: { ...brief.gift!, allowReply: event.target.checked } }); setAiConsent(false) }} /> Let them send a private thank-you after the reveal</label>
+                </>}
+                <GiftVoiceRecorder file={voiceFile} onChange={file => { setVoiceFile(file); setAiConsent(false) }} disabled={busy} onActiveChange={setVoiceRecording} beforeRecord={() => { narrator.stop(); interaction.stopRecording() }} />
+              </details>
               <div style={cardStyle}>
-                <h2>3. The secret answer</h2>
+                <h2>The secret answer</h2>
                 {textField('solution', 'Secret answer', 'The exact answer, e.g. behind the blue notebook', 200)}
                 <p>Case, punctuation and spacing ignored. Add alternatives below.</p>
               </div>
               <div style={cardStyle}>
-                <h2>4. The final reveal</h2>
+                <h2>The final reveal</h2>
                 <p>Message, photo or video: revealed after a correct answer, or a confirmed skip if you allow it.</p>
                 <label style={{ fontWeight: 700 }}>How can the surprise be unlocked?
                   <select aria-label="Reveal policy" value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
@@ -902,9 +1163,14 @@ export default function SharedStoryPage() {
                 <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype. Each story allows {SHARED_MEDIA_ATTEMPTS_PER_STORY} photo/video upload attempts.</p>
               </details>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server for up to 30 days. Any photo or video is stored privately and is not sent to AI.
+                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server for up to 30 days. Any photo, video or voice recording is stored privately and is not sent to AI.
               </ExplicitConsent>
-              <button disabled={busy} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading your ${mediaFile?.type.startsWith('video/') ? 'video' : 'photo'}… ${upload.progress}%` : 'Muse is preparing the mystery...' : 'Prepare story with AI'}</button>
+              <button disabled={busy || voiceRecording || Boolean(pendingDraft) || draftUnreadable} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading your ${mediaFile?.type.startsWith('video/') ? 'video' : 'photo'}… ${upload.progress}%` : 'Muse is preparing the mystery...' : 'Prepare story with AI'}</button>
+              </fieldset>
+              <div style={{ display: 'flex', gap: 12, margin: '1rem 0' }}>
+                {creatorStep > 0 ? <button type="button" disabled={busy || voiceRecording} onClick={() => { setCreatorStep(step => step - 1); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={buttonStyle}>Back</button> : null}
+                {creatorStep < 2 ? <button type="button" disabled={busy || Boolean(pendingDraft) || draftUnreadable} onClick={nextCreatorStep} style={{ ...primaryStyle, flex: 1 }}>Continue</button> : null}
+              </div>
             </form>
           </section>
         )}

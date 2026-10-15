@@ -35,7 +35,8 @@ export async function generateSharedStory(brief: SharedStoryBrief): Promise<Shar
     'Do not include the final reveal; the server will reveal the creator message after a correct guess.',
     NARRATION_AI_INSTRUCTION
   ].join('\n')
-  const generated = await generateStoryJson(system, brief, Math.min(9000, brief.durationMinutes * 400 + 1000))
+  const { gift: _gift, ...generationBrief } = brief
+  const generated = await generateStoryJson(system, generationBrief, Math.min(9000, brief.durationMinutes * 400 + 1000))
   try {
     const content = parseGeneratedStory(generated, brief)
     if (brief.adventure) assertAdventurePrivacy(JSON.stringify(content), brief)

@@ -14,6 +14,8 @@ dump. This tool explicitly selects only these `public` tables:
 
 - `shared_stories`, `shared_story_sessions`, `shared_story_generation_limits`
 - `shared_story_media`, `shared_story_media_purge`
+- Optional gift tables: `shared_story_voice`, `shared_story_voice_purge`,
+  `shared_story_replies`
 - `muse_personal_journeys`, `muse_personal_journey_requests`
 - `muse_adventure_sessions`, `muse_adventure_requests`, `muse_adventure_budgets`
 - Planned optional `muse_operations_counters`, `muse_operations_alerts`
@@ -36,12 +38,14 @@ security configuration require the reviewed Muse migrations/configuration.
 ### Opt-in private media and consistency requirements
 
 Set `MUSE_BACKUP_INCLUDE_MEDIA=yes` to include binary objects referenced by
-**only `public.shared_story_media WHERE status = 'ready'`**. The bucket is fixed
+`public.shared_story_media WHERE status = 'ready'` and, when the gift migration
+is present, `public.shared_story_voice WHERE status = 'ready'`. The bucket is fixed
 to `muse-shared-media`; its storage configuration must report `public: false`.
 Service-role authenticated downloads use only that bucket, HTTPS, no redirects,
 and bounded request timeouts. No bucket-wide listing, public URL or unrelated
 storage inventory is used. IDs and object-key structure, row sizes, response
-sizes and MIME are checked; each streamed object's SHA-256 is stored inside the
+sizes and MIME are checked (voice is restricted to `.wav` / `audio/wav`, at most
+5 MiB); each streamed object's SHA-256 is stored inside the
 encrypted manifest and verified offline. There is no preexisting authoritative
 checksum in the media table: the recorded hash protects the captured bytes, not
 proof of their original upload content. An equal-length preexisting corrupt

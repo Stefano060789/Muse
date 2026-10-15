@@ -208,13 +208,23 @@ test('permission failure is fail-closed before PostgreSQL tools are called', asy
 });
 
 async function mediaFixture(t, options = {}) {
-  const context = await fixture(t);
+  const giftTables = ['shared_story_voice', 'shared_story_voice_purge', 'shared_story_replies'];
+  const context = await fixture(t, {
+    tables: options.includeVoice ? [...REQUIRED_TABLES, ...giftTables] : REQUIRED_TABLES
+  });
   const bytes = Buffer.from('private-photo-bytes-never-public');
   const row = {
     id: '22222222-2222-2222-2222-222222222222',
     story_id: '11111111-1111-1111-1111-111111111111',
     object_key: 'stories/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222.jpg',
     size: bytes.length, mime: 'image/jpeg',
+  };
+  const voiceBytes = Buffer.from('private-voice-bytes-never-public');
+  const voiceRow = {
+    id: '44444444-4444-4444-4444-444444444444',
+    story_id: '33333333-3333-3333-3333-333333333333',
+    object_key: 'stories/33333333-3333-3333-3333-333333333333/44444444-4444-4444-4444-444444444444.wav',
+    size: voiceBytes.length, mime: 'audio/wav',
   };
   Object.assign(context.env, {
     MUSE_BACKUP_INCLUDE_MEDIA: 'yes', MUSE_MAINTENANCE_MODE: 'true',
@@ -226,6 +236,9 @@ async function mediaFixture(t, options = {}) {
   let inventories = 0;
   context.dependencies.run = (tool, args, config) => {
     if (tool === 'psql' && args.some(arg => arg.includes("where status = 'ready'"))) {
+      if (args.some(arg => arg.includes('public.shared_story_voice'))) {
+        return Promise.resolve(options.changedInventory && inventories > 1 ? '[]' : JSON.stringify([voiceRow]));
+      }
       inventories++;
       return Promise.resolve(JSON.stringify(options.changedInventory && inventories > 1 ? [] : [row]));
     }
@@ -239,11 +252,13 @@ async function mediaFixture(t, options = {}) {
     assert.equal(config.redirect, 'error');
     if (url.includes('/bucket/')) return Response.json({ id: 'muse-shared-media', public: !!options.publicBucket });
     if (options.missing) return new Response(null, { status: 404 });
-    const data = options.truncated ? bytes.subarray(0, bytes.length - 1) : bytes;
-    return new Response(data, { headers: { 'content-type': 'image/jpeg',
-      'content-length': String(options.badSize ? bytes.length + 1 : data.length) } });
+    const audio = url.endsWith('.wav');
+    const expected = audio ? voiceBytes : bytes;
+    const data = options.truncated ? expected.subarray(0, expected.length - 1) : expected;
+    return new Response(data, { headers: { 'content-type': audio ? 'audio/wav' : 'image/jpeg',
+      'content-length': String(options.badSize ? expected.length + 1 : data.length) } });
   };
-  return { ...context, bytes, row, requests };
+  return { ...context, bytes, row, voiceBytes, voiceRow, requests };
 }
 
 test('full scoped private-media backup encrypts object bytes and verifies them offline', async t => {
@@ -275,6 +290,25 @@ test('full scoped private-media backup encrypts object bytes and verifies them o
   await fs.writeFile(tampered, changed);
   await assert.rejects(verify(tampered, env, dependencies), /authentication/);
   assert.deepEqual(await fs.readdir(env.MUSE_BACKUP_VERIFY_DIR), []);
+});
+
+test('full scoped backup includes ready voice bytes and gift tables when the gift migration exists', async t => {
+  const { env, dependencies, voiceBytes, requests } = await mediaFixture(t, { includeVoice: true });
+  const result = await backup(env, dependencies);
+  assert.equal(result.fullRecovery, true);
+  assert.equal(result.media.objects, 2);
+  assert.ok(result.tables >= REQUIRED_TABLES.length + 3);
+  const artifact = path.join(env.MUSE_BACKUP_DIR, result.artifact);
+  const payload = path.join(env.MUSE_BACKUP_DIR, 'test-gift-payload');
+  await unseal(artifact, payload, readKey(env.MUSE_BACKUP_KEY));
+  const plaintext = await fs.readFile(payload);
+  assert.ok(plaintext.includes(voiceBytes));
+  const manifest = JSON.parse(plaintext.subarray(4, 4 + plaintext.readUInt32BE()).toString());
+  assert.ok(manifest.media.entries.some(entry => entry.mime === 'audio/wav' && entry.object_key.endsWith('.wav')));
+  const verified = await verify(artifact, env, dependencies);
+  assert.equal(verified.mediaIntegrity, 'verified');
+  assert.equal(requests.length, 3);
+  await fs.rm(payload);
 });
 
 test('missing, corrupt, public-bucket or changing media fails the entire backup and cleans plaintext', async t => {

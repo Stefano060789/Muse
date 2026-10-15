@@ -13,15 +13,20 @@ const REQUIRED_TABLES = Object.freeze([
   'muse_personal_journeys', 'muse_personal_journey_requests',
   'muse_adventure_sessions', 'muse_adventure_requests', 'muse_adventure_budgets',
 ]);
-const OPTIONAL_TABLES = Object.freeze(['muse_operations_counters', 'muse_operations_alerts']);
+const OPTIONAL_TABLES = Object.freeze([
+  'muse_operations_counters', 'muse_operations_alerts',
+  'shared_story_voice', 'shared_story_voice_purge', 'shared_story_replies',
+]);
 const TABLES = Object.freeze([...REQUIRED_TABLES, ...OPTIONAL_TABLES]);
 const MAGIC = Buffer.from('MUSEBK01');
 const NAME = /^muse-(\d{13})-([a-f0-9]{32})\.musebackup$/;
 const MAX_MANIFEST = 65536;
 const MEDIA_BUCKET = 'muse-shared-media';
-const MEDIA_KEY = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm)$/;
+const MEDIA_KEY = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm|wav)$/;
 const MEDIA_SQL = `select coalesce(json_agg(row_to_json(m) order by m.object_key), '[]'::json)::text
 from (select id, story_id, object_key, size, mime from public.shared_story_media where status = 'ready') m;`;
+const VOICE_SQL = `select coalesce(json_agg(row_to_json(m) order by m.object_key), '[]'::json)::text
+from (select id, story_id, object_key, size, mime from public.shared_story_voice where status = 'ready') m;`;
 const DISCOVER_SQL = `select coalesce(json_agg(tablename order by tablename), '[]'::json)::text
 from pg_catalog.pg_tables where schemaname = 'public'
 and (tablename in (${TABLES.map(t => `'${t}'`).join(',')}) or left(tablename, 5) = 'muse_'
@@ -168,17 +173,28 @@ async function seal(dump, manifest, output, key, mediaFiles = []) {
   finally { await handle.close(); }
 }
 
-async function mediaInventory(run, childEnv) {
+async function mediaInventory(run, childEnv, tables = []) {
   const raw = await run('psql', ['-X', '--no-password', '--set=ON_ERROR_STOP=1',
     '--tuples-only', '--no-align', '--command', MEDIA_SQL], { env: childEnv, capture: true });
   let rows;
   try { rows = JSON.parse(raw.trim()); } catch { fail('Invalid ready-media inventory.'); }
-  if (!Array.isArray(rows) || rows.length > 100 ||
+  if (!Array.isArray(rows)) fail('Invalid ready-media inventory.');
+  if (tables.includes('shared_story_voice')) {
+    const voiceRaw = await run('psql', ['-X', '--no-password', '--set=ON_ERROR_STOP=1',
+      '--tuples-only', '--no-align', '--command', VOICE_SQL], { env: childEnv, capture: true });
+    let voiceRows;
+    try { voiceRows = JSON.parse(voiceRaw.trim()); } catch { fail('Invalid ready-voice inventory.'); }
+    if (!Array.isArray(voiceRows)) fail('Invalid ready-voice inventory.');
+    rows = rows.concat(voiceRows);
+  }
+  if (rows.length > 100 ||
       rows.some(row => !MEDIA_KEY.test(row.object_key) ||
         row.object_key.split('/')[1] !== row.story_id ||
         row.object_key.split('/')[2].split('.')[0] !== row.id ||
-        !Number.isSafeInteger(row.size) || row.size < 1 || row.size > 20971520 ||
-        !['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'].includes(row.mime)) ||
+        !Number.isSafeInteger(row.size) || row.size < 1 ||
+        row.size > (row.mime === 'audio/wav' ? 5242880 : 20971520) ||
+        !['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav'].includes(row.mime) ||
+        (row.mime === 'audio/wav') !== row.object_key.endsWith('.wav')) ||
       new Set(rows.map(row => row.object_key)).size !== rows.length) fail('Unsafe or oversized ready-media inventory.');
   return rows;
 }
@@ -301,7 +317,7 @@ async function backup(env = process.env, dependencies = {}) {
     if (REQUIRED_TABLES.some(t => !discovered.includes(t))) fail('Required Muse tables are missing; apply migrations or confirm the connection target.');
     const tables = TABLES.filter(t => discovered.includes(t));
     const missingOptionalTables = OPTIONAL_TABLES.filter(t => !discovered.includes(t));
-    const beforeMedia = includeMedia ? await mediaInventory(run, childEnv) : [];
+    const beforeMedia = includeMedia ? await mediaInventory(run, childEnv, tables) : [];
     const dump = path.join(work, 'database.dump');
     await run('pg_dump', ['--no-password', '--format=custom', '--no-owner', '--no-privileges',
       '--strict-names', '--no-blobs', '--lock-wait-timeout=30s', '--file', dump,
@@ -314,7 +330,7 @@ async function backup(env = process.env, dependencies = {}) {
     const media = includeMedia
       ? await downloadMedia(beforeMedia, storageConfig, work, dependencies.fetch || globalThis.fetch)
       : { entries: [], files: [] };
-    if (includeMedia && JSON.stringify(beforeMedia) !== JSON.stringify(await mediaInventory(run, childEnv))) {
+    if (includeMedia && JSON.stringify(beforeMedia) !== JSON.stringify(await mediaInventory(run, childEnv, tables))) {
       fail('Media inventory changed during maintenance backup.');
     }
     const manifest = {
@@ -396,7 +412,11 @@ async function verify(input, env = process.env, dependencies = {}) {
           entry.object_key.split('/')[1] !== entry.story_id ||
           entry.object_key.split('/')[2].split('.')[0] !== entry.id ||
           !Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > 20971520 ||
-          entry.bytes !== entry.size || !/^[a-f0-9]{64}$/.test(entry.sha256)) fail('Invalid media manifest.');
+          entry.bytes !== entry.size ||
+          entry.bytes > (entry.mime === 'audio/wav' ? 5242880 : 20971520) ||
+          !['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav'].includes(entry.mime) ||
+          (entry.mime === 'audio/wav') !== entry.object_key.endsWith('.wav') ||
+          !/^[a-f0-9]{64}$/.test(entry.sha256)) fail('Invalid media manifest.');
       seen.add(entry.object_key);
       const hash = crypto.createHash('sha256');
       let bytes = 0;

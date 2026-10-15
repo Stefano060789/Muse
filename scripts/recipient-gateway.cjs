@@ -1,6 +1,6 @@
 const http = require('node:http')
 
-const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media'])
+const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply'])
 
 function createRecipientGateway(target = 'http://127.0.0.1:3102') {
   const upstream = new URL(target)
@@ -49,7 +49,7 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
         }
         const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
         if (!value || Array.isArray(value) || typeof value !== 'object' || !PLAYER_ACTIONS.has(value.action)) {
-          return fail(403, 'Only open, next, guess, hint, skip, adventure and authorized media actions are public.')
+          return fail(403, 'Only open, next, guess, hint, skip, adventure, voice, reply and authorized media actions are public.')
         }
         body = JSON.stringify(value)
       } catch {

@@ -3,15 +3,19 @@ import { join, relative, resolve, sep, isAbsolute } from 'path'
 import { createClient } from '@supabase/supabase-js'
 import { SharedStoryError } from './sharedStory'
 import { storyStorageMode } from './storyRepository'
-import { SHARED_MEDIA_BUCKET, SHARED_MEDIA_DOWNLOAD_TTL_SECONDS, SHARED_MEDIA_KEY_PATTERN, type SharedMediaRecord } from './sharedStoryMedia'
+import {
+  SHARED_MEDIA_BUCKET, SHARED_MEDIA_DOWNLOAD_TTL_SECONDS, SHARED_MEDIA_KEY_PATTERN,
+  type SharedMediaRecord, type SharedVoiceRecord
+} from './sharedStoryMedia'
 
 export type MediaUploadTarget = { method: 'PUT'; url: string; headers: Record<string, string>; sameOrigin: boolean }
 export type MediaObjectStat = { size: number; head: Uint8Array; contentType?: string }
 export type MediaDelivery = { type: 'url'; url: string; expiresAt: string } | { type: 'file'; path: string }
 export interface SharedMediaStore {
-  ready(): Promise<void>
-  createUpload(record: SharedMediaRecord, uploadSecret: string): Promise<MediaUploadTarget>
+  ready(requiredMime?: string): Promise<void>
+  createUpload(record: SharedMediaRecord | SharedVoiceRecord, uploadSecret: string): Promise<MediaUploadTarget>
   stat(key: string): Promise<MediaObjectStat | null>
+  read(key: string, maxBytes: number): Promise<Uint8Array | null>
   remove(keys: string[]): Promise<void>
   deliver(key: string): Promise<MediaDelivery>
 }
@@ -51,10 +55,10 @@ async function readHead(path: string): Promise<Uint8Array> {
 }
 
 export class LocalMediaStore implements SharedMediaStore {
-  async ready() {
+  async ready(_requiredMime?: string) {
     await fs.mkdir(localMediaRoot(), { recursive: true, mode: 0o700 })
   }
-  async createUpload(record: SharedMediaRecord, uploadSecret: string): Promise<MediaUploadTarget> {
+  async createUpload(record: SharedMediaRecord | SharedVoiceRecord, uploadSecret: string): Promise<MediaUploadTarget> {
     localMediaPath(record.object_key)
     return {
       method: 'PUT', url: '/api/shared-story-upload', sameOrigin: true,
@@ -67,6 +71,17 @@ export class LocalMediaStore implements SharedMediaStore {
       const info = await fs.stat(path)
       if (!info.isFile()) return null
       return { size: info.size, head: await readHead(path) }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw unavailable()
+    }
+  }
+  async read(key: string, maxBytes: number) {
+    const path = localMediaPath(key)
+    try {
+      const info = await fs.stat(path)
+      if (!info.isFile() || info.size > maxBytes) return null
+      return await fs.readFile(path)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw unavailable()
@@ -97,10 +112,13 @@ export class SupabaseMediaStore implements SharedMediaStore {
     this.storage = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }).storage
     this.bucket = this.storage.from(SHARED_MEDIA_BUCKET)
   }
-  async ready() {
+  async ready(requiredMime?: string) {
     const { data, error } = await this.storage.getBucket(SHARED_MEDIA_BUCKET)
     if (error || !data || data.public !== false) {
-      throw new SharedStoryError('Private media storage is not ready. Apply shared-story-media.sql and keep the Muse media bucket private before adding a photo or video.', 503)
+      throw new SharedStoryError('Private media storage is not ready. Apply the Muse shared-story media migration and keep the Muse media bucket private.', 503)
+    }
+    if (requiredMime && !data.allowed_mime_types?.includes(requiredMime)) {
+      throw new SharedStoryError('Private WAV storage is not ready. Apply supabase/shared-story-gifts.sql before creating a gift story.', 503)
     }
   }
   // Only URLs on the configured Supabase project are ever handed out or fetched.
@@ -108,7 +126,7 @@ export class SupabaseMediaStore implements SharedMediaStore {
     if (new URL(url).origin !== this.origin) throw unavailable()
     return url
   }
-  async createUpload(record: SharedMediaRecord): Promise<MediaUploadTarget> {
+  async createUpload(record: SharedMediaRecord | SharedVoiceRecord): Promise<MediaUploadTarget> {
     await this.ready()
     const { data, error } = await this.bucket.createSignedUploadUrl(checkedKey(record.object_key))
     if (error || !data?.signedUrl) throw unavailable()
@@ -139,6 +157,39 @@ export class SupabaseMediaStore implements SharedMediaStore {
     }
     await reader.cancel().catch(() => undefined)
     return { size: Number(data.size), contentType: data.contentType, head: Buffer.concat(chunks).subarray(0, HEAD_BYTES) }
+  }
+  async read(key: string, maxBytes: number) {
+    const { data, error } = await this.bucket.info(checkedKey(key))
+    if (error || !data) {
+      const status = Number((error as { statusCode?: string | number; status?: number } | null)?.statusCode ?? (error as { status?: number } | null)?.status)
+      if (status === 400 || status === 404 || /not.?found/i.test(error?.message ?? '')) return null
+      throw unavailable()
+    }
+    if (Number(data.size) > maxBytes) return null
+    const signed = await this.bucket.createSignedUrl(checkedKey(key), 60)
+    if (signed.error || !signed.data?.signedUrl) throw unavailable()
+    const response = await fetch(this.sameProject(signed.data.signedUrl), { redirect: 'error' })
+    if (!response.ok || !response.body) throw unavailable()
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let length = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+        length += value.length
+        if (length > maxBytes) {
+          await reader.cancel()
+          return null
+        }
+        chunks.push(value)
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+    if (length !== Number(data.size)) return null
+    return Buffer.concat(chunks).subarray(0, maxBytes)
   }
   async remove(keys: string[]) {
     if (!keys.length) return

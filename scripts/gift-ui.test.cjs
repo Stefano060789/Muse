@@ -1,0 +1,159 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const ts = require('typescript')
+const root = path.resolve(__dirname, '..')
+function source(relative) {
+  return ts.transpileModule(fs.readFileSync(path.join(root, relative), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
+  }).outputText
+}
+function plainModule(relative) {
+  const result = { exports: {} }
+  new Function('module', 'exports', 'require', source(relative))(result, result.exports, require)
+  return result.exports
+}
+const gifts = plainModule('src/lib/storyGift.ts')
+function flatten(node) {
+  if (node === null || node === undefined || typeof node === 'boolean') return []
+  if (Array.isArray(node)) return node.flatMap(flatten)
+  if (typeof node !== 'object') return [node]
+  return [node, ...flatten(node.props?.children)]
+}
+function label(node) { return flatten(node.props?.children).filter(value => typeof value === 'string' || typeof value === 'number').join('') }
+async function mount(hash, player = null, owner = null) {
+  let cursor = 0, tree, requestCount = 0
+  const slots = [], pending = [], requests = [], values = new Map(), timers = []
+  const jsx = (type, props) => ({ type, props: props || {} })
+  const react = {
+    useState(initial) {
+      const index = cursor++
+      if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial
+      return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value }]
+    },
+    useRef(initial) { const index = cursor++; return slots[index] ||= { current: initial } },
+    useCallback(callback) { cursor++; return callback },
+    useEffect(effect, deps) {
+      const index = cursor++, previous = slots[index]
+      if (!previous || !deps || deps.some((value, i) => value !== previous[i])) pending.push(effect)
+      slots[index] = deps
+    }
+  }
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
+  const browser = {
+    location: { origin: 'https://muse.example', search: '', hash }, localStorage: storage,
+    history: { replaceState(_a, _b, url) { browser.location.hash = url.includes('#') ? '#' + url.split('#')[1] : '' } },
+    setTimeout(callback) { timers.push(callback); return timers.length }, clearTimeout() {}, scrollTo() {}, confirm() { return true }
+  }
+  const narrator = { stop() {}, error: '', preferences: {} }
+  const customRequire = id => {
+    if (id === 'react') return react
+    if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
+    if (id === 'next/head' || id === 'next/link' || id.startsWith('../components/')) return { __esModule: true, default: id }
+    if (id.endsWith('/storyGift')) return {
+      ...gifts, loadGiftDraft: () => gifts.loadGiftDraft(storage),
+      saveGiftDraft: draft => gifts.saveGiftDraft(draft, storage), removeGiftDraft: () => gifts.removeGiftDraft(storage)
+    }
+    if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
+    if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
+    if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory() {} }
+    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({ stopRecording() {}, recordingTarget: null, error: '' }) }
+    if (id.endsWith('/useNarration')) return { useNarration: () => narrator }
+    if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
+    if (id.endsWith('/sharedStoryMedia')) return { formatMediaSize: () => '5 MB', SHARED_MEDIA_ATTEMPTS_PER_STORY: 6, validateVoiceBytes: () => ({ durationSeconds: 1 }) }
+    if (id.endsWith('/sharedStoryGift')) return { validateVoiceBytes: () => ({ durationSeconds: 1 }) }
+    throw new Error('Unexpected UI dependency ' + id)
+  }
+  const fetchMock = async (_url, options) => {
+    const request = JSON.parse(options.body)
+    requests.push(request)
+    if (request.action === 'reply') {
+      requestCount++
+      return { ok: requestCount > 1, json: async () => requestCount > 1 ? { sent: true } : { error: 'Test reply failure' } }
+    }
+    if (request.action === 'manage') return { ok: true, json: async () => ({ ...owner, voice: { mime: 'audio/wav', size: 32044 }, replies: [{ message: 'A voluntary thanks', createdAt: '2026-10-15T00:00:00.000Z' }], media: null }) }
+    if (request.action === 'voice-start') return { ok: true, json: async () => ({ uploadId: 'test-upload', upload: { method: 'PUT', url: '/api/upload', headers: {} } }) }
+    if (request.action === 'voice-finish') return { ok: true, json: async () => ({ voice: { mime: 'audio/wav', size: 32044 } }) }
+    return { ok: true, json: async () => ({ player, sessionToken: 'c'.repeat(64) }) }
+  }
+  const result = { exports: {} }
+  class UploadRequest {
+    constructor() { this.upload = {}; this.status = 200 }
+    open() {}
+    setRequestHeader() {}
+    send() { this.onload() }
+  }
+  new Function('module', 'exports', 'require', 'window', 'navigator', 'fetch', 'process', 'XMLHttpRequest', source('src/pages/shared.tsx'))(
+    result, result.exports, customRequire, browser, {}, fetchMock, { env: { NEXT_PUBLIC_MUSE_CREATOR_LOCKED: 'false' } }, UploadRequest
+  )
+  const render = () => { cursor = 0; tree = result.exports.default(); return tree }
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) {
+      render()
+      const effects = pending.splice(0)
+      for (const effect of effects) effect()
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    render()
+  }
+  const nodes = () => flatten(tree).filter(value => value && typeof value === 'object')
+  const button = text => { const node = nodes().find(node => node.type === 'button' && label(node) === text); assert.ok(node, 'Missing button: ' + text); return node }
+  const field = id => { const node = nodes().find(node => node.props.id === id); assert.ok(node, 'Missing field: ' + id); return node }
+  const click = async text => { button(text).props.onClick(); await flush() }
+  await flush()
+  return { flush, render, nodes, button, field, click, values, timers, requests, browser }
+}
+async function main() {
+  const creator = await mount('#new')
+  await creator.click('Birthday')
+  creator.field('brief-creatorName').props.onChange({ target: { value: 'Sender' } })
+  await creator.flush()
+  creator.field('brief-recipientName').props.onChange({ target: { value: 'Recipient' } })
+  await creator.flush()
+  creator.timers.at(-1)()
+  const saved = gifts.loadGiftDraft(creator.browser.localStorage)
+  assert.equal(saved.brief.gift.occasion, 'birthday')
+  assert.equal(saved.brief.creatorName, 'Sender')
+  await creator.click('Continue')
+  assert.ok(creator.nodes().some(node => label(node) === 'Step 2 of 3: Shape the story'))
+  await creator.click('Continue')
+  assert.equal(creator.nodes().filter(node => node.type === 'fieldset' && !node.props.hidden).length, 1)
+  console.log('PASS three-step creator retains occasion and autosaves partial writing')
+  const player = {
+    title: 'A gift', description: 'A mystery', creatorName: 'Sender', recipientName: 'Recipient', durationMinutes: 5,
+    scene: { title: 'One', body: 'A scene', clue: 'A clue' }, sceneIndex: 0, sceneCount: 1, discoveries: [],
+    solved: true, skipped: false, canSkip: false, revealedHints: [], hintsRemaining: 0, message: 'A final message',
+    gift: { occasion: 'birthday', dedication: 'A note', allowReply: true }
+  }
+  const recipient = await mount('#play=fixture', player)
+  assert.ok(recipient.button('Open my story'))
+  assert.equal(recipient.nodes().some(node => node.props.id === 'gift-reply'), false)
+  await recipient.click('Open my story')
+  recipient.field('gift-reply').props.onChange({ target: { value: 'A private thanks' } })
+  await recipient.flush()
+  const submit = () => recipient.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  submit(); await recipient.flush()
+  assert.equal(recipient.field('gift-reply').props.value, 'A private thanks')
+  assert.ok(recipient.nodes().some(node => label(node) === 'Test reply failure'))
+  submit(); await recipient.flush()
+  assert.equal(recipient.requests.filter(request => request.action === 'reply').length, 2)
+  assert.ok(recipient.button('Update my reply'))
+  console.log('PASS gift cover gates the player and private reply failures preserve text for retry')
+  const owner = await mount('#manage=fixture', null, {
+    brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
+    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2026-11-15T00:00:00.000Z'
+  })
+  const voiceComponent = owner.nodes().find(node => node.type === '../components/GiftVoiceRecorder')
+  assert.ok(voiceComponent)
+  voiceComponent.props.onChange(new File([new Uint8Array(32044)], 'test.wav', { type: 'audio/wav' }))
+  await owner.flush()
+  await owner.click('Upload replacement recording')
+  assert.deepEqual(owner.requests.filter(request => request.action.startsWith('voice-')).map(request => request.action), ['voice-start', 'voice-finish'])
+  const initialRequests = owner.requests.length
+  await owner.flush()
+  assert.equal(owner.requests.length, initialRequests, 'No background reply polling')
+  await owner.click('Refresh replies')
+  assert.ok(owner.nodes().some(node => label(node) === 'A voluntary thanks'))
+  console.log('PASS owner recording upload and manual-only private replies are wired')
+}
+main().catch(error => { console.error(error); process.exitCode = 1 })

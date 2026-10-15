@@ -47,13 +47,16 @@ current MVP.
 - [x] Support editable dictation and optional narration within Shared Story
 - [x] Add durable generation/guess rate limits and explicit provider/storage errors
 - [x] Allow recipient-link replacement and permanent creator deletion
-- [ ] Later hosted setup only: create/confirm Muse Supabase and apply the SQL migration
+- [x] Confirm hosted Muse storage in the approved shared iVote Supabase project
+      and apply the base Muse SQL migration; rollback smoke passed
 - [x] Change local LLM_PROVIDER to ANTHROPIC without touching existing secrets
 - [x] User added ANTHROPIC_API_KEY locally (key not printed or committed)
 - [x] Select STORY_STORAGE=sqlite locally to avoid database registration for testing
 - [x] Verify real SQLite persistence after restarting the built Next server
 - [x] Verify one real Claude Haiku My Story generation locally (HTTP 200, three scenes)
-- [ ] Later hosted setup only: configure Supabase service-role and ANTHROPIC_API_KEY in Vercel, STORY_STORAGE=supabase and LLM_PROVIDER=ANTHROPIC
+- [x] Configure hosted Vercel storage/provider settings: STORY_STORAGE=supabase
+      and LLM_PROVIDER=ANTHROPIC; operator added the service-role and Anthropic
+      secrets privately (initial setup complete, current readiness review below)
 - [x] Validate a real AI-generated story and private share with two browser sessions
 - [ ] Validate actual 5/10-minute experiences with people; estimates are not timers
 - [ ] Review clue solvability, answer wording and recipient comprehension
@@ -78,18 +81,52 @@ current MVP.
 
 ## Before public launch
 
+### Gift experience rollout (15 October 2026)
+
+- [x] Add occasion-led prompts and a minimal, mobile-friendly three-step
+      creator flow; existing custom briefs remain supported
+- [x] Add a recipient gift cover with dedication and explicit opening;
+      no autoplay or private story text in link previews
+- [x] Add browser-local written draft autosave, restore/discard and explicit
+      storage-failure feedback; files, recordings and consent are not restored
+- [x] Add an isolated printable keepsake excluding answers, links, replies
+      and media; the final message requires explicit inclusion
+- [x] Complete and validate private final voice storage and opt-in recipient
+      replies in SQLite and hosted migration code; automated authorization,
+      bounded duration/size, isolated media slots and reply retry checks pass
+- [x] Validate gift UI at 320/390px and desktop, draft quota failure,
+      restore/discard, private keepsake defaults, voluntary reply retries and
+      AudioWorklet recording with a synthetic audio stream; no paid AI calls
+- [x] Pass production build and real built-server SQLite HTTP smoke for
+      independent photo/WAV upload, locked/revealed voice access, private
+      replies in management and persistence across server restarts
+- [ ] Apply the gift migration and rollback smoke before hosted enablement;
+      verify voice/reply access controls in separate hosted sessions
+- [ ] Validate real-device recording, listening and print/PDF on iPhone and
+      Android; browser simulation and synthetic audio are not hardware tests
+
 ### Shared library and forgiving reveal rollout (15 October 2026)
 
 - [x] Apply `supabase/shared-story-help.sql` and run its rollback-only smoke
       before deploying the matching code; both succeeded on the hosted Muse
       tables on 15 October 2026, separately from operations SQL
-- [ ] Verify opt-in skip, default solve-only stories, same-browser resume and
+- [x] Verify opt-in skip, default solve-only stories, same-browser resume and
       private photo/video access in hosted separate recipient sessions
-- [ ] Verify shared library copy/reuse/expiry and actual iPhone Safari listening;
-      desktop viewport tests are not real-device validation
+      (user confirmed complete on 15 October 2026)
+- [x] Verify shared library copy/reuse/expiry
+      (user confirmed complete on 15 October 2026)
+- [ ] Verify actual iPhone Safari listening; desktop viewport tests are not
+      real-device validation
 - [x] Complete shared, SQLite, private media, library, gateway, interaction and
       narration regressions plus production build and built-server persistence
       smoke after resolving local system-memory pressure
+- [x] Commit/push the shared-library and optional-reveal release (`8b74ade`);
+      remote main verified on 15 October 2026
+- [x] Confirm successful production deployment of the latest release
+      (user confirmed complete on 15 October 2026)
+- [ ] Verify playback of a real device-recorded video reveal; hosted upload,
+      byte integrity and photo reveal passed, but synthetic video playback
+      did not establish working real-video playback
 
 ### Production safety rollout and deferred backups (14 October 2026)
 
@@ -102,7 +139,8 @@ current MVP.
 - [x] Apply the operations database migration (operator reported complete)
 - [ ] Run the operations migration rollback smoke and verify hosted grants,
       counters and alerts without paid provider calls
-- [ ] Commit/push the safety release, deploy it and verify hosted controls,
+- [x] Commit/push the safety release (`d9883af`); remote main verified
+- [ ] Confirm the deployed safety release and verify hosted controls,
       consent/deletion flows and private operations access
 - [ ] Configure real operator/support details and complete legal/privacy,
       consent, retention/deletion and recovery reviews before public invitations

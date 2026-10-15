@@ -43,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const [uploadId, uploadSecret] = capability.split('.')
     const db = storyRepository()
-    const record = await db.mediaGet(uploadId)
+    const record = await db.mediaGet(uploadId) ?? await db.voiceGet(uploadId)
     const expected = record ? Buffer.from(record.upload_hash, 'hex') : Buffer.alloc(0)
     if (!record || record.status !== 'pending' || expected.length !== 32 || !timingSafeEqual(hash(uploadSecret), expected) || !await db.findUnexpired(record.story_id)) {
       throw new SharedStoryError('This upload link is invalid or has already been used.', 404)

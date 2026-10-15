@@ -24,6 +24,46 @@ The full product definition lives in four documents:
 - [docs/MARKET-ANALYSIS.md](docs/MARKET-ANALYSIS.md) — market differentiation,
   revenue scenarios, risks, and validation targets
 
+## Gifts inside Shared Story
+
+Choose Birthday, Our memories, A surprise, Just because, or My own idea.
+Occasions provide editable starting prompts, not an additional paid AI call.
+Gift recipients see a personal cover and explicitly open the story; nothing
+autoplays. Cover text is recipient-visible before solving, never a place for
+the answer or final surprise. Link previews remain generic.
+
+Optional extras stay collapsed:
+
+- A personal cover dedication and creator-enabled private thank-you replies.
+- One final-reveal voice recording, **60 seconds / 5 MiB**, alongside the
+  existing photo/video. Record locally as mono PCM WAV, or upload a WAV file.
+  No voice cloning, transcription or AI processing. The microphone requires
+  consent and HTTPS/device permission. Failed uploads can be retried without
+  generating another story.
+- A printable keepsake; private answers, links, replies and media are excluded.
+  The final written message is excluded unless explicitly selected. Device
+  print/PDF support varies; disable print headers/footers to omit page URLs.
+  Live-adventure recipient keepsakes contain available scenes and the latest
+  turn, not an invented full transcript.
+
+Written drafts autosave only in the current browser and offer explicit
+restore/discard. They contain private text, not files, recordings, creator
+codes, link capabilities or consent. No account or cross-device sync is added.
+Replies are voluntary, visible only in management, and do not add read receipts
+or recipient identity tracking.
+
+Hosted gifting requires the incremental `supabase/shared-story-gifts.sql`
+migration after the existing shared-story media and help migrations. Run
+`supabase/shared-story-gifts-smoke.sql` as a rollback-only verification before
+enabling gifts in production. Neither has been applied automatically by local
+tests. SQLite upgrades its local schema automatically. Voice uses a separate
+private slot, preserving the existing photo/video, and its actual WAV bytes
+are validated for format, size and duration on both client and server.
+
+Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
+recording and creator/recipient UI checks; `npm run test:gifting` covers
+private voice/reply authorization and persistence without paid provider calls.
+
 ## Local setup
 
 1. Copy `.env.example` to `.env.local`.

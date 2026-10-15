@@ -10,7 +10,8 @@ import { requireCreatorAccess } from '../../lib/creatorAccess'
 import { adventureGlobalCap, adventureChoiceView, generateAdventureTurn, parseAdventureAction, type AdventureRequest } from '../../lib/sharedAdventure'
 import {
   mediaSignatureMatches, mediaSummary, parseMediaDeclaration, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_UPLOAD_WINDOW_MS,
-  type SharedMediaRecord
+  parseVoiceDeclaration, SHARED_VOICE_ATTEMPTS_PER_STORY, SHARED_VOICE_UPLOAD_WINDOW_MS, SHARED_VOICE_MAX_BYTES,
+  parseWavDuration, voiceSummary, type SharedMediaRecord, type SharedVoiceRecord
 } from '../../lib/sharedStoryMedia'
 import { sharedMediaStore, type SharedMediaStore } from '../../lib/sharedMediaStore'
 import { apiSafety, reportOperation } from '../../lib/operations'
@@ -21,8 +22,8 @@ export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration:
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media']
-const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview']
+const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply']
+const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview']
 
 function matches(secretValue: string, storedHash: string): boolean {
   const actual = Buffer.from(hash(secretValue), 'hex')
@@ -46,15 +47,36 @@ function parseCapability(value: unknown) {
 async function purgeMedia(db: StoryRepository, store?: SharedMediaStore, strict = false) {
   try {
     // Strict mode (before paid generation) only proves the media tables are reachable.
-    const keys = await db.mediaPurgeQueue(strict ? 0 : 20)
+    const mediaKeys = await db.mediaPurgeQueue(strict ? 0 : 20)
+    const voiceKeys = await db.voicePurgeQueue(strict ? 0 : 20)
+    const keys = [...mediaKeys, ...voiceKeys]
     if (!keys.length) return
     await (store ?? sharedMediaStore()).remove(keys)
-    await db.mediaPurged(keys)
+    await db.mediaPurged(mediaKeys)
+    await db.voicePurged(voiceKeys)
   } catch (error) {
     if (strict) throw error
     console.error('Shared media cleanup deferred', error instanceof Error ? error.name : 'Unknown error')
     await reportOperation('storage-failure')
   }
+}
+
+async function deliverVoice(res: NextApiResponse, store: SharedMediaStore, record: SharedVoiceRecord) {
+  const delivery = await store.deliver(record.object_key)
+  if (delivery.type === 'url') {
+    return res.status(200).json({ voice: { mime: record.mime, url: delivery.url, expiresAt: delivery.expiresAt } })
+  }
+  let size: number
+  try { size = (await fs.stat(delivery.path)).size } catch { throw new SharedStoryError('The voice recording is no longer available.', 404) }
+  if (size !== Number(record.size)) throw new SharedStoryError('The voice recording is no longer available.', 404)
+  res.setHeader('Content-Type', record.mime)
+  res.setHeader('Content-Length', String(size))
+  res.setHeader('Content-Disposition', 'inline')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+  res.status(200)
+  await pipeline(createReadStream(delivery.path), res)
 }
 
 async function deliverMedia(res: NextApiResponse, store: SharedMediaStore, record: SharedMediaRecord) {
@@ -105,9 +127,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
+      const finalVoice = body.finalVoice === undefined ? null : parseVoiceDeclaration(body.finalVoice)
       const brief = parseSharedStoryBrief(body.brief, { allowEmptyMessage: Boolean(finalMedia) })
-      sharedStoryProviderConfig()
+      if (finalVoice && !brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
       const db = database()
+      if (brief.gift) {
+        await db.giftReady()
+        await sharedMediaStore().ready('audio/wav')
+      }
+      sharedStoryProviderConfig()
       // A file that cannot be stored must fail before the paid generation call.
       if (finalMedia) {
         await sharedMediaStore().ready()
@@ -129,7 +157,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
       return res.status(201).json({
         ownerToken: `${id}.${ownerKey}`, playToken: `${id}.${playKey}`, brief, content, expiresAt,
-        media: null, mediaRequired: !brief.message
+        media: null, voice: null, mediaRequired: !brief.message
       })
     }
     const { id, key } = parseCapability(body.token)
@@ -145,9 +173,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ deleted: true })
     }
     if (action === 'manage') {
+      if (story.brief.gift) await db.giftReady()
+      const voice = story.brief.gift ? await db.voiceReady(id) : null
       return res.status(200).json({
         brief: story.brief, content: story.content, expiresAt: story.expires_at,
-        media: mediaSummary(await db.mediaReady(id)), mediaRequired: !story.brief.message
+        media: mediaSummary(await db.mediaReady(id)), voice: voiceSummary(voice),
+        replies: story.brief.gift ? await db.giftReplies(id) : [],
+        mediaRequired: !story.brief.message
       })
     }
     if (action === 'share') {
@@ -220,6 +252,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!ready) throw new SharedStoryError('No photo or video is attached to this story.', 404)
       return await deliverMedia(res, sharedMediaStore(), ready)
     }
+    if (action === 'voice-start') {
+      if (!story.brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
+      await db.giftReady()
+      const declaration = parseVoiceDeclaration(body.voice)
+      const store = sharedMediaStore()
+      await store.ready('audio/wav')
+      await purgeMedia(db, store)
+      await reserveRequest(db, req, 'upload')
+      const uploadId = randomUUID()
+      const uploadSecret = secret()
+      const record: SharedVoiceRecord = {
+        id: uploadId, story_id: id, object_key: `stories/${id}/${uploadId}.wav`, kind: 'voice',
+        mime: declaration.mime, size: declaration.size, status: 'pending',
+        upload_hash: hash(uploadSecret),
+        upload_expires_at: new Date(Date.now() + SHARED_VOICE_UPLOAD_WINDOW_MS).toISOString(),
+        created_at: new Date().toISOString()
+      }
+      if (!await db.voiceBegin(record, SHARED_VOICE_ATTEMPTS_PER_STORY)) {
+        throw new SharedStoryError(`This story reached its limit of ${SHARED_VOICE_ATTEMPTS_PER_STORY} voice upload attempts. The story is unchanged.`, 429)
+      }
+      try {
+        const upload = await store.createUpload(record, uploadSecret)
+        return res.status(201).json({ uploadId, upload, uploadExpiresAt: record.upload_expires_at })
+      } catch (error) {
+        await reportOperation('request-failure')
+        await db.voiceDiscard(id, uploadId).catch(() => undefined)
+        throw error
+      }
+    }
+    if (action === 'voice-finish' || action === 'voice-cancel') {
+      if (!story.brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
+      await db.giftReady()
+      if (typeof body.uploadId !== 'string' || !UUID.test(body.uploadId)) throw new SharedStoryError('Upload reference is invalid.')
+      const record = await db.voiceGet(body.uploadId)
+      if (!record || record.story_id !== id || record.status !== 'pending') {
+        throw new SharedStoryError('This voice upload is no longer available. Choose the recording again.', 404)
+      }
+      const store = sharedMediaStore()
+      const discard = async () => {
+        await db.voiceDiscard(id, record.id)
+        await purgeMedia(db, store)
+      }
+      if (action === 'voice-cancel') {
+        await discard()
+        return res.status(200).json({ cancelled: true })
+      }
+      if (Date.parse(record.upload_expires_at) <= Date.now()) {
+        await discard()
+        throw new SharedStoryError('The upload window expired. Choose the recording again.', 410)
+      }
+      const stat = await store.stat(record.object_key)
+      const bytes = stat?.size === Number(record.size) ? await store.read(record.object_key, SHARED_VOICE_MAX_BYTES) : null
+      try {
+        if (!stat || stat.size !== Number(record.size) ||
+            (stat.contentType && stat.contentType.split(';')[0].trim().toLowerCase() !== record.mime) ||
+            !bytes || bytes.length !== Number(record.size)) {
+          throw new SharedStoryError('The uploaded recording does not match its declared type and size.', 415)
+        }
+        parseWavDuration(bytes)
+      } catch (error) {
+        await discard()
+        throw error
+      }
+      await db.voiceActivate(id, record.id)
+      await purgeMedia(db, store)
+      return res.status(200).json({ voice: voiceSummary(record) })
+    }
+    if (action === 'voice-delete') {
+      if (!story.brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
+      await db.giftReady()
+      await db.voiceDiscard(id)
+      await purgeMedia(db)
+      return res.status(200).json({ voice: null })
+    }
+    if (action === 'voice-preview') {
+      if (!story.brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
+      await db.giftReady()
+      const readyVoice = await db.voiceReady(id)
+      if (!readyVoice) throw new SharedStoryError('No voice recording is attached to this story.', 404)
+      return await deliverVoice(res, sharedMediaStore(), readyVoice)
+    }
     let sessionToken: string
     if (body.sessionToken === undefined && action === 'open') {
       sessionToken = secret()
@@ -229,14 +342,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new SharedStoryError('Player session is invalid. Reopen the story link.')
     }
     const ready = await db.mediaReady(id)
-    if (!story.brief.message && !ready) {
-      throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
-    }
+    const readyVoice = story.brief.gift ? await db.voiceReady(id) : null
     if (action === 'media') {
+      if (!story.brief.message && !ready) {
+        throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
+      }
       const state = await db.advance(id, hash(sessionToken), 'open', '', story.play_hash)
       if (!state.solved && !state.skipped) throw new SharedStoryError('Unlock the story before opening its final reveal.', 403)
       if (!ready) throw new SharedStoryError('This story has no photo or video.', 404)
       return await deliverMedia(res, sharedMediaStore(), ready)
+    }
+    if (action === 'voice') {
+      if (!story.brief.message && !ready) {
+        throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
+      }
+      if (!story.brief.gift) throw new SharedStoryError('This story has no voice reveal.', 404)
+      const state = await db.advance(id, hash(sessionToken), 'open', '', story.play_hash)
+      if (!state.solved && !state.skipped) throw new SharedStoryError('Unlock the story before opening its voice reveal.', 403)
+      if (!readyVoice) throw new SharedStoryError('This story has no voice recording.', 404)
+      return await deliverVoice(res, sharedMediaStore(), readyVoice)
+    }
+    if (action === 'reply') {
+      if (!story.brief.gift?.allowReply) throw new SharedStoryError('The creator has not enabled replies for this story.', 403)
+      if (typeof body.reply !== 'string' || body.reply.length > 1000 || !body.reply.trim()) {
+        throw new SharedStoryError('Your reply must be text of up to 1000 characters.')
+      }
+      await db.giftReply(id, hash(sessionToken), body.reply.trim())
+      return res.status(200).json({ sent: true })
+    }
+    if (!story.brief.message && !ready) {
+      throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
     }
     if (action === 'skip') {
       if (body.confirmSkip !== true) throw new SharedStoryError('Confirm that you want to reveal the surprise without solving.')
@@ -253,7 +388,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const state = await db.advance(id, hash(sessionToken), action === 'adventure' ? 'open' : action as 'open' | 'next' | 'guess' | 'hint' | 'skip', guess, story.play_hash)
     if (action === 'adventure' && (state.solved || state.skipped)) throw new SharedStoryError('The surprise is already revealed. Reopen to refresh your story.', 409)
     const feedback = state.skipped ? 'Revealed without solving' : action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
-    const player = sharedStoryPlayerView(story.brief, story.content, state, feedback, ready)
+    const player = sharedStoryPlayerView(story.brief, story.content, state, feedback, ready, readyVoice)
     if (action === 'adventure' && !story.brief.adventure) throw new SharedStoryError('This story does not enable live adventure actions.')
     if (story.brief.adventure) {
       const base: AdventureRequest = { storyId: id, sessionHash: hash(sessionToken), playHash: story.play_hash, operation: 'view', cap: adventureGlobalCap() }

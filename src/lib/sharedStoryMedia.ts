@@ -17,12 +17,16 @@ export type SharedMediaMime = keyof typeof SHARED_MEDIA_TYPES
 export type SharedMediaKind = 'photo' | 'video'
 export const SHARED_MEDIA_ACCEPT = Object.keys(SHARED_MEDIA_TYPES).join(',')
 export const SHARED_MEDIA_UPLOAD_WINDOW_MS = 15 * 60 * 1000
+export const SHARED_VOICE_UPLOAD_WINDOW_MS = SHARED_MEDIA_UPLOAD_WINDOW_MS
 // Abandoned pending uploads are purged this long after their window closes.
 export const SHARED_MEDIA_PENDING_GRACE_MS = 5 * 60 * 1000
 export const SHARED_MEDIA_ATTEMPTS_PER_STORY = 6
+export const SHARED_VOICE_ATTEMPTS_PER_STORY = 6
+export const SHARED_VOICE_MAX_BYTES = 5 * MB
+export const SHARED_VOICE_MAX_SECONDS = 60
 export const SHARED_MEDIA_DOWNLOAD_TTL_SECONDS = 600
 export const SHARED_MEDIA_BUCKET = 'muse-shared-media'
-export const SHARED_MEDIA_KEY_PATTERN = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm)$/
+export const SHARED_MEDIA_KEY_PATTERN = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm|wav)$/
 
 export type SharedMediaDeclaration = { mime: SharedMediaMime; size: number; kind: SharedMediaKind; ext: string }
 export type SharedMediaSummary = { kind: SharedMediaKind; mime: SharedMediaMime; size: number }
@@ -38,6 +42,9 @@ export type SharedMediaRecord = {
   upload_expires_at: string
   created_at: string
 }
+export type SharedVoiceRecord = Omit<SharedMediaRecord, 'kind' | 'mime'> & { kind: 'voice'; mime: 'audio/wav' }
+export type SharedVoiceSummary = { mime: 'audio/wav'; size: number }
+export type SharedGiftReply = { message: string; createdAt: string }
 
 export function formatMediaSize(bytes: number): string {
   return bytes >= MB ? `${(bytes / MB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -55,6 +62,79 @@ export function parseMediaDeclaration(value: unknown): SharedMediaDeclaration {
     throw new SharedStoryError(`${rule.kind === 'photo' ? 'Photos' : 'Videos'} can be at most ${formatMediaSize(rule.max)}. This file is ${formatMediaSize(Number(input.size))}.`, 413)
   }
   return { mime, size: Number(input.size), kind: rule.kind, ext: rule.ext }
+}
+
+export function parseVoiceDeclaration(value: unknown): { mime: 'audio/wav'; size: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new SharedStoryError('Describe the voice recording with its type and size.')
+  }
+  const input = value as Record<string, unknown>
+  if (Object.keys(input).some(key => key !== 'mime' && key !== 'size')) {
+    throw new SharedStoryError('Only the voice recording type and size are accepted.')
+  }
+  if (input.mime !== 'audio/wav') throw new SharedStoryError('Choose a WAV audio recording.', 415)
+  if (!Number.isSafeInteger(input.size) || Number(input.size) < 1) {
+    throw new SharedStoryError('The selected recording is empty or its size is unknown.')
+  }
+  if (Number(input.size) > SHARED_VOICE_MAX_BYTES) {
+    throw new SharedStoryError(`Voice recordings can be at most ${formatMediaSize(SHARED_VOICE_MAX_BYTES)}.`, 413)
+  }
+  return { mime: 'audio/wav', size: Number(input.size) }
+}
+
+export function parseWavDuration(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const text = (start: number, length: number) => String.fromCharCode(...bytes.subarray(start, start + length))
+  if (bytes.length < 44 || text(0, 4) !== 'RIFF' || text(8, 4) !== 'WAVE' ||
+      view.getUint32(4, true) + 8 !== bytes.length) {
+    throw new SharedStoryError('The voice recording is not a complete WAV file.', 415)
+  }
+  let format: { code: number; channels: number; sampleRate: number; byteRate: number; blockAlign: number; bits: number } | null = null
+  let dataLength: number | null = null
+  let offset = 12
+  while (offset < bytes.length) {
+    if (offset + 8 > bytes.length) throw new SharedStoryError('The voice recording has a malformed WAV chunk.', 415)
+    const chunk = text(offset, 4)
+    const size = view.getUint32(offset + 4, true)
+    const start = offset + 8
+    const end = start + size
+    if (end + (size & 1) > bytes.length) throw new SharedStoryError('The voice recording has a malformed WAV chunk.', 415)
+    if (chunk === 'fmt ') {
+      if (format || size < 16) throw new SharedStoryError('The voice recording has an unsupported WAV format.', 415)
+      format = {
+        code: view.getUint16(start, true), channels: view.getUint16(start + 2, true),
+        sampleRate: view.getUint32(start + 4, true), byteRate: view.getUint32(start + 8, true),
+        blockAlign: view.getUint16(start + 12, true), bits: view.getUint16(start + 14, true)
+      }
+    } else if (chunk === 'data') {
+      if (dataLength !== null) throw new SharedStoryError('The voice recording has multiple WAV audio streams.', 415)
+      dataLength = size
+    }
+    offset = end + (size & 1)
+  }
+  if (!format || dataLength === null || format.code !== 1 || format.channels < 1 || format.channels > 2 ||
+      ![8, 16, 24, 32].includes(format.bits) || format.sampleRate < 8000 || format.sampleRate > 96000 ||
+      format.blockAlign !== format.channels * format.bits / 8 ||
+      format.byteRate !== format.sampleRate * format.blockAlign || dataLength < format.blockAlign ||
+      dataLength % format.blockAlign !== 0) {
+    throw new SharedStoryError('Use a valid PCM WAV recording.', 415)
+  }
+  const duration = dataLength / format.byteRate
+  if (!Number.isFinite(duration) || duration <= 0 || duration > SHARED_VOICE_MAX_SECONDS) {
+    throw new SharedStoryError('Voice recordings can be at most 60 seconds long.', 413)
+  }
+  return duration
+}
+
+export function validateVoiceBytes(bytes: Uint8Array): SharedVoiceSummary & { durationSeconds: number } {
+  if (bytes.length < 1 || bytes.length > SHARED_VOICE_MAX_BYTES) {
+    throw new SharedStoryError(`Voice recordings must be between 1 byte and ${formatMediaSize(SHARED_VOICE_MAX_BYTES)}.`, 413)
+  }
+  return {
+    mime: 'audio/wav',
+    size: bytes.length,
+    durationSeconds: parseWavDuration(bytes)
+  }
 }
 
 const ascii = (bytes: Uint8Array, start: number, length: number) => String.fromCharCode(...Array.from(bytes.subarray(start, start + length)))
@@ -76,4 +156,8 @@ export function mediaSignatureMatches(head: Uint8Array, mime: SharedMediaMime): 
 
 export function mediaSummary(record: Pick<SharedMediaRecord, 'kind' | 'mime' | 'size'> | null | undefined): SharedMediaSummary | null {
   return record ? { kind: record.kind, mime: record.mime, size: Number(record.size) } : null
+}
+
+export function voiceSummary(record: Pick<SharedVoiceRecord, 'mime' | 'size'> | null | undefined): SharedVoiceSummary | null {
+  return record ? { mime: record.mime, size: Number(record.size) } : null
 }

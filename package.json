@@ -22,6 +22,8 @@
     "test:core": "node scripts/core-fixes.test.cjs",
     "test:dictation": "node scripts/dictation.test.cjs",
     "test:library": "node scripts/library.test.cjs",
+    "test:gift-experience": "node scripts/gift-experience.test.cjs && node scripts/gift-ui.test.cjs",
+    "test:gifting": "node scripts/shared-gifting.test.cjs",
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "next lint"

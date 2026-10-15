@@ -4,8 +4,16 @@ import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult } from './sharedAdventure'
 import type { JourneyOperation, JourneyResult } from './personalJourney'
-import { SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedMediaRecord } from './sharedStoryMedia'
+import {
+  SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
+  type SharedVoiceRecord
+} from './sharedStoryMedia'
 export { storyStorageError } from './storyStorageErrors'
+
+function isMissingGiftSchema(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false
+  return ['42P01', '42703', 'PGRST202', 'PGRST204', 'PGRST205'].includes(String(error.code))
+}
 
 export type StoredStory = {
   id: string
@@ -40,6 +48,16 @@ export interface StoryRepository {
   /** Expires abandoned uploads, then returns queued object keys whose rows no longer exist. */
   mediaPurgeQueue(limit: number): Promise<string[]>
   mediaPurged(keys: string[]): Promise<void>
+  giftReady(): Promise<void>
+  giftReplies(storyId: string): Promise<SharedGiftReply[]>
+  giftReply(storyId: string, sessionHash: string, message: string): Promise<SharedGiftReply>
+  voiceBegin(record: SharedVoiceRecord, maxAttempts: number): Promise<boolean>
+  voiceGet(id: string): Promise<SharedVoiceRecord | null>
+  voiceReady(storyId: string): Promise<SharedVoiceRecord | null>
+  voiceActivate(storyId: string, id: string): Promise<void>
+  voiceDiscard(storyId: string, id?: string): Promise<void>
+  voicePurgeQueue(limit: number): Promise<string[]>
+  voicePurged(keys: string[]): Promise<void>
 }
 
 
@@ -75,6 +93,9 @@ export function storyRepository(): StoryRepository {
     }
   })()
   const media = () => db.from('shared_story_media')
+  const voice = () => db.from('shared_story_voice')
+  const giftUnavailable = () => new SharedStoryError('Gift features are not available in storage yet. Apply supabase/shared-story-gifts.sql, then retry.', 503)
+  const giftStorageError = (error: unknown) => isMissingGiftSchema(error) ? giftUnavailable() : storyStorageError(error)
   return {
     async deletePersonalJourney(id, capabilityHash) {
       const { data, error } = await db.rpc('muse_delete_personal_journey', { p_id: id, p_capability_hash: capabilityHash })
@@ -130,6 +151,89 @@ export function storyRepository(): StoryRepository {
       const { error } = await db.from('shared_story_media_purge').delete().in('object_key', keys).lte('retain_until', now)
       if (error) throw storyStorageError(error)
       const retry = await db.from('shared_story_media_purge').update({ queued_at: now }).in('object_key', keys)
+      if (retry.error) throw storyStorageError(retry.error)
+    },
+    async giftReady() {
+      const [storyColumns, replies, voiceRows] = await Promise.all([
+        db.from('shared_stories').select('voice_attempts').limit(0),
+        db.from('shared_story_replies').select('story_id').limit(0),
+        voice().select('id').limit(0)
+      ])
+      const error = storyColumns.error ?? replies.error ?? voiceRows.error
+      if (error) throw giftStorageError(error)
+    },
+    async giftReplies(storyId) {
+      const { data, error } = await db.from('shared_story_replies').select('message,created_at')
+        .eq('story_id', storyId).order('created_at', { ascending: true })
+      if (error) throw giftStorageError(error)
+      return (data ?? []).map(row => ({ message: String(row.message), createdAt: String(row.created_at) }))
+    },
+    async giftReply(storyId, sessionHash, message) {
+      const { data, error } = await db.rpc('muse_submit_shared_story_reply', {
+        p_story_uuid: storyId, p_session_hash: sessionHash, p_reply_message: message
+      })
+      if (error) {
+        if (error.message === 'Reply unavailable') throw new SharedStoryError('Replies are unavailable for this story or player session.', 403)
+        if (error.message === 'Reply limit reached') throw new SharedStoryError('This story has reached its limit of 100 replies.', 429)
+        if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+        throw giftStorageError(error)
+      }
+      const row = Array.isArray(data) ? data[0] : data
+      if (!row || typeof row.message !== 'string' || typeof row.created_at !== 'string') throw storyStorageError()
+      return { message: row.message, createdAt: row.created_at }
+    },
+    async voiceBegin(record, maxAttempts) {
+      const { data, error } = await db.rpc('muse_begin_shared_story_voice', { voice_record: record, max_attempts: maxAttempts })
+      if (error) {
+        if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+        throw giftStorageError(error)
+      }
+      return data === true
+    },
+    async voiceGet(id) {
+      const { data, error } = await voice().select('*').eq('id', id).maybeSingle()
+      if (error && (error.code === 'PGRST205' || error.code === '42P01')) return null
+      if (error) throw giftStorageError(error)
+      return data as SharedVoiceRecord | null
+    },
+    async voiceReady(storyId) {
+      const { data, error } = await voice().select('*').eq('story_id', storyId).eq('status', 'ready').maybeSingle()
+      if (error) throw giftStorageError(error)
+      return data as SharedVoiceRecord | null
+    },
+    async voiceActivate(storyId, id) {
+      const { error } = await db.rpc('muse_activate_shared_story_voice', { story_uuid: storyId, voice_uuid: id })
+      if (error) {
+        if (error.message === 'Voice unavailable') throw new SharedStoryError('This voice upload is no longer available. Choose the recording again.', 409)
+        throw giftStorageError(error)
+      }
+    },
+    async voiceDiscard(storyId, id) {
+      const query = voice().delete().eq('story_id', storyId)
+      const { error } = await (id ? query.eq('id', id) : query.eq('status', 'ready'))
+      if (error) throw giftStorageError(error)
+    },
+    async voicePurgeQueue(limit) {
+      const cutoff = new Date(Date.now() - MEDIA_PENDING_GRACE_MS).toISOString()
+      const expired = await voice().delete().eq('status', 'pending').lt('upload_expires_at', cutoff)
+      if (expired.error) {
+        if (expired.error.code === 'PGRST205' || expired.error.code === '42P01') return []
+        throw storyStorageError(expired.error)
+      }
+      const { data, error } = await db.from('shared_story_voice_purge').select('object_key')
+        .lte('retain_until', new Date().toISOString()).order('queued_at').limit(limit)
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01') return []
+        throw storyStorageError(error)
+      }
+      return (data ?? []).map(row => String(row.object_key))
+    },
+    async voicePurged(keys) {
+      if (!keys.length) return
+      const now = new Date().toISOString()
+      const { error } = await db.from('shared_story_voice_purge').delete().in('object_key', keys).lte('retain_until', now)
+      if (error) throw storyStorageError(error)
+      const retry = await db.from('shared_story_voice_purge').update({ queued_at: now }).in('object_key', keys)
       if (retry.error) throw storyStorageError(retry.error)
     },
     async personalJourney(request) {

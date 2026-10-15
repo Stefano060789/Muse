@@ -18,9 +18,9 @@ async function main() {
   const post = value => fetch(`${origin}/api/shared-story`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(value) })
   try {
     for (const path of ['/shared', '/_next/static/chunks/main-123.js']) assert.equal((await fetch(origin + path)).status, 200)
-    for (const action of ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media']) assert.equal((await post({ action, token: 'fixture', guess: 'test' })).status, 200)
+    for (const action of ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply']) assert.equal((await post({ action, token: 'fixture', guess: 'test' })).status, 200)
     const before = calls.length
-    for (const action of ['create', 'manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'unknown']) assert.equal((await post({ action })).status, 403)
+    for (const action of ['create', 'manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'unknown']) assert.equal((await post({ action })).status, 403)
     assert.equal((await fetch(origin + '/api/shared-story-upload', { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: 'x' })).status, 403)
     for (const path of ['/', '/api/tts', '/api/personal-story', '/api/profile', '/.env.local', '/data/muse-stories.sqlite', '/_next/image', '/api/shared-story?bypass=1', '/_next/static/%2e%2e/%2e%2e/api/profile']) {
       assert.equal((await fetch(origin + path)).status, 403)

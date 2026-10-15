@@ -238,6 +238,12 @@ try {
     assert.equal(store.getItem('muse-shared-creator'), stale)
     assert.equal(read(store).library.entries.length, 0)
   })
+  check('gift occasion, dedication and reply opt-in survive library save and reuse', () => {
+    const store = memory(), story = shared('gift')
+    story.brief.gift = { occasion: 'birthday', dedication: 'A little adventure for you.', allowReply: true }
+    lib.saveLibraryCreatorStory(story, store)
+    assert.deepEqual(read(store).library.entries[0].story.brief.gift, story.brief.gift)
+  })
   check('expired shared entries are retained for explicit local removal without any API calls', () => {
     const store = memory(), story = shared('expired')
     story.expiresAt = '2000-01-01T00:00:00.000Z'

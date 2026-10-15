@@ -6,14 +6,17 @@ import type { StoryRepository, StoredStory, PlayerState, RequestKind } from './s
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
 import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
-import { SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedMediaRecord } from './sharedStoryMedia'
+import {
+  SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
+  type SharedVoiceRecord
+} from './sharedStoryMedia'
 
 const schema = `
 CREATE TABLE IF NOT EXISTS shared_stories (
   id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
   brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL,
   alternative_answers_normalized TEXT NOT NULL DEFAULT '[]',
-  expires_at TEXT NOT NULL, media_attempts INTEGER NOT NULL DEFAULT 0
+  expires_at TEXT NOT NULL, media_attempts INTEGER NOT NULL DEFAULT 0, voice_attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS story_expiry ON shared_stories(expires_at);
 CREATE TABLE IF NOT EXISTS shared_story_sessions (
@@ -23,6 +26,12 @@ CREATE TABLE IF NOT EXISTS shared_story_sessions (
   revealed_hints INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1)),
   last_attempt_at INTEGER, PRIMARY KEY (story_id, player_hash)
 );
+CREATE TABLE IF NOT EXISTS shared_story_replies (
+  story_id TEXT NOT NULL, session_hash TEXT NOT NULL, message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL, PRIMARY KEY (story_id, session_hash),
+  FOREIGN KEY (story_id, session_hash) REFERENCES shared_story_sessions(story_id, player_hash) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS shared_story_replies_story ON shared_story_replies(story_id, created_at);
 CREATE TABLE IF NOT EXISTS shared_story_generation_limits (
   bucket TEXT PRIMARY KEY, count INTEGER NOT NULL
 );
@@ -63,6 +72,24 @@ CREATE TABLE IF NOT EXISTS shared_story_media_purge (object_key TEXT PRIMARY KEY
 CREATE TRIGGER IF NOT EXISTS shared_story_media_queue_purge AFTER DELETE ON shared_story_media
 BEGIN
   INSERT OR IGNORE INTO shared_story_media_purge(object_key, queued_at) VALUES (old.object_key, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+END;
+CREATE TABLE IF NOT EXISTS shared_story_voice (
+  id TEXT PRIMARY KEY, story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
+  object_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind = 'voice'),
+  mime TEXT NOT NULL CHECK (mime = 'audio/wav'), size INTEGER NOT NULL CHECK (size > 0 AND size <= 5242880),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'ready')), upload_hash TEXT NOT NULL,
+  upload_expires_at TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS shared_story_voice_one_ready ON shared_story_voice(story_id) WHERE status = 'ready';
+CREATE TABLE IF NOT EXISTS shared_story_voice_purge (
+  object_key TEXT PRIMARY KEY, queued_at TEXT NOT NULL, retain_until TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS shared_story_voice_queue_purge AFTER DELETE ON shared_story_voice
+BEGIN
+  INSERT INTO shared_story_voice_purge(object_key, queued_at, retain_until)
+    VALUES (old.object_key, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+      CASE WHEN old.status = 'pending' THEN strftime('%Y-%m-%dT%H:%M:%fZ', julianday(old.created_at) + 125.0 / 1440.0) ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now') END)
+    ON CONFLICT(object_key) DO UPDATE SET retain_until = max(retain_until, excluded.retain_until);
 END;`
 
 export class SqliteStoryRepository implements StoryRepository {
@@ -89,6 +116,9 @@ export class SqliteStoryRepository implements StoryRepository {
       }
       if (!columns('shared_stories').includes('media_attempts')) {
         db.exec('ALTER TABLE shared_stories ADD COLUMN media_attempts INTEGER NOT NULL DEFAULT 0')
+      }
+      if (!columns('shared_stories').includes('voice_attempts')) {
+        db.exec('ALTER TABLE shared_stories ADD COLUMN voice_attempts INTEGER NOT NULL DEFAULT 0')
       }
       if (!columns('shared_story_sessions').includes('revealed_hints')) {
         db.exec('ALTER TABLE shared_story_sessions ADD COLUMN revealed_hints INTEGER NOT NULL DEFAULT 0')
@@ -195,6 +225,108 @@ export class SqliteStoryRepository implements StoryRepository {
   async mediaPurged(keys: string[]) {
     this.transaction(db => {
       for (const key of keys) db.prepare('DELETE FROM shared_story_media_purge WHERE object_key = ?').run(key)
+    })
+  }
+
+  async giftReady() {
+    this.transaction(db => {
+      db.prepare('SELECT voice_attempts FROM shared_stories LIMIT 0').all()
+      db.prepare('SELECT story_id FROM shared_story_replies LIMIT 0').all()
+      db.prepare('SELECT id FROM shared_story_voice LIMIT 0').all()
+    })
+  }
+
+  async giftReplies(storyId: string): Promise<SharedGiftReply[]> {
+    return this.transaction(db => db.prepare('SELECT message, created_at FROM shared_story_replies WHERE story_id = ? ORDER BY created_at')
+      .all(storyId).map(row => ({ message: String(row.message), createdAt: String(row.created_at) })))
+  }
+
+  async giftReply(storyId: string, sessionHash: string, message: string): Promise<SharedGiftReply> {
+    return this.transaction((db, now) => {
+      const story = db.prepare('SELECT brief FROM shared_stories WHERE id = ? AND expires_at > ?').get(storyId, new Date(now).toISOString())
+      const state = db.prepare('SELECT solved, skipped FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(storyId, sessionHash)
+      if (!story || !state) throw new SharedStoryError('Replies are unavailable for this story or player session.', 403)
+      const gift = JSON.parse(String(story.brief)).gift
+      if (gift?.allowReply !== true || (!Boolean(state.solved) && !Boolean(state.skipped))) {
+        throw new SharedStoryError('Replies are available only after the creator has opted in and the story is revealed.', 403)
+      }
+      const existing = db.prepare('SELECT message, created_at FROM shared_story_replies WHERE story_id = ? AND session_hash = ?').get(storyId, sessionHash)
+      if (!existing) {
+        const countRow = db.prepare('SELECT count(*) AS count FROM shared_story_replies WHERE story_id = ?').get(storyId)
+        if (!countRow) throw new SharedStoryError('Could not verify the reply limit for this story.', 503)
+        const count = Number(countRow.count)
+        if (count >= 100) throw new SharedStoryError('This story has reached its limit of 100 replies.', 429)
+      }
+      const createdAt = new Date(now).toISOString()
+      db.prepare(`INSERT INTO shared_story_replies(story_id, session_hash, message, created_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(story_id, session_hash) DO UPDATE SET
+          message = excluded.message,
+          created_at = CASE WHEN shared_story_replies.message = excluded.message THEN shared_story_replies.created_at ELSE excluded.created_at END`)
+        .run(storyId, sessionHash, message, createdAt)
+      const row = db.prepare('SELECT message, created_at FROM shared_story_replies WHERE story_id = ? AND session_hash = ?').get(storyId, sessionHash)
+      if (!row) throw new SharedStoryError('Your reply could not be saved. Please try again.', 503)
+      return { message: String(row.message), createdAt: String(row.created_at) }
+    })
+  }
+
+  async voiceBegin(record: SharedVoiceRecord, maxAttempts: number) {
+    return this.transaction((db, now) => {
+      const story = db.prepare('SELECT voice_attempts FROM shared_stories WHERE id = ? AND expires_at > ?').get(record.story_id, new Date(now).toISOString())
+      if (!story) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+      if (Number(story.voice_attempts) >= maxAttempts) return false
+      db.prepare('UPDATE shared_stories SET voice_attempts = voice_attempts + 1 WHERE id = ?').run(record.story_id)
+      db.prepare("DELETE FROM shared_story_voice WHERE story_id = ? AND status = 'pending'").run(record.story_id)
+      db.prepare(`INSERT INTO shared_story_voice(id, story_id, object_key, kind, mime, size, status, upload_hash, upload_expires_at, created_at)
+        VALUES (?, ?, ?, 'voice', ?, ?, 'pending', ?, ?, ?)`)
+        .run(record.id, record.story_id, record.object_key, record.mime, record.size, record.upload_hash, record.upload_expires_at, record.created_at)
+      return true
+    })
+  }
+
+  async voiceGet(id: string) {
+    return this.transaction(db => {
+      const row = db.prepare('SELECT * FROM shared_story_voice WHERE id = ?').get(id)
+      return row ? { ...row, size: Number(row.size) } as SharedVoiceRecord : null
+    })
+  }
+
+  async voiceReady(storyId: string) {
+    return this.transaction(db => {
+      const row = db.prepare("SELECT * FROM shared_story_voice WHERE story_id = ? AND status = 'ready'").get(storyId)
+      return row ? { ...row, size: Number(row.size) } as SharedVoiceRecord : null
+    })
+  }
+
+  async voiceActivate(storyId: string, id: string) {
+    this.transaction((db, now) => {
+      if (!db.prepare("SELECT 1 FROM shared_story_voice WHERE id = ? AND story_id = ? AND status = 'pending' AND upload_expires_at > ?")
+        .get(id, storyId, new Date(now).toISOString())) {
+        throw new SharedStoryError('This voice upload is no longer available. Choose the recording again.', 409)
+      }
+      db.prepare("DELETE FROM shared_story_voice WHERE story_id = ? AND status = 'ready'").run(storyId)
+      db.prepare("UPDATE shared_story_voice SET status = 'ready' WHERE id = ?").run(id)
+    })
+  }
+
+  async voiceDiscard(storyId: string, id?: string) {
+    this.transaction(db => {
+      if (id) db.prepare('DELETE FROM shared_story_voice WHERE story_id = ? AND id = ?').run(storyId, id)
+      else db.prepare("DELETE FROM shared_story_voice WHERE story_id = ? AND status = 'ready'").run(storyId)
+    })
+  }
+
+  async voicePurgeQueue(limit: number) {
+    return this.transaction((db, now) => {
+      db.prepare("DELETE FROM shared_story_voice WHERE status = 'pending' AND upload_expires_at < ?")
+        .run(new Date(now - MEDIA_PENDING_GRACE_MS).toISOString())
+      return db.prepare('SELECT object_key FROM shared_story_voice_purge WHERE retain_until <= ? ORDER BY queued_at LIMIT ?')
+        .all(new Date(now).toISOString(), limit).map(row => String(row.object_key))
+    })
+  }
+
+  async voicePurged(keys: string[]) {
+    this.transaction(db => {
+      for (const key of keys) db.prepare('DELETE FROM shared_story_voice_purge WHERE object_key = ?').run(key)
     })
   }
 
