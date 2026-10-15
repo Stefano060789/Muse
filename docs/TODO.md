@@ -100,8 +100,11 @@ current MVP.
 - [x] Pass production build and real built-server SQLite HTTP smoke for
       independent photo/WAV upload, locked/revealed voice access, private
       replies in management and persistence across server restarts
-- [ ] Apply the gift migration and rollback smoke before hosted enablement;
-      verify voice/reply access controls in separate hosted sessions
+- [x] Apply the gift migration (user confirmed) and run the corrected rollback
+      smoke successfully on 15 October 2026; verified permissions, RLS,
+      private WAV bucket, voice activation/attempt cap, reply idempotence,
+      cascade cleanup and independent photo slot; fixtures rolled back
+- [ ] Verify voice/reply access controls in separate hosted browser sessions
 - [ ] Validate real-device recording, listening and print/PDF on iPhone and
       Android; browser simulation and synthetic audio are not hardware tests
 

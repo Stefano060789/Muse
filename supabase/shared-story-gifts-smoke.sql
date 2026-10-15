@@ -27,7 +27,7 @@ begin
     raise exception 'Private WAV bucket configuration regression';
   end if;
   insert into public.shared_stories(id,owner_hash,play_hash,brief,content,answer_normalized)
-    values(sid,repeat('b',64),repeat('c',64),gift,'{}','fixture');
+    values(sid,repeat('b',64),repeat('c',64),jsonb_build_object('gift',gift),'{}','fixture');
   insert into public.shared_story_sessions(story_id,player_hash,solved)
     values(sid,player,true);
   voice := jsonb_build_object('id',voice_id,'story_id',sid,
