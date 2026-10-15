@@ -13,6 +13,8 @@ import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
+import RomanceOptions from '../components/RomanceOptions'
+import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
 import { GIFT_OCCASIONS, loadGiftDraft, removeGiftDraft, saveGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
@@ -22,6 +24,8 @@ import {
 } from '../lib/sharedStoryMedia'
 
 type PlayerResponse = { player: SharedStoryPlayer; sessionToken: string }
+type RomanceNotice = { romance: StoryRomance; language?: SharedStoryBrief['language'] }
+type OpenResponse = PlayerResponse | { romanceNotice: RomanceNotice }
 type MediaState = { media: SharedMediaSummary | null; mediaRequired: boolean }
 type UploadTarget = { method: 'PUT'; url: string; headers: Record<string, string> }
 type UploadState = { phase: 'idle' | 'uploading' | 'failed'; progress: number; error?: string }
@@ -106,6 +110,11 @@ export default function SharedStoryPage() {
   const [guess, setGuess] = useState('')
   const [actionText, setActionText] = useState('')
   const [aiConsent, setAiConsent] = useState(false)
+  const [romanceConfirmed, setRomanceConfirmed] = useState(false)
+  const [romanceNotice, setRomanceNotice] = useState<RomanceNotice | null>(null)
+  const [romanceAccepted, setRomanceAccepted] = useState(false)
+  const [recipientConfirmation, setRecipientConfirmation] = useState(false)
+  const [romanceDeclined, setRomanceDeclined] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -160,7 +169,10 @@ export default function SharedStoryPage() {
     return false
   }
   const recipientText = recipientCopy(player?.language)
-  const recipientLanguage = storyLanguage(player?.language)
+  const recipientLanguage = storyLanguage(player?.language || romanceNotice?.language)
+  const romanceText = romanceCopy(romanceNotice?.language || player?.language)
+  const recipientRequest = <T,>(body: Record<string, unknown>) => request<T>({ ...body, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
+  useEffect(() => { setRomanceConfirmed(false) }, [brief])
   useEffect(() => {
     const language = player?.language || brief.language
     if (language) { interaction.stopRecording(); setDictationLanguage(language) }
@@ -185,8 +197,16 @@ export default function SharedStoryPage() {
           } catch {
             setNotice('This browser cannot save progress. You can play now, but reopening the link will start a new session.')
           }
-          const result = await request<PlayerResponse>({ action: 'open', token: recipientToken, ...(savedSession ? { sessionToken: savedSession } : {}) })
+          const result = await request<OpenResponse>({ action: 'open', token: recipientToken, ...(savedSession ? { sessionToken: savedSession } : {}) })
           if (!active) return
+          if ('romanceNotice' in result) {
+            setRomanceNotice(result.romanceNotice)
+            setRomanceAccepted(false)
+            setRecipientConfirmation(false)
+            setRomanceDeclined(false)
+            setPlayer(null)
+            return
+          }
           setPlayer(result.player)
           setSessionToken(result.sessionToken)
           try {
@@ -247,6 +267,28 @@ export default function SharedStoryPage() {
     return () => { active = false }
   }, [creatorCode, creatorLocked])
 
+  const acceptRomance = async () => {
+    if (!romanceNotice || !recipientConfirmation || busy) return
+    setBusy(true); setError('')
+    try {
+      let savedSession: string | null = null
+      try { savedSession = window.localStorage.getItem(`muse-shared-player:${playToken}`) } catch {
+        setNotice('This browser cannot save progress. Reopening will require a new opt-in and may start a new session.')
+      }
+      const result = await request<PlayerResponse>({
+        action: 'open', token: playToken, romanceConfirmed: true, ...(savedSession ? { sessionToken: savedSession } : {})
+      })
+      setRomanceAccepted(true)
+      setPlayer(result.player)
+      setSessionToken(result.sessionToken)
+      try { window.localStorage.setItem(`muse-shared-player:${playToken}`, result.sessionToken) } catch {
+        setNotice('This browser cannot save progress. Keep this page open to continue.')
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not open this story.')
+    } finally { setBusy(false) }
+  }
+
   useEffect(() => {
     if (!draftReady || pendingDraft || draftUnreadable || loading || creator || playToken || busy) return
     if (![brief.creatorName, brief.recipientName, brief.setting, brief.solution, brief.message, brief.recipientHints, brief.gift?.dedication].some(value => value?.trim())) return
@@ -301,6 +343,7 @@ export default function SharedStoryPage() {
       setAlternativeAnswersText('')
     }
     setCreator(null)
+    setRomanceConfirmed(false)
     setSendReady('')
     setOwnerMedia(null)
     setOwnerPreview(null)
@@ -430,7 +473,7 @@ export default function SharedStoryPage() {
     const loadVoice = async (owner = false) => {
       setVoiceError('')
       try {
-        const result = await requestMedia(owner && creator ? { action: 'voice-preview', token: creator.ownerToken } : { action: 'voice', token: playToken, sessionToken }, owner ? creatorCode : '')
+        const result = await requestMedia(owner && creator ? { action: 'voice-preview', token: creator.ownerToken } : { action: 'voice', token: playToken, sessionToken, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, owner ? creatorCode : '')
         setVoiceUrl(mediaUrl(result))
       } catch (error) { setVoiceError(error instanceof Error ? error.message : 'Could not load the voice message. Try again.') }
     }
@@ -448,7 +491,7 @@ export default function SharedStoryPage() {
     const sendReply = async () => {
       setBusy(true); setError('')
       try {
-        await request({ action: 'reply', token: playToken, sessionToken, reply: replyText.trim() })
+        await recipientRequest({ action: 'reply', token: playToken, sessionToken, reply: replyText.trim() })
         setReplySent(true)
         setNotice('Your reply was sent privately to the sender.')
       } catch (error) { setError(error instanceof Error ? error.message : 'Could not send your reply. Your text is kept here; try again.') }
@@ -468,12 +511,12 @@ export default function SharedStoryPage() {
   const loadRevealMedia = useCallback(async (kind: SharedMediaKind) => {
     setRevealMedia(current => current?.url ? current : { kind, state: 'loading' })
     try {
-      const result = await requestMedia({ action: 'media', token: playToken, sessionToken })
+      const result = await requestMedia({ action: 'media', token: playToken, sessionToken, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
       setRevealMedia({ kind, state: 'ready', url: mediaUrl(result) })
     } catch {
       setRevealMedia({ kind, state: 'error' })
     }
-  }, [playToken, sessionToken])
+  }, [playToken, sessionToken, romanceAccepted])
 
   const solvedMediaKind = player?.solved || player?.skipped ? player.media?.kind : undefined
   useEffect(() => {
@@ -512,6 +555,10 @@ export default function SharedStoryPage() {
       setError('Review the AI disclosure and check the consent box before preparing this story.')
       return
     }
+    try { requireRomanceConfirmation(brief.romance, romanceConfirmed) } catch (error) {
+      setError(error instanceof Error ? error.message : 'Confirm the romance boundaries before preparing this story.')
+      return
+    }
     setAiConsent(false)
     setBusy(true)
     setError('')
@@ -538,6 +585,7 @@ export default function SharedStoryPage() {
       catch { setDraftStatus('Draft could not be saved on this device. Keep the page open if preparation fails.') }
       const { media: _media, mediaRequired: _required, voice: _voice, replies: _replies, ...story } = await request<CreatorStory & MediaState & GiftState>({
         action: 'create', brief: preparedBrief, consentVersion: MUSE_AI_CONSENT_VERSION,
+        ...(brief.romance ? { romanceConfirmed } : {}),
         ...(voiceFile ? { finalVoice: { mime: 'audio/wav', size: voiceFile.size } } : {}),
         ...(declaration ? { finalMedia: { mime: declaration.mime, size: declaration.size } } : {})
       }, creatorCode)
@@ -565,7 +613,7 @@ export default function SharedStoryPage() {
     interaction.stopRecording()
     narrator.stop()
     try {
-      const result = await request<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}) })
+      const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}) })
       setPlayer(result.player)
       if (action !== 'hint') setGuess('')
     } catch (error) {
@@ -601,7 +649,7 @@ export default function SharedStoryPage() {
           if (saved) setActionText(attempt.text)
           submission = { action: 'adventure', token: playToken, sessionToken, ...attempt, consentVersion: MUSE_AI_CONSENT_VERSION }
         }
-        const response = await fetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submission) })
+        const response = await fetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...submission, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }) })
         const data = await response.json()
         if (data.player) setPlayer(data.player)
         if (!refresh && data.player && (!data.player.adventure?.pending || response.ok)) {
@@ -663,7 +711,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
@@ -749,7 +797,7 @@ export default function SharedStoryPage() {
           }}>Use creator access code</button>
           {creatorCode ? <p role="status">Code entered; checked on your next request.</p> : null}
         </section> : null}
-        {!showGiftCover ? <details style={{ marginBottom: '1rem' }}>
+        {!showGiftCover && !(romanceNotice && !romanceAccepted) ? <details style={{ marginBottom: '1rem' }}>
           <summary>Audio and microphone settings</summary>
           {playToken ? <p lang={recipientLanguage.code} dir={recipientLanguage.dir}>{recipientText.settingsDisclosure}</p> : null}
           <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
@@ -762,7 +810,24 @@ export default function SharedStoryPage() {
           <MicrophoneCheck stopSignal={voiceRecording ? 'gift-voice-recording' : interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
         </details> : null}
-        {loading ? <p role="status">Opening your private story...</p> : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
+        {loading ? <p role="status">Opening your private story...</p> : playToken && romanceNotice && !romanceAccepted ? (
+          <section lang={recipientLanguage.code} dir={recipientLanguage.dir} aria-label="Romance content notice" style={cardStyle}>
+            <h1>{romanceText.title(romanceNotice.romance)}</h1>
+            {romanceDeclined ? <>
+              <p role="status">{romanceText.declined}</p>
+              <Link href="/" style={{ color: 'inherit' }}>Muse</Link>
+            </> : <>
+              <p style={{ lineHeight: 1.8 }}>{romanceText.notice(romanceNotice.romance)}</p>
+              <label style={{ display: 'block', lineHeight: 1.8, padding: '1rem 0' }}>
+                <input type="checkbox" checked={recipientConfirmation} disabled={busy} onChange={event => setRecipientConfirmation(event.target.checked)} /> {romanceText.confirm}
+              </label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" disabled={busy || !recipientConfirmation} onClick={() => void acceptRomance()} style={primaryStyle}>{romanceText.open}</button>
+                <button type="button" disabled={busy} onClick={() => { narrator.stop(); interaction.stopRecording(); setRecipientConfirmation(false); setRomanceDeclined(true) }} style={buttonStyle}>{romanceText.decline}</button>
+              </div>
+            </>}
+          </section>
+        ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
           <section lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.8rem' }}>{recipientText.madeForYou}</p>
@@ -907,6 +972,7 @@ export default function SharedStoryPage() {
         ) : <p>Could not open the story. Check the link or ask its creator for a new one.</p> : creator ? (
           <section>
             <p>Private creator preview</p>
+            {creator.brief.romance ? <p>{romanceCopy().title(creator.brief.romance)}. Recipients see a content notice and choose whether to open before seeing any story text.</p> : null}
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
@@ -1112,6 +1178,7 @@ export default function SharedStoryPage() {
                   </select>
                 </div>
                 <p>Generated scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; Muse keeps your words unchanged. App settings and errors may remain English.</p>
+                <RomanceOptions value={brief.romance} onChange={romance => { setBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
               </div>
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -1198,6 +1265,9 @@ export default function SharedStoryPage() {
                 <p>Expired records may be physically cleaned only when later requests trigger cleanup. Backups are retained separately.</p>
                 <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype. Each story allows {SHARED_MEDIA_ATTEMPTS_PER_STORY} photo/video upload attempts.</p>
               </details>
+              {brief.romance ? <label style={{ display: 'block', padding: '1rem 0', lineHeight: 1.7 }}>
+                <input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy().creatorConfirmation}
+              </label> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                 I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server for up to 30 days. Any photo, video or voice recording is stored privately and is not sent to AI.
               </ExplicitConsent>

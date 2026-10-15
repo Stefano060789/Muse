@@ -5,6 +5,7 @@ import { parsePersonalStoryRequest } from './personalStoryGenerator'
 import { generateStoryJson } from './storyProvider'
 import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadata } from './narration'
 import { assertStoryNarrationLanguage, recipientCopy, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
+import { romanceInstruction, type StoryRomance } from './storyRomance'
 import {
   boundedStoryList, boundedStoryText, exactObject, invalidFreeform, parseFreeformState,
   parseStoryChoiceMode, parseSuggestedChoices, validatePlayerChoiceSelection, freeformSystemPrompt,
@@ -14,6 +15,7 @@ import {
 export const JOURNEY_TURNS = { 5: 3, 10: 6, 15: 9, 20: 12 } as const
 export type JourneyDuration = keyof typeof JOURNEY_TURNS
 export type JourneyInput = {
+  romance?: StoryRomance
   language?: StoryLanguageCode
   mood: PersonalStoryMood
   need: string
@@ -89,6 +91,7 @@ export function parseJourneyInput(body: Record<string, unknown>): JourneyInput {
   const choiceMode = parseStoryChoiceMode(body.choiceMode)
   return {
     ...(parsed.language ? { language: parsed.language } : {}),
+    ...(parsed.romance ? { romance: parsed.romance } : {}),
     mood: parsed.mood,
     need: parsed.need,
     profileKeypoints: parsed.profileKeypoints,
@@ -151,6 +154,7 @@ export function publicJourney(result: JourneyResult, capability: string) {
   const snapshot = journeySnapshot(record, result.snapshot.pending)
   const story: PersonalStory | null = record.opening ? {
     ...(record.input.language ? { language: record.input.language } : {}),
+    ...(record.input.romance ? { romance: record.input.romance } : {}),
     id: record.id, createdAt: record.createdAt, generation: 'ai', title: record.opening.title, description: record.opening.description,
     mood: record.input.mood, need: record.input.need, profileKeypoints: record.input.profileKeypoints,
     narrationStyle: record.opening.narrationStyle, narrationLanguage: record.opening.narrationLanguage,
@@ -178,7 +182,7 @@ function journeySystem(mode: StoryChoiceMode): string {
 }
 export async function generateJourneyOpening(input: JourneyInput): Promise<JourneyOpening> {
   const mode = input.choiceMode ?? 'free'
-  const system = journeySystem(mode) + '\n' + storyLanguageInstruction(input.language)
+  const system = journeySystem(mode) + '\n' + romanceInstruction(input.romance) + '\n' + storyLanguageInstruction(input.language)
   const choicePrompt = mode === 'suggested'
     ? 'Provide exactly 3 to 5 distinct proposed actions in turn.choices (each at most 160 characters).'
     : 'Leave room for freeform actions without fixed choice menus.'
@@ -193,7 +197,7 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
   const remaining = JOURNEY_TURNS[record.input.duration] - record.used
   const mode = record.input.choiceMode ?? 'free'
   const language = record.input.language
-  const system = journeySystem(mode) + '\n' + storyLanguageInstruction(language)
+  const system = journeySystem(mode) + '\n' + romanceInstruction(record.input.romance) + '\n' + storyLanguageInstruction(language)
   const isFinal = remaining === 0
   const turnPrompt = isFinal
     ? 'This is the FINAL paid response. Deliver an actual meaningful conclusion resolving the arc and reflecting the latest action, state and consequences. No unresolved required next action or question. Set concluded:true.'

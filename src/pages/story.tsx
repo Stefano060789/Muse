@@ -11,6 +11,8 @@ import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import { STORY_LANGUAGES, storyLanguage, type StoryLanguageCode } from '../lib/storyLanguage'
+import RomanceOptions from '../components/RomanceOptions'
+import { requireRomanceConfirmation, romanceCopy, type StoryRomance } from '../lib/storyRomance'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -30,6 +32,8 @@ export default function StoryPage() {
   const [duration, setDuration] = useState(10)
   const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
+  const [romance, setRomance] = useState<StoryRomance | undefined>()
+  const [romanceConfirmed, setRomanceConfirmed] = useState(false)
   const [creatorCode, setCreatorCode] = useState('')
   const [dictationLanguage, setDictationLanguage] = useState('en-US')
   const [reconciled, setReconciled] = useState(false)
@@ -50,6 +54,7 @@ export default function StoryPage() {
   const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
   const stopRecording = interaction.stopRecording
   const isRecording = Boolean(interaction.recordingTarget)
+  useEffect(() => { setRomanceConfirmed(false) }, [romance, need, selectedMood, duration, choiceMode, language, useProfile])
 
   useEffect(() => {
     try {
@@ -139,6 +144,10 @@ export default function StoryPage() {
       setStoryError('Review the AI disclosure and check the consent box before creating your story.')
       return
     }
+    try { requireRomanceConfirmation(romance, romanceConfirmed) } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Confirm the romance boundaries before creating your story.')
+      return
+    }
     const consentVersion = MUSE_AI_CONSENT_VERSION
     setAiConsent(false)
     requestLock.current = true
@@ -154,7 +163,8 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      setRomanceConfirmed(false)
       setNeed('')
       setResponseDraft('')
     } catch (error) {
@@ -308,6 +318,7 @@ export default function StoryPage() {
                 <textarea value={need} onChange={(event) => { setNeed(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
               {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Send my latest five memories to AI</label> : null}
+              <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} />
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                 I understand that my need and story settings will be sent to Muse&apos;s configured AI provider to generate this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days.
@@ -322,6 +333,7 @@ export default function StoryPage() {
           ) : (
             <section>
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
+              {story.romance ? <p>{romanceCopy(story.language).title(story.romance)}</p> : null}
               <h1 lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
               <p lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
               <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>

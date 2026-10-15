@@ -2,6 +2,7 @@ import { parseNarrationMetadata, type NarrationMetadata } from './narration'
 import type { SharedMediaKind, SharedMediaMime, SharedVoiceSummary } from './sharedStoryMedia'
 import { parseStoryChoiceMode, parseSuggestedChoices, type StoryChoiceMode } from './freeformStory'
 import { assertStoryNarrationLanguage, parseStoryLanguage, recipientCopy, storyWordCount, type StoryLanguageCode } from './storyLanguage'
+import { parseStoryRomance, type StoryRomance } from './storyRomance'
 
 export const SHARED_STORY_DURATIONS = [5, 10, 15, 20] as const
 
@@ -12,6 +13,7 @@ export type SharedStoryGift = {
 }
 
 export type SharedStoryBrief = {
+  romance?: StoryRomance
   language?: StoryLanguageCode
   creatorName: string
   recipientName: string
@@ -37,6 +39,7 @@ export function parseSharedSceneChoices(value: unknown): string[] | undefined {
 }
 export type SharedStoryContent = NarrationMetadata & { title: string; description: string; scenes: SharedStoryScene[] }
 export type SharedStoryPlayer = NarrationMetadata & {
+  romance?: StoryRomance
   language?: StoryLanguageCode
   title: string
   description: string
@@ -83,6 +86,10 @@ function text(value: unknown, label: string, max: number, optional = false): str
 
 export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessage?: boolean } = {}): SharedStoryBrief {
   const input = record(value)
+  let romance: StoryRomance | undefined
+  try { romance = parseStoryRomance(input.romance) } catch (error) {
+    throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid romance mode.')
+  }
   let language: StoryLanguageCode | undefined
   try { language = parseStoryLanguage(input.language) } catch (error) {
     throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid story language.')
@@ -91,6 +98,7 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     throw new SharedStoryError('Choose a duration of 5, 10, 15, or 20 minutes.')
   }
   const brief = {
+    ...(romance ? { romance } : {}),
     ...(language ? { language } : {}),
     creatorName: text(input.creatorName, 'Your name', 80),
     recipientName: text(input.recipientName, 'Recipient name', 80),
@@ -236,6 +244,7 @@ export function sharedStoryPlayerView(
     ? feedbackLabels[feedback] : feedback
   return {
     ...(brief.language ? { language: brief.language } : {}),
+    ...(brief.romance ? { romance: parseStoryRomance(brief.romance) } : {}),
     title: content.title,
     description: content.description,
     ...parseNarrationMetadata(content),

@@ -16,6 +16,7 @@ import {
 import { sharedMediaStore, type SharedMediaStore } from '../../lib/sharedMediaStore'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
+import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRomance'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -129,6 +130,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
       const finalVoice = body.finalVoice === undefined ? null : parseVoiceDeclaration(body.finalVoice)
       const brief = parseSharedStoryBrief(body.brief, { allowEmptyMessage: Boolean(finalMedia) })
+      try { requireRomanceConfirmation(brief.romance, body.romanceConfirmed) } catch (error) {
+        throw new SharedStoryError(error instanceof Error ? error.message : 'Confirm the romance boundaries before creating this story.')
+      }
       if (finalVoice && !brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
       const db = database()
       if (brief.gift) {
@@ -166,6 +170,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const ownerAction = OWNER_ACTIONS.includes(String(action))
     if (!story || !matches(key, ownerAction ? story.owner_hash : story.play_hash)) {
       throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+    }
+    let romance: ReturnType<typeof parseStoryRomance>
+    try { romance = parseStoryRomance(story.brief.romance) } catch {
+      throw new SharedStoryError('This story has invalid romance settings. Ask its creator for a new story.', 409)
+    }
+    if (!ownerAction && romance && body.romanceConfirmed !== true) {
+      if (action === 'open') {
+        return res.status(200).json({ romanceNotice: { romance, ...(story.brief.language ? { language: story.brief.language } : {}) } })
+      }
+      throw new SharedStoryError('Confirm you are 18 or older and choose to open this romance story before continuing.', 403)
     }
     if (action === 'delete') {
       await db.delete(id)

@@ -110,6 +110,35 @@ Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
 recording and creator/recipient UI checks; `npm run test:gifting` covers
 private voice/reply authorization and persistence without paid provider calls.
 
+## Optional romance stories
+
+My Story and Shared Story offer an optional Romance setting: **Sweet**
+(affection and emotional intimacy) or **Spicy, non-explicit** (flirting,
+romantic tension and fade-to-black intimacy). Both are for consenting adults
+18 or older and adult characters. Explicit sexual descriptions, nudity,
+minors, coercion and sexualized portrayals of real people without permission
+are outside this feature. These boundaries are carried into generation and
+saved-story continuations; selecting another mode cannot override an existing
+journey's server-side setting.
+
+Creators must freshly confirm the adult/consent boundaries before generating
+a romance story. Shared recipients first receive only the romance style and
+language, not the title, names, dedication, scenes, reveal or media. They can
+decline without opening a playthrough, or confirm they are 18+ and choose to
+open. This acknowledgment is not saved in browser drafts or restored on
+reopening. Every recipient API action requires the acknowledgment for a
+romance-tagged story, including resumed/solved sessions and media/replies.
+Existing untagged stories retain their normal opening.
+
+This is self-declared age/consent, not verified identity, and does not certify
+that a sender's text or uploads are appropriate. AI instructions are not a
+complete moderation system. Untagged freeform inputs and user attachments
+are not automatically classified as romance or reviewed. Provider safeguards
+still apply; production moderation, reporting and real multilingual safety
+testing remain release gates. No explicit-content or age-verification
+guarantee is made. Romance metadata uses existing JSON storage; no SQL
+migration is needed.
+
 ## Plans and billing preview
 
 `/billing` presents proposed Free, EUR 3.99 one-off Gift, EUR 8.99/month Plus

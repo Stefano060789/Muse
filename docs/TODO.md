@@ -82,6 +82,21 @@ current MVP.
 
 ## Before public launch
 
+### Optional romance rollout
+
+- [x] Add Sweet / Spicy non-explicit romance to personal and shared creation,
+      persist settings and preserve adult/consensual fade-to-black boundaries
+      in authoritative continuations
+- [x] Verify creator acknowledgment and recipient notice/decline/explicit
+      opt-in before any cover, scene, reveal or media; legacy access unchanged
+- [ ] Review production moderation, sender uploads, reporting and age/consent
+      requirements before public promotion; self-declaration is not age
+      verification and prompt instructions are not complete moderation
+- [ ] Validate boundaries and localized notice comprehension with adult testers
+      across all five languages; no explicit-content support promised
+- [ ] Commit/push and verify hosted romance behavior after local validation;
+      JSON metadata requires no new migration
+
 ### Billing preview
 
 - [x] Add a minimal responsive Plans & Billing page linked from home with

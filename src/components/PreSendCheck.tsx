@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CreatorStory } from '../lib/storyLibrary'
+import { romanceCopy } from '../lib/storyRomance'
 
 export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending, onReady }: {
   story: CreatorStory
@@ -25,6 +26,11 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
     <button type="button" style={{ padding: '0.8rem 1rem', minHeight: 44 }} onClick={() => { setPreview(true); setIndex(0) }}>Preview the recipient experience</button>
     {preview ? <section aria-label="Recipient preview" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12 }}>
       <p>Local preview only. No recipient session or progress is created.</p>
+      {story.brief.romance ? <aside lang={story.brief.language} dir={story.brief.language === 'ar-SA' ? 'rtl' : undefined} style={{ padding: '0.75rem', border: '1px solid #d9cfc5', borderRadius: 8 }}>
+        <strong>{romanceCopy(story.brief.language).title(story.brief.romance)}</strong>
+        <p>{romanceCopy(story.brief.language).notice(story.brief.romance)}</p>
+        <p>Recipients must opt in before seeing the cover or scenes below. This creator preview does not record recipient consent.</p>
+      </aside> : null}
       <p>For {story.brief.recipientName}, from {story.brief.creatorName}. About {story.brief.durationMinutes} minutes.</p>
       <h4>{story.content.title}</h4>
       {story.brief.gift?.dedication ? <p lang={story.brief.language} style={{ whiteSpace: 'pre-wrap' }}>{story.brief.gift.dedication}</p> : null}

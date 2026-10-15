@@ -4,6 +4,17 @@ import { generateStoryJson } from './storyProvider'
 import type { PersonalStory, PersonalStoryMood } from './story'
 import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata } from './narration'
 import { assertStoryNarrationLanguage, parseStoryLanguage, storyLanguageInstruction, type StoryLanguageCode } from './storyLanguage'
+import { parseStoryRomance, requireRomanceConfirmation, romanceInstruction, type StoryRomance } from './storyRomance'
+
+function romanceField(value: unknown, confirmation?: unknown, creating = false): { romance?: StoryRomance } {
+  try {
+    const romance = parseStoryRomance(value)
+    if (creating) requireRomanceConfirmation(romance, confirmation)
+    return romance ? { romance } : {}
+  } catch (error) {
+    throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid romance mode.')
+  }
+}
 
 function narration(value: Record<string, unknown>, required = false, language?: StoryLanguageCode) {
   try {
@@ -58,8 +69,10 @@ export function parsePersonalStoryRequest(value: unknown) {
     } catch (error) { throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid story language.') }
   }
   if (input.action === 'create') {
+    const romance = romanceField(input.romance, input.romanceConfirmed, true)
     return {
       action: 'create' as const,
+      ...romance,
       ...languageField(input.language),
       mood: mood(input.mood),
       need: text(input.need, 'Your current need', 1000, true),
@@ -77,6 +90,7 @@ export function parsePersonalStoryRequest(value: unknown) {
   const createdAt = text(saved.createdAt, 'Creation date', 40)
   if (!Number.isFinite(Date.parse(createdAt))) throw new SharedStoryError('Personal story creation date is invalid.')
   const story: PersonalStory = {
+    ...romanceField(saved.romance),
     ...languageField(saved.language),
     ...narration(saved, false, parseStoryLanguage(saved.language)),
     id: text(saved.id, 'Story ID', 80),
@@ -108,13 +122,14 @@ const SYSTEM = [
 
 export async function generatePersonalStory(input: ReturnType<typeof parsePersonalStoryRequest>): Promise<PersonalStory> {
   if (input.action === 'create') {
-    const generated = await generateStoryJson(`${SYSTEM}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
+    const generated = await generateStoryJson(`${SYSTEM}\n${romanceInstruction(input.romance)}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
     try {
       const content = object(generated)
       if (!Array.isArray(content.scenes) || content.scenes.length !== 3) throw new SharedStoryError('The AI must return three personal story scenes.')
       return {
         id: randomUUID(), createdAt: new Date().toISOString(), generation: 'ai',
         ...(input.language ? { language: input.language } : {}),
+        ...(input.romance ? { romance: input.romance } : {}),
         ...narration(content, true, input.language),
         title: text(content.title, 'Story title', 160),
         description: text(content.description, 'Story description', 500),
@@ -129,10 +144,11 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
   const { story, answer } = input
   const nextStep = story.currentStep + 1
   const generated = await generateStoryJson(
-    `${SYSTEM}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
+    `${SYSTEM}\n${romanceInstruction(story.romance)}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
     {
       mood: story.mood, need: story.need, profileKeypoints: story.profileKeypoints,
       ...(story.language ? { language: story.language } : {}),
+      ...(story.romance ? { romance: story.romance } : {}),
       title: story.title, description: story.description, responses: [...story.responses, answer],
       visitedScenes: story.scenes.slice(0, nextStep), plannedNextScene: story.scenes[nextStep],
       ...narration(story)

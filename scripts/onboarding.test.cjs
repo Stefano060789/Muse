@@ -15,6 +15,7 @@ function load(relative, mocks = {}) {
   const result = { exports: {} }
   new Function('module', 'exports', 'require', compile(relative))(result, result.exports, name => {
     if (name in mocks) return mocks[name]
+    if (name === '../lib/storyRomance') return load('src/lib/storyRomance.ts', mocks)
     throw new Error('Unexpected dependency: ' + name)
   })
   return result.exports
@@ -62,6 +63,23 @@ function component(relative, extra = {}) {
   return { render, nodes, find }
 }
 const sample = load('src/lib/sampleStory.ts')
+check('optional romance defaults stay compact and mode changes reset acknowledgment', () => {
+  const changes = [], confirmations = []
+  const options = component('src/components/RomanceOptions.tsx')
+  const props = { confirmed: false, onChange: value => changes.push(value), onConfirm: value => confirmations.push(value) }
+  options.render(props)
+  assert.ok(options.find('summary', 'Romance (optional)'))
+  assert.equal(options.nodes().filter(node => node.type === 'input').length, 0)
+  options.nodes().find(node => node.type === 'select').props.onChange({ target: { value: 'spicy' } })
+  assert.deepEqual(changes, ['spicy'])
+  assert.deepEqual(confirmations, [false])
+  options.render({ ...props, value: 'spicy', confirmed: true })
+  assert.equal(options.nodes().find(node => node.type === 'input').props.checked, true)
+  options.render({ ...props, value: 'spicy', showConfirmation: false })
+  assert.equal(options.nodes().filter(node => node.type === 'input').length, 0, 'Shared creator chooses mode first and acknowledges on final step')
+  options.nodes().find(node => node.type === 'select').props.onChange({ target: { value: '' } })
+  assert.deepEqual(changes, ['spicy', undefined])
+})
 check('sample is original static fiction with bounded answer handling', () => {
   assert.equal(sample.SAMPLE_STORY.scenes.length, 2)
   for (const answer of ['picnic', ' A PICNIC! ', 'picnic.']) assert.equal(sample.sampleAnswerMatches(answer), true)

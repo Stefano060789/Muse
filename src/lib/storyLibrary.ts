@@ -4,6 +4,7 @@ import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } f
 import { parseFreeformState, parseStoryChoiceMode, parseSuggestedChoices } from './freeformStory'
 import type { JourneyDuration, JourneySnapshot } from './personalJourney'
 import { assertStoryNarrationLanguage, parseStoryLanguage } from './storyLanguage'
+import { parseStoryRomance } from './storyRomance'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
@@ -55,6 +56,7 @@ function narration(input: Record<string, unknown>): NarrationMetadata {
 
 export function validatePersonalStory(value: unknown): PersonalStory {
   const input = record(value)
+  const romance = parseStoryRomance(input.romance)
   const language = parseStoryLanguage(input.language)
   assertStoryNarrationLanguage(input.narrationLanguage, language)
   const mood = input.mood
@@ -86,6 +88,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   }
   return {
     ...(language ? { language } : {}),
+    ...(romance ? { romance } : {}),
     id: identifier(input.id), mood, title: text(input.title), description: text(input.description),
     currentStep: input.currentStep, createdAt: date(input.createdAt), responses: strings(input.responses), scenes,
     ...(journey ? { journey } : {}),
