@@ -21,7 +21,7 @@ export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration:
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'adventure', 'media']
+const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media']
 const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview']
 
 function matches(secretValue: string, storedHash: string): boolean {
@@ -234,9 +234,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (action === 'media') {
       const state = await db.advance(id, hash(sessionToken), 'open', '', story.play_hash)
-      if (!state.solved) throw new SharedStoryError('Solve the story to unlock its final reveal.', 403)
+      if (!state.solved && !state.skipped) throw new SharedStoryError('Unlock the story before opening its final reveal.', 403)
       if (!ready) throw new SharedStoryError('This story has no photo or video.', 404)
       return await deliverMedia(res, sharedMediaStore(), ready)
+    }
+    if (action === 'skip') {
+      if (body.confirmSkip !== true) throw new SharedStoryError('Confirm that you want to reveal the surprise without solving.')
+      if (story.brief.unlockPolicy !== 'allow-skip') throw new SharedStoryError('The sender chose Solve to unlock for this story.', 403)
     }
     let guess = ''
     if (action === 'guess') {
@@ -246,8 +250,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await reserveRequest(db, req, 'guess')
     }
     if (story.brief.adventure && action === 'next') throw new SharedStoryError('Use a freeform adventure action instead of Next.')
-    const state = await db.advance(id, hash(sessionToken), action === 'adventure' ? 'open' : action as 'open' | 'next' | 'guess' | 'hint', guess, story.play_hash)
-    const feedback = action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
+    const state = await db.advance(id, hash(sessionToken), action === 'adventure' ? 'open' : action as 'open' | 'next' | 'guess' | 'hint' | 'skip', guess, story.play_hash)
+    if (action === 'adventure' && (state.solved || state.skipped)) throw new SharedStoryError('The surprise is already revealed. Reopen to refresh your story.', 409)
+    const feedback = state.skipped ? 'Revealed without solving' : action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
     const player = sharedStoryPlayerView(story.brief, story.content, state, feedback, ready)
     if (action === 'adventure' && !story.brief.adventure) throw new SharedStoryError('This story does not enable live adventure actions.')
     if (story.brief.adventure) {

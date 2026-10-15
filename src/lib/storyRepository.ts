@@ -17,14 +17,14 @@ export type StoredStory = {
   alternative_answers_normalized?: string[]
   expires_at: string
 }
-export type PlayerState = { current_scene: number; solved: boolean; revealed_hints: number }
+export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
   delete(id: string): Promise<void>
   rotate(id: string, playHash: string): Promise<void>
-  advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint', guess: string, playHash?: string): Promise<PlayerState>
+  advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string): Promise<PlayerState>
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   personalJourney(request: JourneyOperation): Promise<JourneyResult>
@@ -179,10 +179,13 @@ export function storyRepository(): StoryRepository {
       if (error) {
         if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
         if (error.message === 'Player session unavailable') throw new SharedStoryError('Player session is invalid. Reopen the story link.')
+        if (error.message === 'Skipping is not enabled') throw new SharedStoryError('The sender chose Solve to unlock for this story.', 403)
         if (error.message === 'Guess limit reached' || error.message === 'Please wait before guessing again') throw new SharedStoryError(error.message, 429)
         throw storyStorageError(error)
       }
-      if (!data || typeof data.current_scene !== 'number' || typeof data.solved !== 'boolean' || !Number.isInteger(data.revealed_hints) || data.revealed_hints < 0) throw storyStorageError()
+      if (!data || typeof data.current_scene !== 'number' || typeof data.solved !== 'boolean' || typeof data.skipped !== 'boolean' || !Number.isInteger(data.revealed_hints) || data.revealed_hints < 0) {
+        throw new SharedStoryError('Shared story state is unavailable. Apply supabase/shared-story-help.sql before deploying this version.', 503)
+      }
       return data
     },
     async reserve(clientHash, kind) {

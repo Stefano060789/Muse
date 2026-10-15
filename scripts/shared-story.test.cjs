@@ -121,6 +121,21 @@ async function main() {
     assert.equal(view.message, brief.message)
     assert.equal(view.solution, undefined)
   })
+  await check('unlock policy validates strictly and skipped reveal is distinct from solved', () => {
+    assert.equal(parseSharedStoryBrief(brief).unlockPolicy, undefined)
+    assert.equal(parseSharedStoryBrief({ ...brief, unlockPolicy: 'allow-skip' }).unlockPolicy, 'allow-skip')
+    for (const unlockPolicy of [null, true, 'skip', '']) assert.throws(() => parseSharedStoryBrief({ ...brief, unlockPolicy }))
+    const enabled = { ...brief, unlockPolicy: 'allow-skip' }
+    const locked = sharedStoryPlayerView(enabled, content, { current_scene: 0, solved: false })
+    assert.equal(locked.canSkip, true)
+    assert.equal(locked.message, undefined)
+    const skipped = sharedStoryPlayerView(enabled, content, { current_scene: 0, solved: false, skipped: true })
+    assert.equal(skipped.solved, false)
+    assert.equal(skipped.skipped, true)
+    assert.equal(skipped.canSkip, false)
+    assert.equal(skipped.message, brief.message)
+    assert.ok(!JSON.stringify(skipped).includes(brief.solution))
+  })
   await check('generation sends a structured brief to the actual Groq chat API', async () => {
     process.env.LLM_API_KEY = 'test-key'
     process.env.LLM_PROVIDER = 'GROQ'
@@ -266,7 +281,7 @@ async function main() {
   let stored
   let allowRequest = true
   let legacyRpc = false
-  let state = { current_scene: 0, solved: false, revealed_hints: 0 }
+  let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
   delete process.env.VERCEL

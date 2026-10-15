@@ -305,7 +305,31 @@ Guesses are limited to 30/session, spaced by 2 seconds, with an additional
 production-grade identity or billing controls. Missing providers/storage
 return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 
-### Final photo or video reveal
+### Shared library and help
+
+Created shared stories stay in this browser's Story Library independently of
+recipient progress. The Shared Stories section offers management, recipient-link
+copying, brief reuse and expiry dates. It does not claim a recipient has started,
+solved or skipped: no identity-based tracking or aggregate status dashboard has
+been introduced. Browser entries are not account sync or backups; server expiry
+still applies.
+
+The creator chooses **Solve to unlock** (default, including older stories) or
+**Allow a skip** before generation. Recipient **Need help?** explains same-browser
+resume, existing free hints and contacting the sender outside Muse. Only opted-in
+stories offer **Reveal without solving**, with explicit confirmation. The server
+records a separate durable skipped state, never sets solved, and authorizes that
+playthrough's private message/media. Other sessions remain locked. Skip/hints use
+no AI calls, don't replenish budgets, and block further adventure turns; already
+reserved attempts remain charged.
+
+Before deploying this version, apply [shared-story-help.sql](supabase/shared-story-help.sql)
+after the existing story, assistance and adventure migrations, then run the
+rollback-only [help smoke](supabase/shared-story-help-smoke.sql). Hosted responses
+missing the new state fail explicitly rather than silently discarding it. SQLite
+upgrades its schema locally. No production migration is run by the application.
+
+### Final reveal attachments
 
 The creator form has four steps (who, story and duration, secret answer, final reveal)
 with narration style, alternative answers, hints and adventure

@@ -153,6 +153,29 @@ async function main() {
     assert.equal(prompts.length, 1)
   })
 
+  await check('confirmed skip unlocks private media only for its own opted-in playthrough without AI calls', async () => {
+    const made = await create({ ...baseBrief, unlockPolicy: 'allow-skip' }, { mime: 'image/png', size: 128 })
+    assert.equal(made.status, 201)
+    const story = made.body
+    const bytes = png(128)
+    assert.equal((await attach(story, bytes, 'image/png')).status, 200)
+    const token = story.playToken
+    const sessionToken = (await api({ action: 'open', token }, { code: '' })).body.sessionToken
+    const before = prompts.length
+    assert.equal((await api({ action: 'media', token, sessionToken }, { code: '' })).status, 403)
+    assert.equal((await api({ action: 'skip', token, sessionToken }, { code: '' })).status, 400)
+    const skipped = await api({ action: 'skip', token, sessionToken, confirmSkip: true }, { code: '' })
+    assert.equal(skipped.status, 200)
+    assert.equal(skipped.body.player.skipped, true)
+    assert.equal(skipped.body.player.solved, false)
+    const media = await api({ action: 'media', token, sessionToken }, { code: '' })
+    assert.equal(media.status, 200)
+    assert.deepEqual(media.bytes, bytes)
+    const otherSession = (await api({ action: 'open', token }, { code: '' })).body.sessionToken
+    assert.equal((await api({ action: 'media', token, sessionToken: otherSession }, { code: '' })).status, 403)
+    assert.equal(prompts.length, before)
+    await api({ action: 'delete', token: story.ownerToken })
+  })
   let photoStory
   await check('media-only story generation never sends media metadata to the AI and waits for the attachment', async () => {
     const created = await create(baseBrief, { mime: 'image/png', size: 4321 })

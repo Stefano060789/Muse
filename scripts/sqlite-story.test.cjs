@@ -88,8 +88,8 @@ async function main() {
     } finally { legacy.close() }
     const repo = storyRepository()
     assert.equal((await repo.findUnexpired('legacy')).brief.solution, brief.solution)
-    assert.deepEqual(await repo.advance('legacy', 'player', 'hint', ''), { current_scene: 1, solved: false, revealed_hints: 0 })
-    assert.deepEqual(await storyRepository().advance('legacy', 'player', 'open', ''), { current_scene: 1, solved: false, revealed_hints: 0 })
+    assert.deepEqual(await repo.advance('legacy', 'player', 'hint', ''), { current_scene: 1, solved: false, skipped: false, revealed_hints: 0 })
+    assert.deepEqual(await storyRepository().advance('legacy', 'player', 'open', ''), { current_scene: 1, solved: false, skipped: false, revealed_hints: 0 })
     assert.equal(inspect(db => db.prepare('SELECT attempts FROM shared_story_sessions WHERE story_id = ?').get('legacy')).attempts, 2)
     assert.equal(inspect(db => db.prepare('SELECT alternative_answers_normalized FROM shared_stories WHERE id = ?').get('legacy')).alternative_answers_normalized, '[]')
   })
@@ -126,7 +126,7 @@ async function main() {
     assert.equal(solved.body.player.message, brief.message)
     assert.ok(!JSON.stringify(solved.body).includes(brief.solution))
     const state = await storyRepository().advance(id, hash(session), 'next', '')
-    assert.deepEqual(state, { current_scene: 1, solved: true, revealed_hints: 0 })
+    assert.deepEqual(state, { current_scene: 1, solved: true, skipped: false, revealed_hints: 0 })
     const reopened = JSON.parse(execFileSync(process.execPath, ['-e',
       `require(${JSON.stringify(repositoryModule)}).storyRepository().advance(${JSON.stringify(id)}, ${JSON.stringify(hash(session))}, 'open', '').then(s => console.log(JSON.stringify(s)))`
     ], { cwd: root, env: process.env, encoding: 'utf8' }))
@@ -235,6 +235,53 @@ async function main() {
     assert.equal((await api({ action: 'hint', token, sessionToken: playerToken })).status, 404)
     await storyRepository().delete(storyId)
     await assert.rejects(() => storyRepository().advance(storyId, hash(playerToken), 'hint', ''), error => error.status === 404)
+  })
+  await check('skipping is opt-in, confirmed, session-bound, durable and never counts as solving or AI use', async () => {
+    const legacyOpen = await api({ action: 'open', token: created.body.playToken })
+    assert.equal(legacyOpen.body.player.canSkip, false)
+    assert.equal((await api({ action: 'skip', token: created.body.playToken, sessionToken: legacyOpen.body.sessionToken, confirmSkip: true })).status, 403)
+    const made = await api({ action: 'create', brief: { ...brief, unlockPolicy: 'allow-skip', adventure: { actionBudget: 3 } } }, handler, 'skip-client')
+    assert.equal(made.status, 201)
+    const token = made.body.playToken
+    const storyId = token.split('.')[0]
+    const opened = await api({ action: 'open', token })
+    const sessionToken = opened.body.sessionToken
+    assert.equal(opened.body.player.canSkip, true)
+    const before = providerCalls
+    const args = { action: 'skip', token, sessionToken }
+    assert.equal((await api(args)).status, 400)
+    assert.equal((await api({ ...args, confirmSkip: 'true' })).status, 400)
+    assert.equal((await api({ ...args, sessionToken: 'e'.repeat(64), confirmSkip: true })).status, 400)
+    const repo = storyRepository()
+    const reservation = { storyId, sessionHash: hash(sessionToken), playHash: hash(token.split('.')[1]), cap: 100,
+      requestId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', fingerprint: 'fixture', revision: 0 }
+    assert.equal((await repo.adventure({ ...reservation, operation: 'reserve' })).status, 'reserved')
+    const skipped = await api({ ...args, confirmSkip: true })
+    assert.equal(skipped.status, 200, JSON.stringify(skipped.body))
+    assert.equal(skipped.body.player.solved, false)
+    assert.equal(skipped.body.player.skipped, true)
+    assert.equal(skipped.body.player.canSkip, false)
+    assert.equal(skipped.body.player.message, brief.message)
+    assert.equal(skipped.body.player.adventure.pending, false)
+    assert.ok(!JSON.stringify(skipped.body).includes(brief.solution))
+    assert.equal((await api({ ...args, confirmSkip: true })).body.player.skipped, true)
+    assert.equal((await api({ action: 'guess', token, sessionToken, guess: brief.solution })).body.player.solved, false)
+    assert.equal((await api({ action: 'adventure', token, sessionToken })).status, 409)
+    await assert.rejects(() => repo.adventure({ ...reservation, operation: 'finish', failed: true }), e => e.status === 409)
+    await assert.rejects(() => repo.adventure({ ...reservation, requestId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', revision: 1, operation: 'reserve' }), e => e.status === 409)
+    assert.equal(providerCalls, before)
+    const persisted = JSON.parse(execFileSync(process.execPath, ['-e',
+      `require(${JSON.stringify(repositoryModule)}).storyRepository().advance(${JSON.stringify(storyId)},${JSON.stringify(hash(sessionToken))},'open','').then(s=>console.log(JSON.stringify(s)))`
+    ], { cwd: root, env: process.env, encoding: 'utf8' }))
+    assert.equal(persisted.skipped, true)
+    assert.equal(persisted.solved, false)
+    const fresh = await api({ action: 'open', token })
+    assert.equal(fresh.body.player.skipped, false)
+    assert.equal(fresh.body.player.message, undefined)
+    assert.equal(inspect(db => db.prepare('SELECT attempts FROM shared_story_sessions WHERE story_id=? AND player_hash=?').get(storyId, hash(sessionToken))).attempts, 0)
+    await repo.rotate(storyId, hash('replacement'))
+    assert.equal((await api({ ...args, confirmSkip: true })).status, 404)
+    await repo.delete(storyId)
   })
   await check('rotation invalidates old play capability and deletion cascades persisted sessions', async () => {
     const rotated = await api({ action: 'share', token: created.body.ownerToken })

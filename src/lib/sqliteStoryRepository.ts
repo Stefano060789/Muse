@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS shared_story_sessions (
   story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
   player_hash TEXT NOT NULL, current_scene INTEGER NOT NULL DEFAULT 0,
   solved INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
-  revealed_hints INTEGER NOT NULL DEFAULT 0,
+  revealed_hints INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1)),
   last_attempt_at INTEGER, PRIMARY KEY (story_id, player_hash)
 );
 CREATE TABLE IF NOT EXISTS shared_story_generation_limits (
@@ -92,6 +92,9 @@ export class SqliteStoryRepository implements StoryRepository {
       }
       if (!columns('shared_story_sessions').includes('revealed_hints')) {
         db.exec('ALTER TABLE shared_story_sessions ADD COLUMN revealed_hints INTEGER NOT NULL DEFAULT 0')
+      }
+      if (!columns('shared_story_sessions').includes('skipped')) {
+        db.exec('ALTER TABLE shared_story_sessions ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1))')
       }
       const now = Date.now()
       db.prepare('DELETE FROM shared_stories WHERE expires_at <= ?').run(new Date(now).toISOString())
@@ -306,7 +309,7 @@ export class SqliteStoryRepository implements StoryRepository {
       if (input.operation === 'finish') {
         if (!previous || previous.fingerprint !== input.fingerprint || previous.status !== 'pending') throw new SharedStoryError('Adventure: attempt expired or already completed', 409)
         const current = view()
-        if (player.solved || current.revision !== previous.revision) throw new SharedStoryError('Adventure: stale or solved state', 409)
+        if (player.solved || player.skipped || current.revision !== previous.revision) throw new SharedStoryError('Adventure: stale or revealed state', 409)
         if (!input.failed && !input.turn) throw new SharedStoryError('Adventure: missing turn')
         if (!input.failed) db.prepare('UPDATE muse_adventure_sessions SET turn = ? WHERE story_id = ? AND player_hash = ?').run(JSON.stringify(input.turn), input.storyId, input.sessionHash)
         db.prepare('UPDATE muse_adventure_requests SET status = ? WHERE story_id = ? AND player_hash = ? AND request_id = ?').run(input.failed ? 'failed' : 'done', input.storyId, input.sessionHash, input.requestId!)
@@ -319,7 +322,7 @@ export class SqliteStoryRepository implements StoryRepository {
         return previous.result ? JSON.parse(String(previous.result)) : { view: view(), status: previous.status as 'pending' | 'failed' }
       }
       const current = view()
-      if (player.solved) throw new SharedStoryError('Adventure: already solved', 409)
+      if (player.solved || player.skipped) throw new SharedStoryError('Adventure: already revealed', 409)
       if (current.pending) throw new SharedStoryError('Adventure: action in progress; reopen to refresh', 409)
       if (input.revision !== current.revision) throw new SharedStoryError('Adventure: stale state; reopen to refresh', 409)
       if (current.actionsRemaining === 0) throw new SharedStoryError('Adventure: 12-action cap reached. Final guesses, hints and audio remain available.', 409)
@@ -331,34 +334,41 @@ export class SqliteStoryRepository implements StoryRepository {
     })
   }
 
-  async advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint', guess: string, playHash?: string): Promise<PlayerState> {
+  async advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string): Promise<PlayerState> {
     return this.transaction((db, now) => {
       const story = db.prepare('SELECT brief, content, play_hash, answer_normalized, alternative_answers_normalized FROM shared_stories WHERE id = ?').get(id)
       if (!story || (playHash !== undefined && story.play_hash !== playHash)) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
-      if (!['open', 'next', 'guess', 'hint'].includes(action)) throw new SharedStoryError('Invalid story action.')
+      if (!['open', 'next', 'guess', 'hint', 'skip'].includes(action)) throw new SharedStoryError('Invalid story action.')
       if (action === 'open') db.prepare('INSERT INTO shared_story_sessions(story_id, player_hash) VALUES (?, ?) ON CONFLICT DO NOTHING').run(id, sessionHash)
       const player = db.prepare('SELECT * FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(id, sessionHash)
       if (!player) throw new SharedStoryError('Player session is invalid. Reopen the story link.')
       let scene = Number(player.current_scene)
       let solved = Boolean(player.solved)
+      let skipped = Boolean(player.skipped)
+      if (action === 'skip' && JSON.parse(String(story.brief)).unlockPolicy !== 'allow-skip') {
+        throw new SharedStoryError('The sender chose Solve to unlock for this story.', 403)
+      }
       let attempts = Number(player.attempts)
       let lastAttempt = player.last_attempt_at as number | null
       let revealedHints = Number(player.revealed_hints)
-      if (!solved && action === 'guess') {
+      if (!solved && !skipped && action === 'guess') {
         if (attempts >= 30) throw new SharedStoryError('Guess limit reached', 429)
         if (lastAttempt !== null && lastAttempt > now - 2000) throw new SharedStoryError('Please wait before guessing again', 429)
         solved = guess === story.answer_normalized || JSON.parse(String(story.alternative_answers_normalized)).includes(guess)
         attempts += 1
         lastAttempt = now
-      } else if (!solved && action === 'next') {
+      } else if (!solved && !skipped && action === 'next') {
         if (JSON.parse(String(story.brief)).adventure) throw new SharedStoryError('Use a freeform adventure action instead of Next.')
         scene = Math.min(scene + 1, JSON.parse(String(story.content)).scenes.length - 1)
-      } else if (!solved && action === 'hint') {
+      } else if (!solved && !skipped && action === 'hint') {
         revealedHints = Math.min(revealedHints + 1, (JSON.parse(String(story.brief)).assistanceHints ?? []).length)
+      } else if (!solved && !skipped && action === 'skip') {
+        skipped = true
+        db.prepare("UPDATE muse_adventure_requests SET status = 'failed', result = NULL WHERE story_id = ? AND player_hash = ? AND status = 'pending'").run(id, sessionHash)
       }
-      db.prepare('UPDATE shared_story_sessions SET current_scene = ?, solved = ?, attempts = ?, last_attempt_at = ?, revealed_hints = ? WHERE story_id = ? AND player_hash = ?')
-        .run(scene, Number(solved), attempts, lastAttempt, revealedHints, id, sessionHash)
-      return { current_scene: scene, solved, revealed_hints: revealedHints }
+      db.prepare('UPDATE shared_story_sessions SET current_scene = ?, solved = ?, skipped = ?, attempts = ?, last_attempt_at = ?, revealed_hints = ? WHERE story_id = ? AND player_hash = ?')
+        .run(scene, Number(solved), Number(skipped), attempts, lastAttempt, revealedHints, id, sessionHash)
+      return { current_scene: scene, solved, skipped, revealed_hints: revealedHints }
     })
   }
 

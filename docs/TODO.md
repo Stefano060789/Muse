@@ -78,6 +78,19 @@ current MVP.
 
 ## Before public launch
 
+### Shared library and forgiving reveal rollout (15 October 2026)
+
+- [x] Apply `supabase/shared-story-help.sql` and run its rollback-only smoke
+      before deploying the matching code; both succeeded on the hosted Muse
+      tables on 15 October 2026, separately from operations SQL
+- [ ] Verify opt-in skip, default solve-only stories, same-browser resume and
+      private photo/video access in hosted separate recipient sessions
+- [ ] Verify shared library copy/reuse/expiry and actual iPhone Safari listening;
+      desktop viewport tests are not real-device validation
+- [x] Complete shared, SQLite, private media, library, gateway, interaction and
+      narration regressions plus production build and built-server persistence
+      smoke after resolving local system-memory pressure
+
 ### Production safety rollout and deferred backups (14 October 2026)
 
 - [x] Implement and locally verify the 100 paid AI attempts/day cap, warning at

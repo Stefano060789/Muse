@@ -16,6 +16,7 @@ export type SharedStoryBrief = {
   durationMinutes: number
   assistanceHints?: string[]
   alternativeAnswers?: string[]
+  unlockPolicy?: 'solve' | 'allow-skip'
   adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode }
 }
 
@@ -37,6 +38,8 @@ export type SharedStoryPlayer = NarrationMetadata & {
   sceneCount: number
   discoveries: SharedStoryScene[]
   solved: boolean
+  skipped: boolean
+  canSkip: boolean
   revealedHints: string[]
   hintsRemaining: number
   feedback?: string
@@ -83,7 +86,13 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     durationMinutes: Number(input.durationMinutes),
     assistanceHints: privateList(input.assistanceHints, 'Assistance hints', 3, 600),
     alternativeAnswers: privateList(input.alternativeAnswers, 'Approved alternative answers', 5, 200),
+    ...(input.unlockPolicy === undefined ? {} : { unlockPolicy: parseUnlockPolicy(input.unlockPolicy) }),
     ...(input.adventure === undefined ? {} : { adventure: parseAdventureBudget(input.adventure) })
+  }
+
+  function parseUnlockPolicy(value: unknown): 'solve' | 'allow-skip' {
+    if (value !== 'solve' && value !== 'allow-skip') throw new SharedStoryError('Choose Solve to unlock or Allow a skip.')
+    return value
   }
 
   function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode } {
@@ -161,7 +170,7 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
 export function sharedStoryPlayerView(
   brief: SharedStoryBrief,
   content: SharedStoryContent,
-  state: { current_scene: number; solved: boolean; revealed_hints?: number },
+  state: { current_scene: number; solved: boolean; skipped?: boolean; revealed_hints?: number },
   feedback?: string,
   media?: { kind: SharedMediaKind; mime: SharedMediaMime } | null
 ): SharedStoryPlayer {
@@ -180,10 +189,12 @@ export function sharedStoryPlayerView(
     sceneCount: content.scenes.length,
     discoveries: content.scenes.slice(0, sceneIndex),
     solved: state.solved,
+    skipped: state.skipped === true,
+    canSkip: brief.unlockPolicy === 'allow-skip' && !state.solved && !state.skipped,
     revealedHints: hints.slice(0, revealed),
     hintsRemaining: hints.length - revealed,
     ...(feedback ? { feedback } : {}),
-    ...(state.solved && brief.message ? { message: brief.message } : {}),
-    ...(state.solved && media ? { media: { kind: media.kind, mime: media.mime } } : {})
+    ...((state.solved || state.skipped) && brief.message ? { message: brief.message } : {}),
+    ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {})
   }
 }

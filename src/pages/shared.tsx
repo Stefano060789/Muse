@@ -122,8 +122,8 @@ export default function SharedStoryPage() {
   const narrator = useNarration(player || creator?.content || {}, undefined, {
     progress: player?.adventure ? player.adventure.actionsUsed / 12
       : player ? player.sceneIndex / Math.max(1, player.sceneCount - 1) : 0,
-    ending: player?.solved,
-    sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}`
+    ending: player ? player.solved || player.skipped : undefined,
+    sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
       : creator?.ownerToken || 'new'
   })
   const interaction = useStoryInteraction(narrator.stop, dictationLanguage)
@@ -161,6 +161,17 @@ export default function SharedStoryPage() {
         if (creatorLocked && !creatorCode) return
         const libraryResult = loadStoryLibrary()
         if (libraryResult.error) setNotice(libraryResult.error)
+        const reuseOwner = fragment.get('reuse')
+        if (reuseOwner) {
+          const source = libraryResult.library.entries.find(entry => entry.kind === 'shared' && entry.id === reuseOwner)
+          if (source?.kind !== 'shared') throw new Error('This brief is not saved in this browser. Reopen it from its original Story Library.')
+          setBrief(source.story.brief)
+          setAssistanceHintsText((source.story.brief.assistanceHints ?? []).join('\n'))
+          setAlternativeAnswersText((source.story.brief.alternativeAnswers ?? []).join('\n'))
+          setNotice('Brief copied from Story Library. Review it before preparing a new story. Previous links and progress are unchanged; attach any media again.')
+          window.history.replaceState(null, '', '/shared#new')
+          return
+        }
         const requestedOwner = fragment.get('manage')
         const matching = libraryResult.library.entries.find(entry => entry.kind === 'shared' && entry.id === requestedOwner)
         const saved = matching?.kind === 'shared' ? matching.story : latestCreatorStory(libraryResult)
@@ -313,7 +324,7 @@ export default function SharedStoryPage() {
     }
   }, [playToken, sessionToken])
 
-  const solvedMediaKind = player?.solved ? player.media?.kind : undefined
+  const solvedMediaKind = player?.solved || player?.skipped ? player.media?.kind : undefined
   useEffect(() => {
     if (solvedMediaKind) void loadRevealMedia(solvedMediaKind)
   }, [solvedMediaKind, loadRevealMedia])
@@ -374,13 +385,14 @@ export default function SharedStoryPage() {
     }
   }
 
-  const act = async (action: 'guess' | 'next' | 'hint') => {
+  const act = async (action: 'guess' | 'next' | 'hint' | 'skip') => {
+    if (action === 'skip' && !window.confirm('Reveal the surprise without solving? This playthrough will be marked Revealed without solving, not solved.')) return
     setBusy(true)
     setError('')
     interaction.stopRecording()
     narrator.stop()
     try {
-      const result = await request<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}) })
+      const result = await request<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}) })
       setPlayer(result.player)
       if (action !== 'hint') setGuess('')
     } catch (error) {
@@ -476,7 +488,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />
@@ -580,12 +592,13 @@ export default function SharedStoryPage() {
               <button aria-pressed={experience === 'listen'} onClick={() => { narrator.stop(); setExperience('listen') }} style={experience === 'listen' ? primaryStyle : buttonStyle}>Listen to the story</button>
             </div>
             {experience === 'listen' ? <p>Tap Play to listen.</p> : null}
-            {player.solved ? (
+            {player.solved || player.skipped ? (
               <article style={cardStyle}>
+                <p><strong>{player.skipped ? 'Revealed without solving' : 'Solved'}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
                   onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} />
-                {player.adventure?.turn ? <><h3>Your completed journey</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
+                {player.adventure?.turn ? <><h3>Your journey so far</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
               </article>
             ) : (
               <>
@@ -647,7 +660,7 @@ export default function SharedStoryPage() {
                 ) : null}
                 <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
                   <label style={{ fontWeight: 700 }}>What is the answer?<input value={guess} onChange={(event) => setGuess(event.target.value)} maxLength={200} required style={fieldStyle} disabled={busy} /></label>
-                  <p>Your guess is sent to Muse to compare with the creator&apos;s answer, not to AI. Only creator-approved answers unlock the surprise. Case, punctuation and spacing are ignored.</p>
+                  <p>Your guess is sent to Muse to compare with the creator&apos;s answer, not to AI. Case, punctuation and spacing are ignored. {player.canSkip ? 'The sender also allows a confirmed skip under Need help.' : 'Only creator-approved answers unlock the surprise.'}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !guess.trim()} style={primaryStyle}>{busy ? 'Checking...' : 'Try this answer'}</button>
                     <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? 'Stop dictation' : 'Dictate your answer'}</button>
@@ -657,13 +670,23 @@ export default function SharedStoryPage() {
                 </form>
               </>
             )}
-            {(player.revealedHints.length > 0 || (!player.solved && player.hintsRemaining > 0)) ? (
+            {!player.solved && !player.skipped ? <details style={cardStyle}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Need help?</summary>
+              <p>There is no rush. You can pause now and resume later using this same link in this same browser, before the story expires. Keep browser storage; private browsing or clearing it may start a new playthrough.</p>
+              <p>Try the hints below, revisit earlier clues, or contact {player.creatorName} using the app or conversation where they sent your link. Muse does not send messages to the sender.</p>
+              {player.canSkip ? <>
+                <p>The sender allows you to reveal the surprise without solving. Confirmation is required; it will not count as solved. No AI call or paid attempt is used.</p>
+                <button disabled={busy} onClick={() => void act('skip')} style={buttonStyle}>Reveal without solving...</button>
+              </> : <p>The sender chose Solve to unlock. Ask them for a gentle clue if you are stuck.</p>}
+              {!player.hintsRemaining && !player.revealedHints.length ? <p>The sender has not added any hints.</p> : null}
+            </details> : null}
+            {(player.revealedHints.length > 0 || (!player.solved && !player.skipped && player.hintsRemaining > 0)) ? (
               <article style={cardStyle}>
                 <h2>Hints</h2>
                 {player.revealedHints.length > 0 ? (
                   <ol>{player.revealedHints.map((hint, index) => <li key={index} style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{hint}</li>)}</ol>
                 ) : <p>Hints use no guesses and do not advance the story.</p>}
-                {!player.solved && player.hintsRemaining > 0 ? (
+                {!player.solved && !player.skipped && player.hintsRemaining > 0 ? (
                   <button disabled={busy} onClick={() => void act('hint')} style={buttonStyle}>Request next hint ({player.hintsRemaining} remaining)</button>
                 ) : player.hintsRemaining === 0 ? <p>All available hints have been revealed.</p> : null}
               </article>
@@ -681,6 +704,8 @@ export default function SharedStoryPage() {
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
+            <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
+            <p>Recipient access expires {new Date(creator.expiresAt).toLocaleString()}. The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
             {creator.brief.adventure ? <p>{creator.brief.adventure.choiceMode === 'suggested' ? '3-5 suggested actions per turn' : 'Free written or spoken actions'}. Up to 12 per playthrough; {creator.brief.adventure.actionBudget} total AI attempts, including failures.</p> : null}
             <article style={cardStyle}>
               <h2>Listen before sending</h2>
@@ -844,7 +869,17 @@ export default function SharedStoryPage() {
               </div>
               <div style={cardStyle}>
                 <h2>4. The final reveal</h2>
-                <p>Message, photo or video: revealed after a correct answer.</p>
+                <p>Message, photo or video: revealed after a correct answer, or a confirmed skip if you allow it.</p>
+                <label style={{ fontWeight: 700 }}>How can the surprise be unlocked?
+                  <select aria-label="Reveal policy" value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
+                    setBrief({ ...brief, unlockPolicy: event.target.value === 'allow-skip' ? 'allow-skip' : 'solve' })
+                    setAiConsent(false)
+                  }} style={fieldStyle}>
+                    <option value="solve">Solve to unlock</option>
+                    <option value="allow-skip">Allow a skip</option>
+                  </select>
+                </label>
+                <p>Allow a skip adds an optional, confirmed reveal under Need help. Skipping never reveals the secret answer or counts as solving; hints and skips make no AI calls.</p>
                 {textField('message', 'Final message', 'Your hidden message...', 2000, Boolean(mediaFile))}
                 <label style={{ fontWeight: 700 }}>Photo or video (optional)
                   <input type="file" accept={SHARED_MEDIA_ACCEPT} disabled={busy} onChange={event => { chooseFile(event.target.files?.[0] ?? null); setAiConsent(false); event.target.value = '' }} style={fieldStyle} />

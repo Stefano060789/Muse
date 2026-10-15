@@ -4,7 +4,7 @@ import type { SharedMediaKind } from '../lib/sharedStoryMedia'
 
 type Narrator = Parameters<typeof NarrationControls>[0]['narrator']
 
-// The surprise only exists after the server has verified the answer; the url is
+// The surprise only exists after the server authorizes solving or skipping; the url is
 // either a short-lived private signed URL or a same-origin blob: URL.
 export type RevealMedia = {
   kind: SharedMediaKind

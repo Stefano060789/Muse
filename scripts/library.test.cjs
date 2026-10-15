@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..')
 const output = fs.mkdtempSync(path.join(__dirname, '.library-tests-'))
 let passed = 0
 function check(name, run) { run(); passed++; console.log(`PASS ${name}`) }
+async function checkAsync(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
 function memory(seed = {}) {
   const values = new Map(Object.entries(seed))
   return {
@@ -16,13 +17,15 @@ function memory(seed = {}) {
     removeItem(key) { values.delete(key) }
   }
 }
+async function main() {
 try {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
-    'src/lib/storyLibrary.ts', '--outDir', output, '--module', 'commonjs', '--target', 'es2020',
+    'src/lib/storyLibrary.ts', 'src/lib/sharedStorySharing.ts', '--outDir', output, '--module', 'commonjs', '--target', 'es2020',
     '--strict', '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'
   ], { cwd: root, stdio: 'inherit' })
   const lib = require(path.join(output, 'storyLibrary.js'))
+  const sharing = require(path.join(output, 'sharedStorySharing.js'))
   const { createPersonalStory, answerPersonalStory, loadPersonalStory, savePersonalStory } = require(path.join(output, 'story.js'))
   const personal = id => ({ ...createPersonalStory('curious'), id })
   const shared = ownerToken => ({
@@ -39,6 +42,67 @@ try {
     assert.equal(result.error, null)
     return result
   }
+  function mountLibrary(stories, origin = 'https://muse.example') {
+    const ts = require('typescript')
+    const store = memory()
+    for (const story of stories) lib.saveLibraryCreatorStory(story, store)
+    const states = [], effects = [], copied = []
+    let cursor = 0, mounted = false, tick, clock = Date.parse('2026-10-15T00:00:00Z')
+    const jsx = (type, props) => ({ type, props: props || {} })
+    const react = {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], value => { states[index] = value }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) }
+    }
+    const module = { exports: {} }
+    const browser = {
+      location: { origin }, addEventListener() {}, removeEventListener() {},
+      setInterval(callback) { tick = callback; return 1 }, clearInterval() {},
+      confirm() { return true }
+    }
+    const clipboard = { async writeText(value) { copied.push(value) } }
+    const source = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
+    const compiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
+      reportDiagnostics: true
+    })
+    assert.deepEqual(compiled.diagnostics, [])
+    require('node:vm').runInNewContext(compiled.outputText, {
+      module, exports: module.exports, window: browser, navigator: { clipboard },
+      Date: class extends Date { static now() { return clock } },
+      require(name) {
+        if (name === 'react') return react
+        if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
+        if (name === 'next/head' || name === 'next/link') return { __esModule: true, default: name === 'next/link' ? 'a' : 'head' }
+        if (name === '../lib/sharedStorySharing') return sharing
+        if (name === '../lib/storyLibrary') return {
+          loadStoryLibrary: () => lib.loadStoryLibrary(store),
+          removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
+          selectPersonalStory: id => lib.selectPersonalStory(id, store)
+        }
+        throw new Error(`Unexpected UI dependency: ${name}`)
+      }
+    })
+    const render = () => { cursor = 0; return module.exports.default() }
+    render()
+    mounted = true
+    const cleanups = effects.map(effect => effect())
+    return {
+      render, copied, clipboard, store,
+      advance(value, update = true) { clock = Date.parse(value); if (update) tick() },
+      cleanup() { cleanups.forEach(cleanup => cleanup?.()) }
+    }
+  }
+  function nodes(tree) {
+    if (tree == null || typeof tree === 'boolean') return []
+    if (Array.isArray(tree)) return tree.flatMap(nodes)
+    return typeof tree === 'object' ? [tree, ...nodes(tree.props.children)] : [tree]
+  }
+  const textOf = tree => nodes(tree).filter(node => typeof node === 'string' || typeof node === 'number').join(' ')
+  const button = (tree, label) => nodes(tree).find(node => node.type === 'button' && textOf(node) === label)
   check('migrates both legacy keys once, preserves copies and deduplicates stable IDs', () => {
     const a = personal('a'), b = shared('owner-a')
     const store = memory({ 'muse-personal-story': JSON.stringify(a), 'muse-shared-creator': JSON.stringify(b) })
@@ -180,6 +244,88 @@ try {
     lib.saveLibraryCreatorStory(story, store)
     assert.equal(lib.latestCreatorStory(read(store)).expiresAt, story.expiresAt)
   })
+  check('saving another shared story appends and updating an older one preserves other local briefs', () => {
+    const store = memory(), first = shared('first'), second = shared('second')
+    lib.saveLibraryCreatorStory(first, store)
+    lib.saveLibraryCreatorStory(second, store)
+    first.content.title = 'Updated first mystery'
+    first.expiresAt = '2000-01-01T00:00:00.000Z'
+    lib.saveLibraryCreatorStory(first, store)
+    const entries = read(store).library.entries
+    assert.equal(entries.length, 2)
+    assert.deepEqual(entries.find(entry => entry.id === 'second').story, lib.validateCreatorStory(second))
+    assert.equal(entries.find(entry => entry.id === 'first').story.content.title, first.content.title)
+    assert.equal(entries.find(entry => entry.id === 'first').story.brief.message, first.brief.message)
+  })
+  await checkAsync('shared library separates actions, copies only recipient capability, and hides private brief fields', async () => {
+    const story = shared('owner/#? private')
+    story.playToken = 'recipient/#? token'
+    const ui = mountLibrary([story])
+    try {
+      const tree = ui.render(), all = nodes(tree), text = textOf(tree)
+      assert.ok(all.some(node => node.props?.id === 'personal-stories-heading'))
+      assert.ok(all.some(node => node.props?.id === 'shared-stories-heading'))
+      assert.ok(all.some(node => node.props?.href === `/shared#manage=${encodeURIComponent(story.ownerToken)}`))
+      assert.ok(all.some(node => node.props?.href === `/shared#reuse=${encodeURIComponent(story.ownerToken)}`))
+      assert.ok(text.includes(story.expiresAt))
+      assert.ok(text.includes('not backed up or synced across devices'))
+      assert.ok(text.includes('independently of recipient completion and server expiry'))
+      assert.ok(text.includes('Recipient progress and completion are not tracked here'))
+      assert.ok(text.includes('private owner access; do not share them'))
+      for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
+      const copy = button(tree, 'Copy recipient link')
+      assert.equal(copy.props.disabled, false)
+      await copy.props.onClick()
+      assert.deepEqual(ui.copied, [sharing.recipientShareDetails('https://muse.example', story.playToken).url])
+      assert.ok(!ui.copied[0].includes('owner'))
+      assert.ok(textOf(ui.render()).includes('Recipient link copied'))
+    } finally { ui.cleanup() }
+  })
+  await checkAsync('expired and missing recipient links disable copy without disabling local brief reuse', async () => {
+    for (const variant of ['expired', 'missing']) {
+      const story = shared(variant)
+      if (variant === 'expired') story.expiresAt = '2000-01-01T00:00:00.000Z'
+      else delete story.playToken
+      const ui = mountLibrary([story])
+      try {
+        const tree = ui.render(), copy = button(tree, 'Copy recipient link')
+        assert.equal(copy.props.disabled, true)
+        await copy.props.onClick()
+        assert.deepEqual(ui.copied, [])
+        assert.ok(nodes(tree).some(node => node.props?.href === `/shared#reuse=${variant}`))
+        assert.ok(textOf(tree).includes(variant === 'expired' ? 'Server link expired' : 'No recipient link saved here'))
+        assert.ok(read(ui.store).library.entries.length === 1)
+      } finally { ui.cleanup() }
+    }
+  })
+  await checkAsync('expiry is refreshed on screen and rechecked at copy time', async () => {
+    const story = shared('expires-soon')
+    story.expiresAt = '2026-10-15T00:00:01.000Z'
+    const ui = mountLibrary([story])
+    try {
+      const copy = button(ui.render(), 'Copy recipient link')
+      assert.equal(copy.props.disabled, false)
+      ui.advance(story.expiresAt, false)
+      await copy.props.onClick()
+      assert.deepEqual(ui.copied, [])
+      ui.advance(story.expiresAt)
+      assert.equal(button(ui.render(), 'Copy recipient link').props.disabled, true)
+      assert.ok(textOf(ui.render()).includes('Your local brief is retained'))
+    } finally { ui.cleanup() }
+  })
+  await checkAsync('local-only sharing warns clearly and clipboard failures are recoverable', async () => {
+    const ui = mountLibrary([shared('local')], 'http://localhost:3000')
+    try {
+      assert.ok(textOf(ui.render()).includes('Local-only address'))
+      await button(ui.render(), 'Copy recipient link').props.onClick()
+      assert.ok(textOf(ui.render()).includes('will not work on another device'))
+      ui.clipboard.writeText = async () => { throw new Error('denied') }
+      await button(ui.render(), 'Copy recipient link').props.onClick()
+      assert.ok(textOf(ui.render()).includes('Could not copy the recipient link'))
+      assert.ok(!textOf(ui.render()).includes('Unreadable entries'))
+      assert.equal(read(ui.store).library.entries.length, 1)
+    } finally { ui.cleanup() }
+  })
   check('private shared assistance and narration metadata survive library validation', () => {
     const story = shared('a')
     story.brief.assistanceHints = ['Try the shelves.']
@@ -223,3 +369,5 @@ try {
   delete global.window
   fs.rmSync(output, { recursive: true, force: true })
 }
+}
+main().catch(error => { console.error(error); process.exitCode = 1 })

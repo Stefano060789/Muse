@@ -18,7 +18,7 @@ async function main() {
   const post = value => fetch(`${origin}/api/shared-story`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(value) })
   try {
     for (const path of ['/shared', '/_next/static/chunks/main-123.js']) assert.equal((await fetch(origin + path)).status, 200)
-    for (const action of ['open', 'next', 'guess', 'hint', 'adventure', 'media']) assert.equal((await post({ action, token: 'fixture', guess: 'test' })).status, 200)
+    for (const action of ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media']) assert.equal((await post({ action, token: 'fixture', guess: 'test' })).status, 200)
     const before = calls.length
     for (const action of ['create', 'manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'unknown']) assert.equal((await post({ action })).status, 403)
     assert.equal((await fetch(origin + '/api/shared-story-upload', { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: 'x' })).status, 403)
