@@ -57,7 +57,7 @@ export default function LibraryPage() {
       <Head><title>Muse — Story Library</title><meta name="description" content="Reopen your personal stories and shared story management links saved in this browser." /></Head>
       <main className="atelier-page" style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
-          <nav className="atelier-header" aria-label="Main navigation" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}><Link href="/">Muse</Link><Link href="/story">My Story</Link><Link href="/shared#new">New Shared Story</Link></nav>
+          <nav className="atelier-header" aria-label="Main navigation" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}><Link href="/" className="atelier-brand">Muse</Link><Link href="/story">My Story</Link><Link href="/shared#new">New Shared Story</Link></nav>
           <p className="atelier-eyebrow">Your collection</p>
           <h1 className="atelier-title">Story Library</h1>
           <p className="atelier-subtitle">Return to a story, or give an idea a new beginning.</p>

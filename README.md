@@ -118,7 +118,12 @@ illustration is a local SVG; no external fonts, image service, animation
 library or extra runtime dependency is needed.
 
 The landing page explains personal interactive stories and mystery gifts,
-with a free handcrafted sample separate from AI generation. Personal story
+with a free handcrafted sample separate from AI generation. It is intentionally
+one short hero: two creation choices and the sample stay visible, while optional
+personal touches, installation and further information live in a collapsed
+section. Paper gradients, gold chapter dividers and plum headings carry the
+Atelier style through creation, the library and recipient reading screens;
+no autoplay, extra image services or paid calls are introduced. Personal story
 creation is split into mood, personal details and review. Navigating these
 steps does not call AI; explicit provider consent and any romance confirmation
 are still required at creation. Values survive Back/Continue within the open

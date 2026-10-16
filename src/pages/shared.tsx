@@ -775,9 +775,9 @@ export default function SharedStoryPage() {
       </Head>
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         <header className="atelier-header" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: '2.5rem' }}>
-          <Link href="/" style={{ color: 'inherit', fontWeight: 700 }}>MUSE</Link>
+          <Link href="/" className="atelier-brand">Muse</Link>
           {!playToken ? <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <Link href="/myself" style={{ color: 'inherit' }}>Myself</Link>
+            <Link href="/myself" style={{ color: 'inherit' }}>Personal touches</Link>
             <Link href="/story" style={{ color: 'inherit' }}>My Story</Link>
             <Link href="/shared" style={{ color: 'inherit' }}>Shared Story</Link>
             <Link href="/library" style={{ color: 'inherit' }}>Story Library</Link>
@@ -828,7 +828,7 @@ export default function SharedStoryPage() {
             </>}
           </section>
         ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
-          <section lang={recipientLanguage.code} dir={recipientLanguage.dir}>
+          <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
               <p className="atelier-eyebrow">{recipientText.madeForYou}</p>
               <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>

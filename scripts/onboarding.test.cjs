@@ -170,6 +170,12 @@ check('home exposes two clear creation paths, demo and optional personalization'
   assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Make a story gift'))
   assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
   assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
+  assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
+  const more = home.nodes().find(node => node.type === 'details')
+  assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
+  for (const href of ['/story', '/shared#new', '/demo']) {
+    assert.ok(home.nodes().some(node => node.props.href === href && !flatten(more).includes(node)), 'Primary paths stay outside collapsed details')
+  }
 })
 async function installationChecks() {
   const savedWindow = global.window

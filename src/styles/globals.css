@@ -34,7 +34,10 @@ fieldset { min-width: 0; }
 main {
   font-family: var(--sans) !important;
   color: var(--ink) !important;
-  background: radial-gradient(ellipse at 95% 0%, #eae3ed80, transparent 45%), var(--paper) !important;
+  background:
+    radial-gradient(ellipse at 100% 0%, #dcd5e780, transparent 48%),
+    radial-gradient(ellipse at 0% 70%, #efe1c945, transparent 55%),
+    var(--paper) !important;
 }
 main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
 main select, main textarea {
@@ -67,14 +70,18 @@ main [role="status"] { line-height: 1.6; }
 
 .atelier-shell { width: min(1120px, 100%); margin: 0 auto; padding: 1.5rem clamp(1rem, 4vw, 2.5rem) 4rem; }
 .atelier-shell--narrow { max-width: 820px; }
-.atelier-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); margin-bottom: 2rem; }
+.atelier-header { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); margin-bottom: 2rem; }
+.atelier-header::after { content: ""; position: absolute; inset-inline-start: 50%; bottom: -4px; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); box-shadow: 0 0 0 5px var(--paper); pointer-events: none; }
 .atelier-header nav { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
 .atelier-header a { text-decoration: none; padding-block: 0.65rem; color: var(--ink); }
 .atelier-brand { font-family: var(--serif); font-size: 1.9rem; letter-spacing: -0.06em; font-weight: 400; color: var(--ink); text-decoration: none; }
 .atelier-eyebrow { font-family: var(--sans); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--plum); }
 .atelier-title { font-size: clamp(2.4rem, 6vw, 4.5rem); margin: 0.6rem 0 1rem; }
 .atelier-subtitle { max-width: 560px; color: var(--muted); font-size: 1.08rem; }
-.atelier-card { background: #fffdf9; border: 1px solid var(--line); border-radius: 22px; padding: clamp(1.1rem, 4vw, 2rem); box-shadow: 0 8px 32px #202c4205; }
+.atelier-card { background: linear-gradient(135deg, #fffdf9, #fbf7f0); border: 1px solid var(--line); border-radius: 22px; padding: clamp(1.1rem, 4vw, 2rem); box-shadow: 0 8px 32px #202c4208; }
+.atelier-page fieldset.atelier-card { border-top: 2px solid #ac845080; }
+.atelier-page legend { padding-inline: 0.5rem; font-family: var(--serif); font-size: 1.15rem; color: var(--plum); }
+.atelier-page .atelier-eyebrow { font-family: var(--sans); font-size: 0.75rem; }
 .atelier-button, main button.atelier-button {
   display: inline-flex; justify-content: center; align-items: center; gap: 0.5rem;
   min-height: 48px; padding: 0.85rem 1.3rem; border: 1px solid var(--ink);
@@ -91,16 +98,6 @@ main [role="status"] { line-height: 1.6; }
 .atelier-hero-art figcaption { color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 1.05rem; }
 .atelier-sample-link { display: inline-block; font-weight: 600; padding-block: 0.7rem; }
 .atelier-note { font-size: 0.88rem; color: var(--muted); }
-.atelier-section { border-top: 1px solid var(--line); padding-block: 2.7rem; }
-.atelier-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.atelier-example { padding: 1.5rem; border-radius: 20px; border: 1px solid var(--line); background: #fffdf980; }
-.atelier-example span { display: block; color: var(--plum); font-family: var(--serif); font-style: italic; font-size: 1.2rem; margin-bottom: 1.5rem; }
-.atelier-example h3 { font-size: 1.45rem; margin: 0 0 0.75rem; }
-.atelier-example p { margin: 0; color: var(--muted); }
-.atelier-steps { list-style: none; padding: 0; counter-reset: steps; }
-.atelier-steps li { counter-increment: steps; padding: 0.5rem 0; }
-.atelier-steps li::before { content: "0" counter(steps); display: block; color: var(--plum); font-size: 0.8rem; letter-spacing: 0.1em; margin-bottom: 1rem; }
-.atelier-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 .atelier-progress { display: flex; list-style: none; padding: 0; gap: 0.5rem; margin: 1.5rem 0 2rem; }
 .atelier-progress li { flex: 1; padding: 0.8rem 0.4rem; border-bottom: 2px solid var(--line); font-size: 0.9rem; color: var(--muted); }
 .atelier-progress li[aria-current="step"] { border-color: var(--plum); color: var(--ink); font-weight: 600; }
@@ -108,21 +105,43 @@ main [role="status"] { line-height: 1.6; }
 .atelier-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .atelier-reading { max-width: 720px; margin-inline: auto; }
 .atelier-reading > h1 { font-size: clamp(2.2rem, 6vw, 3.5rem); }
-.atelier-reading article { border-top: 3px solid var(--gold) !important; box-shadow: 0 12px 40px #202c4208; }
+.atelier-reading article, .atelier-reading > .atelier-card { border-top: 3px solid var(--gold) !important; box-shadow: 0 12px 40px #202c4210, inset 6px 0 0 #eee6d755; background-image: linear-gradient(110deg, #fffdf9, #faf4e9); }
+.atelier-reading article > h2, .atelier-reading > .atelier-card > h1 { color: var(--plum); }
+.atelier-reading > .atelier-card > p:not(.atelier-note) { font-family: var(--serif); }
+.atelier-reading > .atelier-card > p { line-height: 1.85; }
 .atelier-reading article > p { font-family: var(--serif); }
 .atelier-reading .atelier-prose { font-family: var(--serif); font-size: clamp(1.12rem, 2vw, 1.25rem); line-height: 1.9; }
 .atelier-footer { background: #eee9e2; border-top: 1px solid var(--line); color: var(--muted); font-family: var(--sans); padding: 2rem 1.5rem; font-size: 0.85rem; }
 .atelier-footer > div { max-width: 1040px; margin: auto; display: grid; gap: 1rem; }
 .atelier-footer nav { display: flex; gap: 1.2rem; flex-wrap: wrap; }
 .atelier-footer a { display: inline-block; min-height: 44px; padding-block: 0.7rem; color: var(--ink); }
+.atelier-home .atelier-shell { padding-bottom: 1.5rem; }
+.atelier-home .atelier-header { margin-bottom: 0; }
+.atelier-home .atelier-hero { padding-block: clamp(1.5rem, 4vw, 3rem); }
+.atelier-home .atelier-hero h1 { font-size: clamp(2.25rem, 4.5vw, 4rem); }
+.atelier-home .atelier-hero-art img { max-height: 390px; }
+.atelier-home .atelier-hero .atelier-note { margin-block: 0.2rem; }
+.atelier-home-more { border-top: 1px solid var(--line); padding-top: 0.5rem; }
+.atelier-home-more > p { text-align: center; font-family: var(--serif); font-style: italic; color: var(--plum); }
+.atelier-home-more > details { max-width: 640px; margin-inline: auto; border: 0; }
+.atelier-home-more > details > summary { text-align: center; font-size: 0.88rem; color: var(--muted); }
+.atelier-home-more nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+.atelier-home-more nav a { padding-block: 0.75rem; }
+.atelier-page [aria-label="Your gift"] { background-image: radial-gradient(ellipse at 50% 0%, #ede3ce70, transparent 65%); border-top: 3px solid var(--gold) !important; }
+.atelier-page [aria-label="Your gift"] h1 { color: var(--plum); }
 
 @media (max-width: 700px) {
   .atelier-hero { grid-template-columns: 1fr; padding-top: 1rem; gap: 1rem; }
   .atelier-hero-art img { max-height: 260px; }
   .atelier-hero-art figcaption { font-size: 0.9rem; }
-  .atelier-grid, .atelier-bottom, .atelier-form-grid { grid-template-columns: 1fr; }
-  .atelier-example span { margin-bottom: 0.8rem; }
-  .atelier-section { padding-block: 2rem; }
+  .atelier-home .atelier-hero { position: relative; display: block; padding-block: 1.25rem 1rem; }
+  .atelier-home .atelier-hero > div { position: relative; z-index: 1; }
+  .atelier-home .atelier-hero-art { position: absolute; inset-block-start: 0.75rem; inset-inline-end: 0; width: 100px; opacity: 0.14; pointer-events: none; }
+  .atelier-home .atelier-hero-art img { height: 115px; }
+  .atelier-home .atelier-hero h1 { max-width: 520px; }
+  .atelier-home .atelier-hero .atelier-subtitle { font-size: 1rem; }
+  .atelier-home .atelier-hero .atelier-actions { margin-block: 1.2rem 0.5rem; }
+  .atelier-form-grid { grid-template-columns: 1fr; }
   .atelier-header nav { gap: 0.8rem; font-size: 0.9rem; }
   .atelier-header { margin-bottom: 1.5rem; }
   .atelier-actions > a, .atelier-actions > button { flex: 1 1 180px; text-align: center; }
