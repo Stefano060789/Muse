@@ -1,27 +1,6 @@
 import Link from 'next/link'
 import { getPublicContactConfig } from '../lib/legalContact'
 
-const footerStyle = {
-  background: '#eee7df',
-  color: '#2d2926',
-  fontFamily: 'Georgia, serif',
-  padding: '1.25rem 1.5rem',
-  fontSize: '0.9rem'
-}
-
-const contentStyle = {
-  maxWidth: 1200,
-  margin: '0 auto',
-  display: 'grid',
-  gap: '0.7rem'
-}
-
-const navStyle = {
-  display: 'flex',
-  flexWrap: 'wrap' as const,
-  gap: '0.9rem'
-}
-
 const linkStyle = { color: 'inherit' }
 
 export default function SiteFooter() {
@@ -31,9 +10,11 @@ export default function SiteFooter() {
   )
 
   return (
-    <footer style={footerStyle}>
-      <div style={contentStyle}>
-        <nav aria-label="Legal and support" style={navStyle}>
+    <footer className="atelier-footer">
+      <div>
+        <span className="atelier-brand">Muse</span>
+        <nav aria-label="Legal and support">
+          <Link href="/billing" style={linkStyle}>Plans</Link>
           <Link href="/privacy" style={linkStyle}>Privacy</Link>
           <Link href="/terms" style={linkStyle}>Terms</Link>
           <Link href="/support" style={linkStyle}>Support</Link>

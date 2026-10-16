@@ -8,13 +8,14 @@ export default function BillingPage() {
       <title>Muse - Plans &amp; Billing</title>
       <meta name="description" content="Explore proposed Muse plans for personal stories and thoughtful gifts. Payments and subscriptions are not available yet." />
     </Head>
-    <main style={{ minHeight: '85vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '1.5rem' }}>
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: '2rem' }}>
-          <Link href="/" style={{ color: 'inherit', fontSize: '1.4rem', fontWeight: 700, textDecoration: 'none' }}>Muse</Link>
+    <main className="atelier-page">
+      <div className="atelier-shell">
+        <header className="atelier-header">
+          <Link href="/" className="atelier-brand">Muse</Link>
           <Link href="/library" style={{ color: 'inherit', padding: '0.75rem 0' }}>Story Library</Link>
         </header>
-        <h1 style={{ fontSize: 'clamp(2.2rem, 7vw, 3.5rem)', lineHeight: 1.15 }}>Plans &amp; Billing</h1>
+        <p className="atelier-eyebrow">Room for more stories</p>
+        <h1 className="atelier-title">Plans &amp; Billing</h1>
         <p style={{ fontSize: '1.15rem', lineHeight: 1.7 }}>A moment for yourself. A thoughtful gift for someone.</p>
         <aside aria-label="Billing availability" style={{ padding: '1rem 1.25rem', background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 14, lineHeight: 1.7 }}>
           <strong>Coming soon - no payments or subscriptions yet.</strong>

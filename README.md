@@ -110,6 +110,26 @@ Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
 recording and creator/recipient UI checks; `npm run test:gifting` covers
 private voice/reply authorization and persistence without paid provider calls.
 
+## Story Atelier interface
+
+Muse uses a mobile-first Story Atelier theme: ivory paper, midnight blue,
+muted plum, literary headings and system-font controls. The original doorway
+illustration is a local SVG; no external fonts, image service, animation
+library or extra runtime dependency is needed.
+
+The landing page explains personal interactive stories and mystery gifts,
+with a free handcrafted sample separate from AI generation. Personal story
+creation is split into mood, personal details and review. Navigating these
+steps does not call AI; explicit provider consent and any romance confirmation
+are still required at creation. Values survive Back/Continue within the open
+page, but unfinished personal form values are not a persisted draft.
+
+The same visual foundation covers gifts, the browser-local library, personal
+touches, billing and legal/support pages. Existing storage, expiry, pricing,
+access and consent rules are unchanged. Run `npm run test:design` for focused
+interface regressions. Validate responsive layouts at 320, 390 and 1280 pixels,
+including Arabic recipient views and keyboard/reduced-motion behavior.
+
 ## Optional romance stories
 
 My Story and Shared Story offer an optional Romance setting: **Sweet**

@@ -6,6 +6,7 @@
     "share:gateway": "node scripts/recipient-gateway.cjs",
     "test:gateway": "node scripts/recipient-gateway.test.cjs",
     "test:onboarding": "node scripts/onboarding.test.cjs",
+    "test:design": "node scripts/onboarding.test.cjs && node scripts/personal-creation-ui.test.cjs && node scripts/gift-ui.test.cjs && node scripts/billing-preview.test.cjs",
     "test:billing": "node scripts/billing-preview.test.cjs",
     "test:languages": "node scripts/story-language.test.cjs",
     "test:romance": "node scripts/story-romance.test.cjs && node scripts/romance-access.test.cjs",

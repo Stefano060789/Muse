@@ -148,15 +148,15 @@ export default function MyselfPage() {
 
   return (
     <>
-      <Head><title>Muse — Myself</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
-      <main style={{ minHeight: '100vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
-        <div style={{ maxWidth: 820, margin: '0 auto', padding: '1.5rem' }}>
-          <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3rem' }}>
-            <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700, letterSpacing: '0.08em' }}>MUSE</Link>
+      <Head><title>Muse — Personal touches</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
+      <main className="atelier-page">
+        <div className="atelier-shell atelier-shell--narrow">
+          <header className="atelier-header">
+            <Link href="/" className="atelier-brand">Muse</Link>
             <Link href="/" style={{ color: '#2d2926', textDecoration: 'none' }}>Home</Link>
           </header>
-          <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>Myself</p>
-          <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>What matters to you?</h1>
+          <p className="atelier-eyebrow">Personal touches · Optional</p>
+          <h1 className="atelier-title">The little things that make you, you.</h1>
           <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Saving does not send them to AI; include your latest five in My Story only if you choose. Browser storage is readable text, so keep this browser private.</p>
           <p style={{ maxWidth: 620, lineHeight: 1.7 }}>Speaking uses speech recognition from your browser or device and may be processed by an online speech service. Review the text before using it.</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>

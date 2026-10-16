@@ -16,25 +16,26 @@ export default function DemoPage() {
   const [feedback, setFeedback] = useState('')
   const narrator = useNarration({ narrationLanguage: 'en-US', narrationStyle: 'warm' }, undefined, {}, { browserOnly: true })
   const current = SAMPLE_STORY.scenes[scene]
-  return <main style={{ minHeight: '85vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
+  return <main className="atelier-page">
     <Head><title>Muse - Try a sample story</title><meta name="description" content="Try an original, fictional Muse mystery. No account, AI generation or private recipient data." /><meta name="referrer" content="no-referrer" /></Head>
-    <div style={{ maxWidth: 640, margin: 'auto', padding: '1.5rem' }}>
-      <Link href="/" style={{ color: 'inherit', display: 'inline-block', padding: '0.75rem 0' }}>Muse</Link>
+    <div className="atelier-shell atelier-shell--narrow">
+      <header className="atelier-header"><Link href="/" className="atelier-brand">Muse</Link><Link href="/library">Story Library</Link></header>
+      <div className="atelier-reading">
       <p style={{ fontSize: '0.9rem' }}>Sample story - fictional, handcrafted, and free to try. This is not a real gift or an AI-generated result.</p>
       {narrator.error ? <p role="alert">{narrator.error}</p> : null}
-      {!opened ? <section style={{ textAlign: 'center', padding: '3rem 0' }}>
+      {!opened ? <section className="atelier-card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
         <p>A little adventure for you</p><h1 style={{ fontSize: 'clamp(2rem, 7vw, 3rem)' }}>{SAMPLE_STORY.title}</h1>
         <p style={{ lineHeight: 1.8 }}>{SAMPLE_STORY.dedication}</p>
         <button style={{ ...button, background: '#2d2926', color: 'white' }} onClick={() => setOpened(true)}>Open sample story</button>
         <p>About two minutes. Nothing plays automatically.</p>
-      </section> : revealed ? <section>
+      </section> : revealed ? <section className="atelier-card">
         <h1>Your sample surprise</h1><p style={{ lineHeight: 1.8 }}>{SAMPLE_STORY.message}</p>
         <NarrationButton narrator={narrator} text={SAMPLE_STORY.message} label="Listen to the message" />
         <p>This is how a thoughtful gift can end. Your own story can include a private message, photo, video or voice recording.</p>
         <Link href="/shared#new" style={{ ...button, display: 'inline-block', background: '#2d2926', color: 'white', textDecoration: 'none' }}>Make a story for someone</Link>
         <p><Link href="/story" style={{ color: 'inherit' }}>Or try a story for yourself</Link></p>
         <button style={button} onClick={() => { narrator.stop(); setOpened(false); setScene(0); setRevealed(false); setHint(false); setAnswer(''); setFeedback('') }}>Try the sample again</button>
-      </section> : <section>
+      </section> : <section className="atelier-card">
         <p>Scene {scene + 1} of {SAMPLE_STORY.scenes.length}</p><h1>{current.title}</h1>
         <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{current.body}</p><p style={{ lineHeight: 1.7 }}><strong>Clue:</strong> {current.clue}</p>
         <NarrationButton narrator={narrator} text={`${current.title}. ${current.body} ${current.clue}`} label="Listen to this scene" />
@@ -55,6 +56,7 @@ export default function DemoPage() {
         </details>
       </section>}
       <p style={{ fontSize: '0.9rem', lineHeight: 1.6, marginTop: '2rem' }}>This demo makes no story-generation requests and saves no playthrough. Optional narration uses your device/browser speech service; voice availability varies.</p>
+      </div>
     </div>
   </main>
 }

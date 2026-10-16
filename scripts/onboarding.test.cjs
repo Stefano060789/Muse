@@ -166,8 +166,10 @@ check('home exposes two clear creation paths, demo and optional personalization'
   const home = component('src/pages/index.tsx', { '../components/InstallApp': { __esModule: true, default: 'install' } })
   home.render()
   for (const href of ['/story', '/shared#new', '/demo', '/myself', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
-  assert.ok(home.nodes().some(node => text(node) === 'A story for me'))
-  assert.ok(home.nodes().some(node => text(node) === 'A story for someone'))
+  assert.ok(home.nodes().some(node => node.props.href === '/story' && text(node) === 'Create my story'))
+  assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Make a story gift'))
+  assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
+  assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
 })
 async function installationChecks() {
   const savedWindow = global.window

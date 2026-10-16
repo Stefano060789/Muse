@@ -33,10 +33,10 @@ type VoiceSummary = { mime: string; size: number }
 type GiftReply = { message: string; createdAt: string }
 type GiftState = { voice?: VoiceSummary | null; replies?: GiftReply[] }
 
-const fieldStyle: CSSProperties = { display: 'block', width: '100%', padding: '0.85rem', marginTop: '0.5rem', boxSizing: 'border-box', fontSize: '1rem', border: '1px solid #d9cfc5', borderRadius: 8, background: '#fff' }
-const cardStyle: CSSProperties = { padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 18, background: '#fffaf6', marginBottom: '1rem' }
-const buttonStyle: CSSProperties = { padding: '0.8rem 1.1rem', borderRadius: 999, border: '1px solid #d9cfc5', cursor: 'pointer', fontSize: '1rem' }
-const primaryStyle: CSSProperties = { ...buttonStyle, background: '#2d2926', color: '#fffaf6' }
+const fieldStyle: CSSProperties = { display: 'block', width: '100%', marginTop: '0.5rem', boxSizing: 'border-box' }
+const cardStyle: CSSProperties = { padding: 'clamp(1rem, 4vw, 1.75rem)', border: '1px solid #e4dcd4', borderRadius: 20, background: '#fffdf9', marginBottom: '1rem' }
+const buttonStyle: CSSProperties = { padding: '0.8rem 1.1rem', minHeight: 48, borderRadius: 999, border: '1px solid #d8cdd6', background: 'transparent', color: '#202c42', cursor: 'pointer', fontSize: '1rem' }
+const primaryStyle: CSSProperties = { ...buttonStyle, background: '#202c42', borderColor: '#202c42', color: '#f7f3ed' }
 const DEFAULT_NARRATION = 'A warm, playful mystery told in the second person, with gentle suspense.'
 const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
 const idleUpload: UploadState = { phase: 'idle', progress: 0 }
@@ -766,15 +766,15 @@ export default function SharedStoryPage() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
+    <main className="atelier-page">
       <Head>
         <title>Muse - Shared Story</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
       </Head>
-      <div style={{ maxWidth: 850, margin: '0 auto', padding: '1.5rem' }}>
-        <header style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: '2.5rem' }}>
+      <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
+        <header className="atelier-header" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: '2.5rem' }}>
           <Link href="/" style={{ color: 'inherit', fontWeight: 700 }}>MUSE</Link>
           {!playToken ? <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <Link href="/myself" style={{ color: 'inherit' }}>Myself</Link>
@@ -830,8 +830,8 @@ export default function SharedStoryPage() {
         ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
           <section lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.8rem' }}>{recipientText.madeForYou}</p>
-              <h1 style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
+              <p className="atelier-eyebrow">{recipientText.madeForYou}</p>
+              <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
               <p>{recipientText.from(player.creatorName)}</p>
               {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
               <p>{recipientText.duration(player.durationMinutes)}</p>
@@ -839,7 +839,7 @@ export default function SharedStoryPage() {
               <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>
             </article> : <>
             <p>{recipientText.storyFrom(player.creatorName, player.recipientName)}</p>
-            <h1 style={{ fontSize: '2.5rem' }}>{player.title}</h1>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 7vw, 3rem)', overflowWrap: 'anywhere' }}>{player.title}</h1>
             <p style={{ lineHeight: 1.7 }}>{player.description}</p>
             <p>{recipientText.duration(player.durationMinutes)}</p>
             {!player.solved && !player.skipped ? <div role="group" aria-label="Story experience" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -1125,8 +1125,9 @@ export default function SharedStoryPage() {
           </section>
         ) : (
           <section>
-            <h1 style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Your idea, their discovery.</h1>
-            <p style={{ fontSize: '1.1rem', lineHeight: 1.7 }}>Create a mystery with a hidden surprise.</p>
+            <p className="atelier-eyebrow">A story to give</p>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Your idea, their discovery.</h1>
+            <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
               <p>A draft is saved on this device from {new Date(pendingDraft.savedAt).toLocaleString()}. Voice recordings and media are not saved in drafts.</p>
@@ -1154,12 +1155,15 @@ export default function SharedStoryPage() {
             {draftUnreadable ? <button type="button" style={buttonStyle} onClick={() => {
               try { removeGiftDraft(); setDraftUnreadable(false); setDraftStatus('Unreadable draft discarded.') } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
-            <p aria-live="polite">Step {creatorStep + 1} of 3: {['Who it is for', 'Shape the story', 'Your surprise'][creatorStep]}</p>
+            <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
+              {['For someone', 'The story', 'The surprise'].map((label, index) => <li key={label} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>)}
+            </ol>
+            <p className="atelier-eyebrow" aria-live="polite">Step {creatorStep + 1} of 3: {['Who it is for', 'Shape the story', 'Your surprise'][creatorStep]}</p>
             <form ref={creatorForm} onSubmit={generate}>
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
                 <h2>1. Who is it for?</h2>
-                <p>Start with a moment. You can make every detail your own.</p>
+                <p>Choose a moment, then make it personal.</p>
                 <div role="group" aria-label="Choose an occasion" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: '1.2rem' }}>
                   {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{occasion.label}</button>)}
                   <button type="button" disabled={busy} aria-pressed={!brief.gift} onClick={() => chooseOccasion()} style={!brief.gift ? primaryStyle : buttonStyle}>My own idea</button>
@@ -1177,7 +1181,10 @@ export default function SharedStoryPage() {
                     {STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}
                   </select>
                 </div>
-                <p>Generated scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; Muse keeps your words unchanged. App settings and errors may remain English.</p>
+                <details>
+                  <summary>About story language</summary>
+                  <p>Scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; your words stay unchanged. Settings and errors may remain English.</p>
+                </details>
                 <RomanceOptions value={brief.romance} onChange={romance => { setBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
               </div>
               </fieldset>

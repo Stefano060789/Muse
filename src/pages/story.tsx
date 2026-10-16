@@ -43,6 +43,8 @@ export default function StoryPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(false)
   const [aiConsent, setAiConsent] = useState(false)
+  const [creationStep, setCreationStep] = useState(0)
+  const creationSection = useRef<HTMLElement>(null)
   const requestLock = useRef(false)
   const narrator = useNarration(story || {}, story?.mood || selectedMood, {
     progress: story?.journey ? story.journey.revision / story.journey.maxTurns
@@ -54,6 +56,14 @@ export default function StoryPage() {
   const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
   const stopRecording = interaction.stopRecording
   const isRecording = Boolean(interaction.recordingTarget)
+  const moveCreationStep = (step: number) => {
+    setCreationStep(step)
+    setStoryError('')
+    requestAnimationFrame(() => {
+      creationSection.current?.focus()
+      creationSection.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+    })
+  }
   useEffect(() => { setRomanceConfirmed(false) }, [romance, need, selectedMood, duration, choiceMode, language, useProfile])
 
   useEffect(() => {
@@ -264,10 +274,10 @@ export default function StoryPage() {
   return (
     <>
       <Head><title>Muse — My Story</title><meta name="description" content="A personalized interactive story shaped by what you need today." /></Head>
-      <main style={{ minHeight: '100vh', background: '#f7f3ed', color: '#2d2926', fontFamily: 'Georgia, serif' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '1.5rem' }}>
-          <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3rem' }}>
-            <Link href="/" style={{ color: '#2d2926', textDecoration: 'none', fontWeight: 700, letterSpacing: '0.08em' }}>MUSE</Link>
+      <main className="atelier-page">
+        <div className="atelier-shell atelier-shell--narrow">
+          <header className="atelier-header">
+            <Link href="/" className="atelier-brand">Muse</Link>
             <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <Link href="/library" style={{ color: '#2d2926', textDecoration: 'none' }}>Story Library</Link>
               <Link href="/" style={{ color: '#2d2926', textDecoration: 'none' }}>Home</Link>
@@ -276,27 +286,39 @@ export default function StoryPage() {
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
+          <details style={{ marginBottom: '1rem' }}>
+          <summary>Creator access (beta)</summary>
           <label style={{ display: 'block', marginBottom: '1rem' }}>Creator access code (if required)
             <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={isGenerating} onChange={event => { setCreatorCode(event.target.value); setReconciled(false) }} style={{ display: 'block', padding: '0.6rem', width: '100%', maxWidth: 400 }} />
           </label>
           <p>Code never saved. Keep this browser private.</p>
-          <details style={{ marginBottom: '1rem' }}>
+          </details>
+          {story ? <details style={{ marginBottom: '1rem' }}>
             <summary>Audio settings</summary>
             <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
-          </details>
+          </details> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
             <button onClick={reconcile} disabled={isGenerating}>Sync saved progress (no AI call)</button>
             {!reconciled || story?.journey?.pending ? <p>Sync before responding. Pending attempts expire after 90 seconds without a refund; they are not automatically retried.</p> : null}
             {preparation ? <p>Unfinished preparation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon (no refund)</button></p> : null}
           </div> : null}
           {!story ? (
-            <section>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story</p>
-              <h1 style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>Choose your mood.</h1>
-              {!profileReady ? <p style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 12, padding: '0.8rem 1rem', maxWidth: 620 }}><Link href="/myself" style={{ color: '#2d2926', fontWeight: 700 }}>Add personal touches in Myself</Link> (optional).</p> : null}
+            <section ref={creationSection} tabIndex={-1} aria-labelledby="creation-title">
+              <p className="atelier-eyebrow">A story for you</p>
+              <h1 id="creation-title" className="atelier-title">{['Where shall we begin?', 'Make it your own.', 'Your next chapter awaits.'][creationStep]}</h1>
+              <p className="atelier-subtitle">{['Choose a feeling. Muse will turn it into an interactive story, with you deciding what happens next.', 'A few small details help shape your escape. Keep it simple, or add something personal.', 'Review your choices before Muse begins writing.'][creationStep]}</p>
+              <ol className="atelier-progress" aria-label="Story creation steps">
+                {['Choose a mood', 'Make it yours', 'Review & create'].map((label, index) => <li key={label} aria-current={creationStep === index ? 'step' : undefined}>{index + 1}. {label}</li>)}
+              </ol>
+              <fieldset hidden={creationStep !== 0} disabled={creationStep !== 0 || isGenerating || Boolean(preparation)} style={{ border: 0, margin: 0, padding: 0 }}>
+              <legend className="atelier-eyebrow">How would you like to feel?</legend>
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
                 {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
+              </fieldset>
+              <fieldset hidden={creationStep !== 1} disabled={creationStep !== 1 || isGenerating || Boolean(preparation)} className="atelier-card" style={{ margin: 0 }}>
+              <legend>Your story, your pace</legend>
+              <div className="atelier-form-grid">
               <label style={{ display: 'block', marginTop: '1rem' }}>Approximate duration
                 <select aria-label="Approximate duration" value={duration} disabled={isGenerating || Boolean(preparation)} onChange={event => { setDuration(Number(event.target.value)); setAiConsent(false) }}>
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
@@ -307,7 +329,8 @@ export default function StoryPage() {
                   {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
                 </select>
               </label>
-              <p>The story and its actions stay in this language. Device narration depends on installed voices.</p>
+              </div>
+              <p className="atelier-note">The story and its actions stay in your chosen language. Listening depends on available device voices.</p>
               <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
                 <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => { setChoiceMode(event.target.value as StoryChoiceMode); setAiConsent(false) }}>
                   <option value="free">Write or speak freely</option>
@@ -318,6 +341,13 @@ export default function StoryPage() {
                 <textarea value={need} onChange={(event) => { setNeed(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
               {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Send my latest five memories to AI</label> : null}
+              {!profileReady ? <p className="atelier-note"><Link href="/myself">Add personal touches</Link> (optional). You can create a story without them.</p> : null}
+              </fieldset>
+              <fieldset hidden={creationStep !== 2} disabled={creationStep !== 2 || isGenerating || Boolean(preparation)} className="atelier-card" style={{ margin: 0 }}>
+              <legend>One last look</legend>
+              <p><strong>{moods.find(mood => mood.key === selectedMood)?.title}</strong> · About {duration} minutes · {storyLanguage(language).label}</p>
+              <p>{choiceMode === 'suggested' ? 'Choose from suggested actions.' : 'Write or speak your own responses.'}{useProfile && profileReady ? ' Your latest five memories will be included.' : ' No profile memories included.'}</p>
+              {need ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{need}</p> : null}
               <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} />
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
@@ -328,10 +358,15 @@ export default function StoryPage() {
                 <p>Your need and selected memories go to the configured AI provider. Duration is approximate, not a timer. The last successful response concludes the story; failed final attempts cannot be retried or refunded.</p>
                 <p>Your creator code is never saved. Private story access stays in this browser. Browser narration is free; narration and dictation may use online speech services.</p>
               </details>
-              <button onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.95rem 1.3rem', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>{isGenerating ? 'Muse is writing your story...' : 'Create my story →'}</button>
+              <button className="atelier-button" onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem' }}>{isGenerating ? 'Muse is writing your story...' : 'Create my story →'}</button>
+              </fieldset>
+              <div className="atelier-actions">
+                {creationStep > 0 ? <button className="atelier-secondary" disabled={isGenerating || Boolean(preparation)} onClick={() => moveCreationStep(creationStep - 1)}>Back</button> : null}
+                {creationStep < 2 ? <button className="atelier-button" disabled={isGenerating || Boolean(preparation)} onClick={() => moveCreationStep(creationStep + 1)}>Continue</button> : null}
+              </div>
             </section>
           ) : (
-            <section>
+            <section className="atelier-reading">
               <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
               {story.romance ? <p>{romanceCopy(story.language).title(story.romance)}</p> : null}
               <h1 lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
@@ -340,7 +375,7 @@ export default function StoryPage() {
               <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
                 <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
-                <p style={{ fontSize: '1.15rem', lineHeight: 1.85 }}>{scene?.body}</p>
+                <p className="atelier-prose">{scene?.body}</p>
                 <NarrationButton narrator={narrator} text={scene ? `${scene.title}. ${scene.body} ${scene.question}` : ''} beforeSpeak={stopRecording} />
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
@@ -377,8 +412,8 @@ export default function StoryPage() {
               </article>
               {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'Attempt limit reached, including failures. Your last scene is saved; no extra AI call is made.' : 'Your story is complete.'} You can still listen or reopen it.</div> : null}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
-                <button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button>
-                <Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Update Myself</Link>
+                <button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false); setCreationStep(0); setAiConsent(false); setRomanceConfirmed(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button>
+                <Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Personal touches</Link>
                 {story.journey ? <button type="button" disabled={isGenerating} onClick={() => void deleteSavedJourney()} style={{ padding: '0.8rem 1rem', cursor: isGenerating ? 'not-allowed' : 'pointer' }}>{isGenerating ? 'Working…' : 'Delete saved journey from server'}</button> : null}
               </div>
             </section>
