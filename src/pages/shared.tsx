@@ -7,6 +7,7 @@ import { SHARED_STORY_DURATIONS, type SharedStoryBrief, type SharedStoryPlayer }
 import { latestCreatorStory, loadStoryLibrary, removeLibraryEntry, saveLibraryCreatorStory, type CreatorStory } from '../lib/storyLibrary'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import MicrophoneCheck from '../components/MicrophoneCheck'
+import HoldToSpeakButton from '../components/HoldToSpeakButton'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
@@ -759,9 +760,7 @@ export default function SharedStoryPage() {
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
         <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
-      <button type="button" aria-label={interaction.recordingTarget === key ? `Stop dictation: ${label}` : `Dictate: ${label}`} disabled={busy} onClick={() => interaction.dictate(key, (value) => { setBrief((current) => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }}>
-        {interaction.recordingTarget === key ? 'Stop dictation' : 'Dictate'}
-      </button>
+      <HoldToSpeakButton label={`Hold to dictate ${label}`} releaseLabel={`Release to stop ${label}`} recording={interaction.recordingTarget === key} disabled={busy} onStart={() => interaction.dictate(key, (value) => { setBrief((current) => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
       {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
     </div>
   )
@@ -939,7 +938,7 @@ export default function SharedStoryPage() {
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
                   <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onChange={event => { setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
                   <p>{recipientText.reviewGuess}</p>
-                  <button type="button" disabled={busy} onClick={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} style={buttonStyle}>{interaction.recordingTarget === 'adventure-action' ? recipientText.stopDictation : recipientText.dictateAction}</button>
+                  <HoldToSpeakButton label={`Hold to ${recipientText.dictateAction.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAction.toLowerCase()}`} disabled={busy} recording={interaction.recordingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
                   {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                   <button disabled={busy || (!actionText.trim() && !player.adventure.pending)} style={primaryStyle}>{player.adventure.pending ? recipientText.retrySubmission : recipientText.submitAction}</button>
                 </form> : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
@@ -983,7 +982,7 @@ export default function SharedStoryPage() {
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
-                    <button type="button" disabled={busy} onClick={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} style={buttonStyle}>{interaction.recordingTarget === 'guess' ? recipientText.stopDictation : recipientText.dictateAnswer}</button>
+                    <HoldToSpeakButton label={`Hold to ${recipientText.dictateAnswer.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAnswer.toLowerCase()}`} disabled={busy} recording={interaction.recordingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
                   </div>
                   <p>{recipientText.reviewGuess}</p>
                   {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}

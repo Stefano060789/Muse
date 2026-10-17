@@ -147,9 +147,11 @@ async function main() {
   await flush()
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true,
     'Editing response text does not make the story-wide consent prompt recur')
+  const holdToSpeak = nodes().find(node => node.type === '../components/HoldToSpeakButton')
+  assert.ok(holdToSpeak)
   const stopsBefore = stopRecordingCalls
-  await click('Stop listening')
-  assert.equal(stopRecordingCalls, stopsBefore + 1, 'Stop listening explicitly ends the active recording')
+  holdToSpeak.props.onStop()
+  assert.equal(stopRecordingCalls, stopsBefore + 1, 'Releasing hold-to-speak explicitly ends the active recording')
   assert.equal(dictateCalls, 0, 'Stop listening does not restart dictation')
   console.log('PASS personal wizard preserves fields, presents one story-wide consent prompt, and explicitly stops dictation')
 }

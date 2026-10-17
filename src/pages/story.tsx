@@ -7,6 +7,7 @@ import { loadMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import ReadAlongText from '../components/ReadAlongText'
+import HoldToSpeakButton from '../components/HoldToSpeakButton'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
@@ -272,9 +273,9 @@ export default function StoryPage() {
     }
   }
 
-  const toggleRecording = () => isRecording
-    ? stopRecording()
-    : interaction.dictate('response', value => { setResponseDraft(value.slice(0, story?.journey ? 800 : 600)) })
+  const startDictation = () => interaction.dictate('response', value => {
+    setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
+  })
 
   return (
     <>
@@ -398,9 +399,9 @@ export default function StoryPage() {
                 </select></label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>
-                  <button onClick={toggleRecording} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak your answer'}</button>
+                  <HoldToSpeakButton label="Hold to speak your answer" releaseLabel="Release to stop" recording={isRecording} onStart={startDictation} onStop={() => stopRecording('response')} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
                 </div>
-                {isRecording ? <p role="status">{interaction.ready ? 'Listening - speak now' : 'Starting microphone…'}</p> : null}
+                {isRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
                 </>}
                 {!story.journey ? <>
                 <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction (legacy story):</p>

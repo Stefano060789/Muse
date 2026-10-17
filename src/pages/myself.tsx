@@ -1,30 +1,18 @@
 import Head from 'next/head'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { forgetMuseProfile, loadMuseProfile, replaceMuseProfileKeypoints, saveMuseProfile, type MuseProfile } from '../lib/profile'
-
-type RecognitionEvent = Event & { resultIndex: number; results: SpeechRecognitionResultList }
-type Recognition = {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  onend: (() => void) | null
-  onerror: (() => void) | null
-  onresult: ((event: RecognitionEvent) => void) | null
-  start: () => void
-  stop: () => void
-}
-type RecognitionConstructor = new () => Recognition
-type RecognitionWindow = Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor }
+import { useStoryInteraction } from '../lib/useStoryInteraction'
+import HoldToSpeakButton from '../components/HoldToSpeakButton'
 
 export default function MyselfPage() {
   const [about, setAbout] = useState('')
   const [keypoints, setKeypoints] = useState<string[]>([])
-  const [isRecording, setIsRecording] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<string[]>([])
-  const recognitionRef = useRef<Recognition | null>(null)
+  const interaction = useStoryInteraction(undefined, 'en-US')
+  const isRecording = Boolean(interaction.recordingTarget)
 
   useEffect(() => {
     try {
@@ -32,11 +20,6 @@ export default function MyselfPage() {
       if (profile) applyProfile(profile)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not read saved memories.')
-    }
-    return () => {
-      const recognition = recognitionRef.current
-      recognitionRef.current = null
-      recognition?.stop()
     }
   }, [])
 
@@ -82,67 +65,13 @@ export default function MyselfPage() {
     setMessage('')
     try {
       forgetMuseProfile()
-      const recognition = recognitionRef.current
-      recognitionRef.current = null
-      recognition?.stop()
-      setIsRecording(false)
+      interaction.stopRecording()
       setAbout('')
       setKeypoints([])
       setDrafts([])
       setMessage('All profile memories were removed from this browser. Existing stories were not changed.')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not remove your memories.')
-    }
-  }
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      const recognition = recognitionRef.current
-      recognitionRef.current = null
-      recognition?.stop()
-      setIsRecording(false)
-      return
-    }
-    const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
-    if (!Constructor) {
-      setMessage('Voice input is not supported here. You can type instead.')
-      return
-    }
-    const recognition = new Constructor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-    recognition.onresult = (event) => {
-      let transcript = ''
-      for (let index = 0; index < event.results.length; index += 1) transcript += event.results[index][0].transcript
-      setAbout(transcript.trim())
-    }
-    recognition.onerror = () => {
-      if (recognitionRef.current !== recognition) return
-      setIsRecording(false)
-      recognitionRef.current = null
-      setMessage('I could not understand that. Please try again or type instead.')
-    }
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition) {
-        try {
-          recognition.start()
-        } catch {
-          setIsRecording(false)
-          recognitionRef.current = null
-          setMessage('Voice input stopped. You can try again or type instead.')
-        }
-      }
-    }
-    recognitionRef.current = recognition
-    setMessage('')
-    try {
-      recognition.start()
-      setIsRecording(true)
-    } catch {
-      recognitionRef.current = null
-      setIsRecording(false)
-      setMessage('Could not start voice input. Check microphone permission or type instead.')
     }
   }
 
@@ -162,10 +91,12 @@ export default function MyselfPage() {
             </label>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
               <button onClick={save} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>Save what matters</button>
-              <button onClick={toggleRecording} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }}>{isRecording ? 'Stop listening' : 'Speak to Muse'}</button>
+              <HoldToSpeakButton recording={isRecording} label="Hold to speak to Muse" releaseLabel="Release to stop" onStart={() => { setMessage(''); interaction.dictate('about', setAbout) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
             </div>
             {message ? <p role="status" style={{ lineHeight: 1.6, marginBottom: 0 }}>{message}</p> : null}
             {error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{error}</p> : null}
+            {interaction.error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{interaction.error}</p> : null}
+            {isRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
           </section>
           <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
             <h2 style={{ marginTop: 0 }}>Your memories</h2>

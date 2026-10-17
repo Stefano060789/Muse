@@ -23,16 +23,17 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
   const recognitionRef = useRef<Recognition | null>(null)
+  const stopRequestedRef = useRef<Recognition | null>(null)
 
-  const stopRecording = () => {
+  const stopRecording = (target?: string) => {
+    if (target && recordingTarget !== target) return
     const recognition = recognitionRef.current
-    recognitionRef.current = null
-    if (recognition) {
-      try { recognition.abort() } catch {
-        try { recognition.stop() } catch {
-          setError('Could not stop voice recording. Close this page or disable microphone access to end dictation.')
-        }
-      }
+    if (!recognition) return
+    stopRequestedRef.current = recognition
+    try { recognition.stop() } catch {
+      recognitionRef.current = null
+      stopRequestedRef.current = null
+      setError('Could not stop voice recording. Close this page or disable microphone access to end dictation.')
     }
     setRecordingTarget('')
     setReady(false)
@@ -41,7 +42,8 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   useEffect(() => () => {
     const recognition = recognitionRef.current
     recognitionRef.current = null
-    recognition?.abort()
+    stopRequestedRef.current = null
+    recognition?.stop()
   }, [])
 
   const dictate = (target: string, onTranscript: (value: string) => void, singlePhrase = false) => {
@@ -75,8 +77,11 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     recognition.onerror = (event) => {
       if (recognitionRef.current !== recognition) return
       recognitionRef.current = null
+      const stoppedIntentionally = stopRequestedRef.current === recognition
+      stopRequestedRef.current = null
       setRecordingTarget('')
       setReady(false)
+      if (stoppedIntentionally && event.error === 'aborted') return
       const errors: Record<string, string> = {
         network: 'The browser speech-recognition service could not connect. In the VS Code browser, open this same address in regular Microsoft Edge or Google Chrome and try again. Check your internet connection; you can also type instead.',
         'not-allowed': 'Microphone access was denied. Allow microphone access for this site in your browser and Windows privacy settings, or type instead.',
@@ -91,11 +96,14 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) return
       recognitionRef.current = null
+      const stoppedIntentionally = stopRequestedRef.current === recognition
+      stopRequestedRef.current = null
       setRecordingTarget('')
       setReady(false)
-      if (!receivedText) setError('No words were received. Try again, check your microphone, or type instead.')
+      if (!receivedText && !stoppedIntentionally) setError('No words were received. Try again, check your microphone, or type instead.')
     }
     recognitionRef.current = recognition
+    stopRequestedRef.current = null
     try {
       recognition.start()
       setRecordingTarget(target)
