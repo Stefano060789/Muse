@@ -3,6 +3,7 @@ import { dirname, resolve } from 'path'
 import type { DatabaseSync as SqliteDatabase } from 'node:sqlite'
 import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import type { StoryRepository, StoredStory, PlayerState, RequestKind } from './storyRepository'
+import type { StudioRecord, StudioRequest, StudioResult } from './studioNarration'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
 import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
@@ -12,6 +13,23 @@ import {
 } from './sharedStoryMedia'
 
 const schema = `
+CREATE TABLE IF NOT EXISTS muse_studio_audio (
+  story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
+  scene_index INTEGER NOT NULL CHECK (scene_index BETWEEN 0 AND 11),
+  fingerprint TEXT NOT NULL, object_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'failed')),
+  characters INTEGER NOT NULL CHECK (characters BETWEEN 1 AND 5000),
+  size INTEGER NOT NULL DEFAULT 0 CHECK (size BETWEEN 0 AND 5242880),
+  created_at TEXT NOT NULL, PRIMARY KEY(story_id, scene_index)
+);
+CREATE TABLE IF NOT EXISTS muse_studio_budget (id INTEGER PRIMARY KEY CHECK (id = 1), used INTEGER NOT NULL);
+INSERT OR IGNORE INTO muse_studio_budget VALUES (1, 0);
+CREATE TABLE IF NOT EXISTS muse_studio_purge (object_key TEXT PRIMARY KEY, retain_until TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS muse_studio_queue_purge AFTER DELETE ON muse_studio_audio
+BEGIN
+  INSERT OR IGNORE INTO muse_studio_purge VALUES (old.object_key,
+    max(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', julianday(old.created_at) + 5.0 / 1440.0)));
+END;
 CREATE TABLE IF NOT EXISTS shared_stories (
   id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
   brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL,
@@ -94,6 +112,54 @@ END;`
 
 export class SqliteStoryRepository implements StoryRepository {
   private readonly filename: string
+  async studio(request: StudioRequest): Promise<StudioResult> {
+    return this.transaction((db, now) => {
+      const result: StudioResult = { records: [], reserved: false, keys: [] }
+      const cutoff = new Date(now - 120000).toISOString()
+      const queue = (key: string, created: string) => db.prepare('INSERT OR IGNORE INTO muse_studio_purge VALUES (?, ?)')
+        .run(key, new Date(Math.max(now, Date.parse(created) + 300000)).toISOString())
+      const stale = db.prepare("SELECT * FROM muse_studio_audio WHERE status = 'pending' AND created_at <= ?").all(cutoff)
+      for (const row of stale) queue(String(row.object_key), String(row.created_at))
+      db.prepare("UPDATE muse_studio_audio SET status = 'failed' WHERE status = 'pending' AND created_at <= ?").run(cutoff)
+      if (request.operation === 'purge') {
+        result.keys = db.prepare("SELECT object_key FROM muse_studio_purge WHERE retain_until <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ORDER BY retain_until LIMIT 20")
+          .all().map(row => String(row.object_key))
+      } else if (request.operation === 'purged') {
+        for (const key of request.keys) db.prepare('DELETE FROM muse_studio_purge WHERE object_key = ?').run(key)
+      } else if (request.operation === 'status') {
+        result.records = db.prepare('SELECT a.* FROM muse_studio_audio a JOIN shared_stories s ON s.id = a.story_id WHERE a.story_id = ? AND s.expires_at > ? ORDER BY a.scene_index')
+          .all(request.storyId, new Date(now).toISOString()) as StudioRecord[]
+      } else if (request.operation === 'audio') {
+        const args = [request.storyId, request.sceneIndex, new Date(now).toISOString()]
+        let access = ''
+        if (request.sessionHash !== undefined) {
+          access = ' AND s.play_hash = ? AND EXISTS (SELECT 1 FROM shared_story_sessions p WHERE p.story_id = s.id AND p.player_hash = ? AND p.current_scene >= a.scene_index)'
+          args.push(request.playHash ?? '', request.sessionHash)
+        }
+        result.records = db.prepare(`SELECT a.* FROM muse_studio_audio a JOIN shared_stories s ON s.id = a.story_id
+          WHERE a.story_id = ? AND a.scene_index = ? AND a.status = 'ready' AND s.expires_at > ?${access}`).all(...args) as StudioRecord[]
+      } else if (request.operation === 'reserve') {
+        const row = request.record
+        if (!db.prepare('SELECT 1 FROM shared_stories WHERE id = ? AND expires_at > ?').get(row.story_id, new Date(now).toISOString())) {
+          throw new SharedStoryError('Story unavailable.', 404)
+        }
+        if (db.prepare('SELECT 1 FROM muse_studio_audio WHERE story_id = ? AND scene_index = ?').get(row.story_id, row.scene_index)) return result
+        const charged = db.prepare('UPDATE muse_studio_budget SET used = used + ? WHERE id = 1 AND used + ? <= ?')
+          .run(row.characters, row.characters, request.budget)
+        if (!charged.changes) throw new SharedStoryError('Studio lifetime character budget exhausted.', 429)
+        db.prepare("INSERT INTO muse_studio_audio VALUES (?, ?, ?, ?, 'pending', ?, 0, ?)")
+          .run(row.story_id, row.scene_index, row.fingerprint, row.object_key, row.characters, new Date(now).toISOString())
+        result.reserved = true
+      } else if (request.operation === 'finish') {
+        const row = request.record
+        const updated = db.prepare("UPDATE muse_studio_audio SET status = ?, size = ? WHERE story_id = ? AND scene_index = ? AND object_key = ? AND fingerprint = ? AND status = 'pending'")
+          .run(request.failed ? 'failed' : 'ready', request.failed ? 0 : row.size, row.story_id, row.scene_index, row.object_key, row.fingerprint)
+        if (request.failed) queue(row.object_key, row.created_at)
+        else if (!updated.changes) throw new SharedStoryError('Studio reservation expired or story was deleted.', 409)
+      }
+      return result
+    })
+  }
   constructor() {
     this.filename = resolve(process.env.MUSE_SQLITE_PATH || resolve('data', 'muse-stories.sqlite'))
   }

@@ -68,7 +68,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? { opening: await generateJourneyOpening(reserved.record.input) }
           : { turn: await generateJourneyTurn(reserved.record) }
         const finished = await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, ...generated })
-        return res.status(200).json(publicJourney(finished, capability))
+          if (operation.operation === 'create') await reportOperation('story-created')
+          return res.status(200).json(publicJourney(finished, capability))
       } catch (error) {
         console.error('Personal journey attempt failed', error instanceof Error ? error.name : 'Unknown error')
         await reportOperation('request-failure')
@@ -91,6 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     storyProviderConfig()
     await reserveStoryRequest(storyDatabase(), req, 'generate')
     const story = await generatePersonalStory(input)
+    await reportOperation('story-created')
     return res.status(200).json(story)
   } catch (error) {
     if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('request-failure')

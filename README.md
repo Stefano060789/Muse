@@ -110,12 +110,84 @@ Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
 recording and creator/recipient UI checks; `npm run test:gifting` covers
 private voice/reply authorization and persistence without paid provider calls.
 
+### Printable gift cards and expiry
+
+After reviewing a publicly shareable gift, choose **Print a gift card**.
+Muse generates the QR locally with `qrcode`; no external QR service receives
+the recipient capability. The card includes a generic editable greeting, the
+recipient address and the story's expiry, never an automatic copy of private
+answers, the reveal or media. The greeting is visible before online content
+notices, so keep it appropriate for the printed card.
+
+Anyone with the card can use its recipient link. Replacing that link, deleting
+the story or reaching expiry invalidates printed copies. Printing does not
+extend retention or make an offline interactive story. A separate text keepsake
+can survive expiry, but excludes attachments and is not a full live transcript.
+iPhone print/PDF steps vary by iOS; physical-device printing and QR scanning
+remain release checks. Run `npm run test:gift-card` for local PNG QR generation,
+recipient-link validation and escaped printable HTML.
+
+### Optional Studio narration
+
+Shared Story's free narration controls always use device voices. Safari/iPhone
+quality depends on exposed system voices; enhanced voice downloads do not
+guarantee that Safari offers them. Device speech remains an explicit choice,
+never a silent replacement when cloud audio fails.
+
+Studio is a separate, opt-in recording for **prepared stories**, not live
+adventure turns or final reveals. The creator chooses a scene, checks
+availability and separately consents before preparing its title, body and clue
+with ElevenLabs. No generation runs on page load. Recipients can only load an
+existing recording for a reached scene. **Load Studio audio** fetches private
+bytes; the recipient then taps the native player's **Play**, avoiding an
+autoplay assumption after Safari's asynchronous fetch. Replays use the cache,
+not the provider. Replacement and unmount revoke client blob URLs; a file
+already downloaded cannot be recalled.
+
+Generation stays disabled unless all server-only settings are present:
+
+- `MUSE_STUDIO_NARRATION_ENABLED=true`
+- `ELEVEN_API_KEY` and `ELEVEN_VOICE_ID`
+- `MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS`: an explicit positive integer
+  lifetime reservation cap, shared across stories. This is **not a euro cap**;
+  check provider pricing and set provider-side billing limits too.
+
+Apply `supabase/shared-story-studio.sql` before enabling hosted Studio.
+SQLite migrates automatically. The hosted migration is not applied by local
+tests. Private cached audio is separate from the final voice-message slot.
+Durable unique reservations deduplicate concurrent requests, reserve characters
+before provider access and do not automatically retry failed or uncertain
+attempts. Failed generation remains charged against this conservative cap;
+check status rather than submitting another paid attempt. Cached playback
+remains available if new generation is subsequently disabled, while story
+expiry, deletion and recipient-link replacement still gate access.
+Deletion and subsequent valid-capability requests sweep queued Studio audio,
+including expired links. A five-minute storage grace period protects late
+in-flight writes. Physical removal can wait for another request; schedule the
+same purge during idle periods if a predictable cleanup cadence is required.
+
+The legacy generic `/api/tts` path remains separate for older personal flows;
+it is not this cached recipient solution. Do not enable that route as a
+production replacement for Studio. No credentials, spending settings or paid
+provider calls were enabled by implementing these controls.
+Run `npm run test:studio`, `npm run test:narration` and `npm run test:gateway`.
+Real iPhone voice quality, speaker/lock-screen behavior and playback still
+need physical-device acceptance testing.
+
 ## Story Atelier interface
 
 Muse uses a mobile-first Story Atelier theme: ivory paper, midnight blue,
 muted plum, literary headings and system-font controls. The original doorway
 illustration is a local SVG; no external fonts, image service, animation
 library or extra runtime dependency is needed.
+
+Original local SVG landscapes extend the story-escape atmosphere throughout
+the app: a moonlit passage for personal journeys, a lantern garden for shared
+gifts and the demo, and a celestial library for saved stories and practical
+pages. A shared decorative masthead covers every inner page, including errors;
+the home uses the passage as its hero. Artwork is static, hidden from assistive
+technology, independent of private story content, and makes no image-provider
+calls. Compact phone crops keep controls and text on opaque paper surfaces.
 
 The landing page explains personal interactive stories and mystery gifts,
 with a free handcrafted sample separate from AI generation. It is intentionally
@@ -345,7 +417,8 @@ and running Muse. Never tunnel the main Muse port directly.
    Only the recipient link uses the public address; management stays local.
 
 No registration or new database is needed. Narration uses recipient-device
-browser voices; provider TTS is deliberately blocked by the gateway.
+browser voices or existing private Studio recordings. Paid generation and
+owner Studio previews are deliberately blocked by the gateway.
 Anyone possessing the recipient capability can play, including after
 forwarding. The gateway shares the local request budget across recipients.
 Restarting the tunnel changes its address: reapply it and send a new URL;
@@ -370,7 +443,8 @@ invalid settings or storage failures do not silently fall back.
 - Claude Haiku 5.5 for My Story and Shared Story (OpenAI/Groq optional)
 - Separate creator-management and recipient-play capabilities; no sign-in
 - Server-side answer checking and a final message returned only when solved
-- ElevenLabs narration with explicit browser-voice fallback
+- Device narration and separately prepared, private ElevenLabs Studio audio;
+  failures never silently switch voices
 - GitHub Actions production-build workflow
 
 ## Browser story library
@@ -716,9 +790,10 @@ explicitly to voice-only. No new account, environment variable or database
 migration is required. Run `npm run test:narration` and `npm run test:ambience`.
 
 This free immersive mode does not enable premium narration or run paid comparisons.
-The existing operator-configured ElevenLabs mode remains separate and still
-incurs generation costs per request; do not enable it for production recipients
-until private caching, capability authorization and spending caps are implemented.
+The legacy operator-configured ElevenLabs mode remains separate and still
+incurs generation costs per request; do not use it for production recipients.
+Shared Story instead uses the optional private, cached Studio path above,
+which requires its own migration, opt-in and lifetime character reservation cap.
 Realistic licensed crowd/footstep recordings and premium voice comparison remain
 future work; no commercial quality claim is made for local synthesized ambience.
 

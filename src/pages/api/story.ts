@@ -3,7 +3,7 @@ import { createStoryArc, type StoryArc } from '../../lib/story'
 import { readMuseProfile } from '../../lib/profileStorage'
 import { readStoryState, writeStoryState } from '../../lib/storyStorage'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
-import { apiSafety } from '../../lib/operations'
+import { apiSafety, reportOperation } from '../../lib/operations'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } }
 
@@ -28,6 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         profile?.keypoints || []
       ) as StoryArc
       await writeStoryState(story as any)
+      await reportOperation('story-created')
       return res.status(200).json(story)
     }
 

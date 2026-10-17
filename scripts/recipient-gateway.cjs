@@ -1,6 +1,6 @@
 const http = require('node:http')
 
-const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply'])
+const PLAYER_ACTIONS = new Set(['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio'])
 
 function createRecipientGateway(target = 'http://127.0.0.1:3102') {
   const upstream = new URL(target)
@@ -23,7 +23,7 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
     const asset = /^\/_next\/static\/[A-Za-z0-9_./-]+$/.test(url.pathname) &&
       !url.pathname.split('/').includes('..')
     const api = req.method === 'POST' && url.pathname === '/api/shared-story' && !url.search
-    const appAsset = ['/manifest.webmanifest', '/sw.js', '/icons/muse-180.png', '/icons/muse-192.png', '/icons/muse-512.png', '/icons/muse-maskable-512.png'].includes(url.pathname) && !url.search
+    const appAsset = ['/manifest.webmanifest', '/sw.js', '/icons/muse-180.png', '/icons/muse-192.png', '/icons/muse-512.png', '/icons/muse-maskable-512.png', '/illustrations/lantern-garden.svg'].includes(url.pathname) && !url.search
     if (!api && !(req.method === 'GET' && (url.pathname === '/shared' || asset || appAsset || url.pathname === '/favicon.ico'))) {
       return fail(403, 'This address permits recipient playback only. Creation and management stay on the local Muse address.')
     }
@@ -50,8 +50,9 @@ function createRecipientGateway(target = 'http://127.0.0.1:3102') {
         }
         const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
         if (!value || Array.isArray(value) || typeof value !== 'object' || !PLAYER_ACTIONS.has(value.action)) {
-          return fail(403, 'Only open, next, guess, hint, skip, adventure, voice, reply and authorized media actions are public.')
+          return fail(403, 'Only recipient play, reply and authorized existing media or Studio audio actions are public.')
         }
+        if (value.action === 'studio-audio' && value.preview !== undefined) return fail(403, 'Studio owner previews stay on the local Muse address.')
         body = JSON.stringify(value)
       } catch {
         return fail(400, 'Invalid JSON story request.')

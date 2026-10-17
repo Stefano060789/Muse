@@ -299,7 +299,7 @@ async function main() {
       assert.equal(noSpeech.render().speaking, false)
     } finally { noSpeech.dispose() }
   })
-  await check('explicit ElevenLabs failure warns before browser fallback; cancellation never starts fallback', async () => {
+  await check('ElevenLabs failure never downgrades to device speech; explicit device selection works', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
     let calls = 0
     global.fetch = async () => { calls++; return new Response('private provider error', { status: 401 }) }
@@ -308,15 +308,19 @@ async function main() {
       hook.render().setCloudConsent(true)
       await hook.render().speak('Preview.')
       assert.equal(calls, 1)
-      assert.match(hook.render().notice, /falling back/)
-      assert.ok(!hook.render().notice.includes('private'))
+      assert.match(hook.render().error, /No device voice was started/)
+      assert.ok(!hook.render().error.includes('private'))
+      assert.equal(hook.spoken.length, 0)
       hook.render().stop()
       global.fetch = (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('Abort'))))
       const pending = hook.render().speak('Cancelled.')
       hook.render().stop()
       await pending
-      assert.equal(hook.spoken.length, 1)
+      assert.equal(hook.spoken.length, 0)
       assert.equal(hook.render().loading, false)
+      hook.render().setDeviceOnly(true)
+      await hook.render().speak('Explicit device voice.')
+      assert.equal(hook.spoken.length, 1)
     } finally { hook.dispose() }
   })
   await check('cloud narration consent starts unchecked and never sends text until explicitly accepted', async () => {
@@ -328,7 +332,8 @@ async function main() {
       assert.equal(hook.render().cloudConsent, false)
       await hook.render().speak('Local voice only.')
       assert.equal(calls, 0)
-      assert.match(hook.render().notice, /needs your consent/)
+      assert.match(hook.render().error, /needs your consent/)
+      assert.equal(hook.spoken.length, 0)
       hook.render().setCloudConsent(true)
       await hook.render().speak('Consented narration.')
       assert.equal(calls, 1)

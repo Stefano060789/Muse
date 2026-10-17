@@ -41,7 +41,9 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
   const playingElsewhere = narrator.busy && narrator.activeText !== preview
   return <aside aria-label="Narration settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
     <p style={{ marginTop: 0 }}><strong>Narration: {narrator.style}</strong> · {narrator.source}</p>
-    <p>{narrator.provider === 'browser' ? 'Free browser narration.' : 'ElevenLabs voice; browser voice is the fallback.'}</p>
+    <p>{narrator.provider === 'browser' ? 'Device voice (free). Quality depends on the voices Safari or your browser makes available; this is not Studio narration.' : 'Cloud voice by ElevenLabs. Failure never starts a device voice automatically.'}</p>
+    {narrator.provider !== 'browser' || narrator.deviceOnly ? <label><input type="checkbox" checked={narrator.deviceOnly} onChange={event => narrator.setDeviceOnly(event.target.checked)} /> Use device voice instead (free)</label> : null}
+    {narrator.provider === 'browser' ? <details><summary>Improve the voice on iPhone</summary><p>Try a different matching voice below. You can also download enhanced voices in iPhone Accessibility voice settings, then reopen Safari. Safari may not expose every downloaded voice. Turn off expressive pacing below if the delivery sounds unnatural; device voices are not a consistent premium listening experience.</p></details> : null}
     {narrator.provider !== 'browser' ? <label><input type="checkbox" checked={narrator.cloudConsent} onChange={event=>narrator.setCloudConsent(event.target.checked)} /> Send spoken text to ElevenLabs and use a paid attempt. <a href="/privacy">Privacy</a></label> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>Voice style <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>

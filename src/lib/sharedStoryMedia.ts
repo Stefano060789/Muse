@@ -26,7 +26,7 @@ export const SHARED_VOICE_MAX_BYTES = 5 * MB
 export const SHARED_VOICE_MAX_SECONDS = 60
 export const SHARED_MEDIA_DOWNLOAD_TTL_SECONDS = 600
 export const SHARED_MEDIA_BUCKET = 'muse-shared-media'
-export const SHARED_MEDIA_KEY_PATTERN = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm|wav)$/
+export const SHARED_MEDIA_KEY_PATTERN = /^stories\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp|mp4|webm|wav|mp3)$/
 
 export type SharedMediaDeclaration = { mime: SharedMediaMime; size: number; kind: SharedMediaKind; ext: string }
 export type SharedMediaSummary = { kind: SharedMediaKind; mime: SharedMediaMime; size: number }

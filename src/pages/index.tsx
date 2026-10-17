@@ -26,9 +26,9 @@ export default function Home() {
             <Link href="/demo" className="atelier-sample-link">Try a 2-minute sample</Link>
             <p className="atelier-note">Free, handcrafted, no account needed.</p>
           </div>
-          <figure className="atelier-hero-art">
+          <figure className="atelier-hero-art" aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/story-door.svg" width="480" height="530" alt="" />
+            <img src="/illustrations/moonlit-passage.svg" width="1200" height="400" alt="" />
           </figure>
         </section>
         <aside className="atelier-home-more" aria-label="More about Muse">

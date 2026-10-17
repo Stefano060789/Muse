@@ -29,6 +29,9 @@
     "test:library": "node scripts/library.test.cjs",
     "test:gift-experience": "node scripts/gift-experience.test.cjs && node scripts/gift-ui.test.cjs",
     "test:gifting": "node scripts/shared-gifting.test.cjs",
+    "test:gift-card": "node scripts/gift-card.test.cjs",
+    "test:illustrations": "node scripts/illustrations.test.cjs",
+    "test:studio": "node scripts/studio-narration.test.cjs && node scripts/studio-ui.test.cjs",
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "next lint"
@@ -36,6 +39,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
     "next": "15.5.27",
+    "qrcode": "^1.5.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "stripe": "^12.0.0"
@@ -44,6 +48,7 @@
     "postcss": "8.5.29"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.31",
     "typescript": "^5.0.0"
   }

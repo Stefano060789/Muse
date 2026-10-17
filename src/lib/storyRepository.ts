@@ -4,6 +4,7 @@ import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult } from './sharedAdventure'
 import type { JourneyOperation, JourneyResult } from './personalJourney'
+import type { StudioRequest, StudioResult } from './studioNarration'
 import {
   SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
   type SharedVoiceRecord
@@ -28,6 +29,7 @@ export type StoredStory = {
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
+  studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
   delete(id: string): Promise<void>
@@ -97,6 +99,17 @@ export function storyRepository(): StoryRepository {
   const giftUnavailable = () => new SharedStoryError('Gift features are not available in storage yet. Apply supabase/shared-story-gifts.sql, then retry.', 503)
   const giftStorageError = (error: unknown) => isMissingGiftSchema(error) ? giftUnavailable() : storyStorageError(error)
   return {
+    async studio(request) {
+      const { data, error } = await db.rpc('muse_studio_narration', { request })
+      if (error) {
+        if (error.message === 'Studio budget exhausted') throw new SharedStoryError('Studio lifetime character budget exhausted.', 429)
+        throw new SharedStoryError('Studio storage is unavailable. Apply supabase/shared-story-studio.sql; no automatic retry is permitted.', 503)
+      }
+      if (!data || !Array.isArray(data.records) || !Array.isArray(data.keys) || typeof data.reserved !== 'boolean') {
+        throw new SharedStoryError('Studio storage returned an invalid result.', 503)
+      }
+      return data as StudioResult
+    },
     async deletePersonalJourney(id, capabilityHash) {
       const { data, error } = await db.rpc('muse_delete_personal_journey', { p_id: id, p_capability_hash: capabilityHash })
       if (error) throw storyStorageError(error)

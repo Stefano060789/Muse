@@ -13,6 +13,8 @@ import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
+import GiftCard from '../components/GiftCard'
+import StudioNarration, { type StudioSceneStatus } from '../components/StudioNarration'
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
@@ -32,6 +34,25 @@ type UploadState = { phase: 'idle' | 'uploading' | 'failed'; progress: number; e
 type VoiceSummary = { mime: string; size: number }
 type GiftReply = { message: string; createdAt: string }
 type GiftState = { voice?: VoiceSummary | null; replies?: GiftReply[] }
+type StudioResponse = { studio: {
+  available: boolean
+  reason: null | 'disabled' | 'configuration-required' | 'prepared-scenes-only'
+  scenes: { sceneIndex: number; status: 'pending' | 'ready' | 'failed' }[]
+} }
+
+function studioSceneStatus(result: StudioResponse, sceneIndex: number): StudioSceneStatus {
+  const scene = result.studio.scenes.find(item => item.sceneIndex === sceneIndex)
+  const blocked = scene?.status === 'pending' || scene?.status === 'failed'
+  return {
+    enabled: result.studio.available, ready: scene?.status === 'ready', blocked,
+    ...(blocked ? { message: scene.status === 'pending'
+      ? 'This scene is being prepared. Check again later; do not submit another paid attempt.'
+      : 'This preparation failed. Its budget reservation remains charged; automatic retries are blocked.' }
+      : !result.studio.available && scene?.status !== 'ready' ? { message: result.studio.reason === 'prepared-scenes-only'
+        ? 'Studio supports prepared stories only, not live AI turns.'
+        : 'Studio generation is disabled until credentials and an explicit character budget are configured.' } : {})
+  }
+}
 
 const fieldStyle: CSSProperties = { display: 'block', width: '100%', marginTop: '0.5rem', boxSizing: 'border-box' }
 const cardStyle: CSSProperties = { padding: 'clamp(1rem, 4vw, 1.75rem)', border: '1px solid #e4dcd4', borderRadius: 20, background: '#fffdf9', marginBottom: '1rem' }
@@ -44,13 +65,28 @@ const mediaLabel = (kind: SharedMediaKind) => kind === 'video' ? 'video' : 'phot
 type AssistanceField = 'assistanceHints' | 'alternativeAnswers'
 const assistanceLines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 
-async function request<T>(body: Record<string, unknown>, creatorCode = ''): Promise<T> {
+async function request<T>(body: Record<string, unknown>, creatorCode = '', signal?: AbortSignal): Promise<T> {
   const response = await fetch('/api/shared-story', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) }, body: JSON.stringify(body)
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) }, body: JSON.stringify(body), signal
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data.error || 'Could not complete the story request.')
   return data as T
+}
+
+async function requestStudioAudio(body: Record<string, unknown>, signal: AbortSignal, creatorCode = ''): Promise<Blob> {
+  const response = await fetch('/api/shared-story', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) },
+    body: JSON.stringify(body), signal
+  })
+  if (!response.ok) {
+    if ((response.headers.get('content-type') || '').includes('application/json')) {
+      const data = await response.json()
+      throw new Error(data.error || 'Studio audio is unavailable.')
+    }
+    throw new Error('Studio audio could not be loaded. Retry or read instead.')
+  }
+  return response.blob()
 }
 
 const allowedMediaUrl = (url: URL) => url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))
@@ -151,6 +187,8 @@ export default function SharedStoryPage() {
   const [sendReady, setSendReady] = useState('')
   const creatorForm = useRef<HTMLFormElement>(null)
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
+  const studioAudio = useRef<HTMLAudioElement>(null)
+  const [studioScene, setStudioScene] = useState(0)
   const objectUrls = useRef<string[]>([])
   const lastMediaRefresh = useRef(0)
   const creatorLocked = process.env.NEXT_PUBLIC_MUSE_CREATOR_LOCKED === 'true'
@@ -160,8 +198,9 @@ export default function SharedStoryPage() {
     ending: player ? player.solved || player.skipped : undefined,
     sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
       : creator?.ownerToken || 'new'
-  })
-  const interaction = useStoryInteraction(narrator.stop, dictationLanguage)
+  }, { browserOnly: true })
+  const interaction = useStoryInteraction(() => { studioAudio.current?.pause(); narrator.stop() }, dictationLanguage)
+  const beforeStudio = () => { narrator.stop(); interaction.stopRecording(); storedVoiceAudio.current?.pause() }
   const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
   const confirmShareReady = () => {
     if (creator && sendReady === creator.ownerToken && Date.parse(creator.expiresAt) > Date.now() && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
@@ -855,7 +894,7 @@ export default function SharedStoryPage() {
                   onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} language={player.language} />
                 {player.voice ? <section aria-label="A voice message for you">
                   <h3>{recipientText.voiceTitle}</h3>
-                  {voiceUrl ? <audio controls preload="metadata" src={voiceUrl} onPlay={() => { narrator.stop(); interaction.stopRecording() }} onError={() => { setVoiceUrl(''); setVoiceError(recipientText.voiceError) }} style={{ maxWidth: '100%' }} aria-label={recipientText.voiceTitle} /> : null}
+                  {voiceUrl ? <audio ref={storedVoiceAudio} controls preload="metadata" src={voiceUrl} onPlay={() => { studioAudio.current?.pause(); narrator.stop(); interaction.stopRecording() }} onError={() => { setVoiceUrl(''); setVoiceError(recipientText.voiceError) }} style={{ maxWidth: '100%' }} aria-label={recipientText.voiceTitle} /> : null}
                   {voiceError ? <p role="alert">{voiceError}</p> : null}
                   <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? recipientText.reloadVoice : recipientText.loadVoice}</button>
                 </section> : null}
@@ -913,6 +952,9 @@ export default function SharedStoryPage() {
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {player.scene.clue}</p>
                   </> : <details><summary>{recipientText.read}</summary><p style={{ lineHeight: 1.8 }}>{player.scene.body}</p><p><strong>{recipientText.clue}:</strong> {player.scene.clue}</p></details>}
                   <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
+                  <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
+                    disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
+                    load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
                   {player.sceneIndex + 1 < player.sceneCount ? <>
                     <h3>{recipientText.next}</h3>
                     <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -989,6 +1031,17 @@ export default function SharedStoryPage() {
               <h2>Listen before sending</h2>
               <p>Scenes and clues only; private answers and reveals excluded. No recipient progress is changed.</p>
               <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen to the whole story" beforeSpeak={interaction.stopRecording} />
+              {!creator.brief.adventure ? <>
+                <label>Studio preview scene<select value={Math.min(studioScene, creator.content.scenes.length - 1)} onChange={event => setStudioScene(Number(event.target.value))} style={fieldStyle}>
+                  {creator.content.scenes.map((scene, index) => <option key={index} value={index}>Scene {index + 1}: {scene.title}</option>)}
+                </select></label>
+                <StudioNarration key={`${creator.ownerToken}:${Math.min(studioScene, creator.content.scenes.length - 1)}`}
+                  sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
+                  disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
+                  check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, creatorCode, signal), sceneIndex)}
+                  generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, creatorCode, signal), sceneIndex)}
+                  load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: creator.ownerToken, preview: true, sceneIndex }, signal, creatorCode)} />
+              </> : <p>Studio recordings cover prepared stories only. Live AI turns use the separate device voice.</p>}
             </article>
             {creator.content.scenes.map((scene, index) => (
               <details key={index} style={cardStyle}>
@@ -1045,9 +1098,9 @@ export default function SharedStoryPage() {
                   <p>One private recording attached. Unlocks with the final reveal.</p>
                   <button type="button" disabled={busy || voiceUploading} onClick={() => void loadVoice(true)} style={buttonStyle}>Preview stored recording</button>
                   <button type="button" disabled={busy || voiceUploading} onClick={() => void removeVoice()} style={buttonStyle}>Remove stored recording</button>
-                  {voiceUrl ? <audio ref={storedVoiceAudio} controls src={voiceUrl} preload="metadata" aria-label="Stored voice preview" onPlay={() => narrator.stop()} onError={() => setVoiceError('Could not play this recording. Try reloading the preview.')} style={{ display: 'block', maxWidth: '100%', marginTop: 12 }} /> : null}
+                  {voiceUrl ? <audio ref={storedVoiceAudio} controls src={voiceUrl} preload="metadata" aria-label="Stored voice preview" onPlay={() => { studioAudio.current?.pause(); narrator.stop() }} onError={() => setVoiceError('Could not play this recording. Try reloading the preview.')} style={{ display: 'block', maxWidth: '100%', marginTop: 12 }} /> : null}
                 </> : null}
-                <GiftVoiceRecorder file={voiceFile} onChange={setVoiceFile} disabled={busy || voiceUploading} onActiveChange={setVoiceRecording} beforeRecord={() => { storedVoiceAudio.current?.pause(); narrator.stop(); interaction.stopRecording() }} />
+                <GiftVoiceRecorder file={voiceFile} onChange={setVoiceFile} disabled={busy || voiceUploading} onActiveChange={setVoiceRecording} beforeRecord={() => { studioAudio.current?.pause(); storedVoiceAudio.current?.pause(); narrator.stop(); interaction.stopRecording() }} />
                 {voiceError ? <p role="alert">{voiceError}</p> : null}
                 {voiceUploading ? <p role="status">Uploading your voice message privately...</p> : voiceFile ? <button type="button" disabled={busy || voiceRecording} onClick={() => void uploadVoice(creator, voiceFile)} style={primaryStyle}>{ownerVoice ? 'Upload replacement recording' : 'Attach recording'}</button> : null}
               </details>
@@ -1103,10 +1156,11 @@ export default function SharedStoryPage() {
                   ) : (
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
                       <a href={shareDetails.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={event => { if (!confirmShareReady()) event.preventDefault(); narrator.stop() }} style={{ ...buttonStyle, color: 'inherit' }}>Share on WhatsApp</a>
+                      <GiftCard key={playerLink} recipientUrl={shareDetails.url} expiresAt={creator.expiresAt} disabled={busy || sharing} />
                       {canDeviceShare ? <button disabled={busy || sharing} onClick={() => void shareOnDevice()} style={buttonStyle}>{sharing ? 'Opening sharing...' : 'Share with another app'}</button> : null}
                     </div>
                   )}
-                  <p>Confirm sending in your sharing app. Only the recipient link is shared, not private answers or reveals. Audio uses their device&apos;s voices.</p>
+                  <p>Confirm sending in your sharing app. Only the recipient link is shared, not private answers or reveals. Device voices vary; Studio audio is available only when separately prepared.</p>
                 </>
               ) : null}
               <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>

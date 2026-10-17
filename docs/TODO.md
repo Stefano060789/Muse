@@ -82,6 +82,25 @@ current MVP.
 
 ## Before public launch
 
+### Studio narration and physical gifts
+
+- [x] Separate free device voices from optional, privately cached prepared-scene
+      Studio audio; failures never silently downgrade to device speech
+- [x] Gate Studio generation behind operator configuration, explicit creator
+      consent, durable deduplication and a lifetime character reservation cap
+- [x] Use protected recipient/session/progress access and explicit Load then
+      native Play; keep live AI turns and private reveals out of Studio
+- [x] Add local-only QR gift-card rendering with an editable generic greeting,
+      expiry warning and no automatic private story content
+- [x] Clarify that text keepsakes survive expiry but are not interactive or
+      attachment backups; card links still expire and can be revoked
+- [ ] Apply the incremental hosted Studio SQL migration deliberately before
+      enabling; configure approved provider credentials, a conservative
+      character cap and provider-side billing limits (no paid activation yet)
+- [ ] Verify expiry cleanup and storage lifecycle in the hosted environment
+- [ ] Verify actual Safari/iPhone voice quality, explicit Load/Play, pause,
+      scene changes, QR camera scanning and print/Save as PDF on real devices
+
 ### Optional romance rollout
 
 - [x] Add Sweet / Spicy non-explicit romance to personal and shared creation,

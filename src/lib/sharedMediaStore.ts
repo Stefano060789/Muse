@@ -12,6 +12,7 @@ export type MediaUploadTarget = { method: 'PUT'; url: string; headers: Record<st
 export type MediaObjectStat = { size: number; head: Uint8Array; contentType?: string }
 export type MediaDelivery = { type: 'url'; url: string; expiresAt: string } | { type: 'file'; path: string }
 export interface SharedMediaStore {
+  write(key: string, bytes: Uint8Array, mime: 'audio/mpeg'): Promise<void>
   ready(requiredMime?: string): Promise<void>
   createUpload(record: SharedMediaRecord | SharedVoiceRecord, uploadSecret: string): Promise<MediaUploadTarget>
   stat(key: string): Promise<MediaObjectStat | null>
@@ -55,6 +56,11 @@ async function readHead(path: string): Promise<Uint8Array> {
 }
 
 export class LocalMediaStore implements SharedMediaStore {
+  async write(key: string, bytes: Uint8Array, _mime: 'audio/mpeg') {
+    const path = localMediaPath(key)
+    await fs.mkdir(resolve(path, '..'), { recursive: true, mode: 0o700 })
+    await fs.writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
+  }
   async ready(_requiredMime?: string) {
     await fs.mkdir(localMediaRoot(), { recursive: true, mode: 0o700 })
   }
@@ -104,13 +110,24 @@ export class LocalMediaStore implements SharedMediaStore {
 }
 
 export class SupabaseMediaStore implements SharedMediaStore {
+  async write(key: string, bytes: Uint8Array, mime: 'audio/mpeg') {
+    const { error } = await this.writeBucket.upload(checkedKey(key), bytes, {
+      contentType: mime, upsert: false, cacheControl: '0'
+    })
+    if (error) throw unavailable()
+  }
   private readonly origin: string
   private readonly bucket
+  private readonly writeBucket
   private readonly storage
   constructor(url: string, serviceKey: string) {
     this.origin = new URL(url).origin
     this.storage = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }).storage
     this.bucket = this.storage.from(SHARED_MEDIA_BUCKET)
+    this.writeBucket = createClient(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(15000) }) }
+    }).storage.from(SHARED_MEDIA_BUCKET)
   }
   async ready(requiredMime?: string) {
     const { data, error } = await this.storage.getBucket(SHARED_MEDIA_BUCKET)
@@ -118,6 +135,9 @@ export class SupabaseMediaStore implements SharedMediaStore {
       throw new SharedStoryError('Private media storage is not ready. Apply the Muse shared-story media migration and keep the Muse media bucket private.', 503)
     }
     if (requiredMime && !data.allowed_mime_types?.includes(requiredMime)) {
+      if (requiredMime === 'audio/mpeg') {
+        throw new SharedStoryError('Private Studio MP3 storage is not ready. Apply supabase/shared-story-studio.sql.', 503)
+      }
       throw new SharedStoryError('Private WAV storage is not ready. Apply supabase/shared-story-gifts.sql before creating a gift story.', 503)
     }
   }

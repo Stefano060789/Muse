@@ -1,7 +1,8 @@
 import type { AppProps } from 'next/app'
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode, useEffect } from 'react'
 import SiteFooter from '../components/SiteFooter'
 import AppInstallSupport from '../components/AppInstallSupport'
+import PageIllustration from '../components/PageIllustration'
 import '../styles/globals.css'
 
 type ErrorBoundaryState = {
@@ -58,11 +59,35 @@ class ClientErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   }
 }
 
-export default function App({ Component, pageProps }: AppProps) {
+function VisitBeacon() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const key = 'muse-site-visit-beacon'
+      const today = new Date().toISOString().slice(0, 10)
+      if (window.localStorage.getItem(key) === today) return
+      window.localStorage.setItem(key, today)
+      void fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'site-visit' })
+      })
+    } catch {
+      // Silent by design: analytics must not block page rendering.
+    }
+  }, [])
+  return null
+}
+
+export default function App({ Component, pageProps, router }: AppProps) {
   return (
     <ClientErrorBoundary>
       <AppInstallSupport />
-      <Component {...pageProps} />
+      <VisitBeacon />
+      <div className="muse-world">
+        {router.pathname !== '/' ? <PageIllustration pathname={router.pathname} /> : null}
+        <Component {...pageProps} />
+      </div>
       <SiteFooter />
     </ClientErrorBoundary>
   )

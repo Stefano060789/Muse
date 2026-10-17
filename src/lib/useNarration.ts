@@ -37,6 +37,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [cloudConsent, setCloudConsent] = useState(false)
+  const [deviceOnly, setDeviceOnly] = useState(false)
   const [preferenceNotice, setPreferenceNotice] = useState('')
   const [immersive, setImmersive] = useState<ImmersivePreferences>({ ...DEFAULT_IMMERSIVE_PREFERENCES })
   const [ambientNotice, setAmbientNotice] = useState('')
@@ -57,7 +58,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const mode = useRef<'browser' | 'audio' | null>(null)
   const paused = useRef(false)
   const pendingAdvance = useRef<(() => void) | null>(null)
-  const provider = !options.browserOnly && process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'browser'
+  const provider = !options.browserOnly && !deviceOnly && process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'browser'
   const aiStyle = NARRATION_STYLES.includes(metadata.narrationStyle as NarrationStyle) ? metadata.narrationStyle : undefined
   const style = styleOverride === 'auto' ? aiStyle || legacyNarrationStyle(mood) : styleOverride
   let inferredLanguage = 'en-US'
@@ -237,7 +238,10 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       next()
     }
     if (provider === 'browser' || !cloudConsent) {
-      if (provider !== 'browser') setNotice('Cloud narration needs your consent. Using free browser voices.')
+      if (provider !== 'browser') {
+        finish('Studio narration needs your consent. Choose device voice in Audio settings to listen without cloud generation.')
+        return
+      }
       await browser(); return
     }
     setStatus('loading')
@@ -274,8 +278,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       audio.current = null
       if (url.current) URL.revokeObjectURL(url.current)
       url.current = ''
-      setNotice('ElevenLabs narration is unavailable; falling back to your selected browser voice.')
-      await browser()
+      finish('Studio narration is unavailable. Retry, read instead, or explicitly choose device voice in Audio settings. No device voice was started.')
     }
   }
 
@@ -394,6 +397,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider,
     speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
     immersive, setImmersivePreference, ambientNotice, ambientKind, cloudConsent,
+    deviceOnly, setDeviceOnly: (value: boolean) => { stop(); setDeviceOnly(value); setCloudConsent(false) },
     setCloudConsent: (value: boolean) => { stop(); setCloudConsent(value) },
     source: styleOverride !== 'auto' ? 'Manual style' : aiStyle ? 'AI-selected style' : `Legacy ${mood ? 'mood' : 'story'} fallback (not AI-selected)`
   }

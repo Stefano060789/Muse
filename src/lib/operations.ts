@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { consumeOperation, storeOperationAlert, operationStatus } from './operationsStore'
 
-export const OPERATION_EVENTS = ['ai-budget-warning', 'ai-budget-exhausted', 'provider-failure', 'storage-failure', 'request-failure', 'client-render-failure'] as const
+export const OPERATION_EVENTS = ['ai-budget-warning', 'ai-budget-exhausted', 'provider-failure', 'storage-failure', 'request-failure', 'client-render-failure', 'site-visit', 'story-created'] as const
 export type OperationEvent = typeof OPERATION_EVENTS[number]
 
 export function dailyAiLimit() {

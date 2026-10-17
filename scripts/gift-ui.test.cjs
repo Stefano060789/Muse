@@ -71,6 +71,10 @@ async function mount(hash, player = null, owner = null) {
   const fetchMock = async (_url, options) => {
     const request = JSON.parse(options.body)
     requests.push(request)
+    if (request.action === 'studio-status' || request.action === 'studio-generate') return { ok: true, json: async () => ({ studio: {
+      available: true, reason: null, scenes: request.action === 'studio-generate' ? [{ sceneIndex: request.sceneIndex, status: 'ready' }] : []
+    } }) }
+    if (request.action === 'studio-audio') return { ok: true, blob: async () => new Blob(['synthetic audio'], { type: 'audio/mpeg' }) }
     if (request.action === 'reply') {
       requestCount++
       return { ok: requestCount > 1, json: async () => requestCount > 1 ? { sent: true } : { error: 'Test reply failure' } }
@@ -177,6 +181,7 @@ async function main() {
   assert.equal(gated.values.has('muse-shared-player:romance-fixture'), false, 'No session saved before consent')
   assert.equal(gated.button(romanceText.open).props.disabled, true)
   assert.equal(gated.nodes().some(node => node.type === '../components/NarrationControls'), false)
+  assert.equal(gated.nodes().some(node => node.type === '../components/StudioNarration'), false)
   gated.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
   await gated.flush()
   await gated.click(romanceText.open)
@@ -190,11 +195,31 @@ async function main() {
   const reopened = await mount('#play=romance-fixture', romanticPlayer)
   assert.equal(reopened.button(romanceText.open).props.disabled, true, 'Consent not restored on reopening')
   console.log('PASS romance gates even cover/narration, requires fresh explicit opt-in and declines without another request')
+  const studioPlayer = await mount('#play=studio-fixture', { ...player, solved: false, romance: 'sweet' })
+  studioPlayer.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+  await studioPlayer.flush()
+  await studioPlayer.click(romance.romanceCopy().open)
+  await studioPlayer.click(language.recipientCopy().openStory)
+  const recipientStudio = studioPlayer.nodes().find(node => node.type === '../components/StudioNarration')
+  assert.ok(recipientStudio)
+  assert.equal(recipientStudio.props.generate, undefined)
+  assert.equal(recipientStudio.props.check, undefined)
+  const audio = await recipientStudio.props.load(0, new AbortController().signal)
+  assert.equal(audio.type, 'audio/mpeg')
+  assert.deepEqual(studioPlayer.requests.at(-1), { action: 'studio-audio', token: 'studio-fixture', sessionToken: 'c'.repeat(64), sceneIndex: 0, romanceConfirmed: true })
+  console.log('PASS recipient Studio is gated behind fresh romance acceptance and cover, loads bytes with session, never exposes generation')
   const owner = await mount('#manage=fixture', null, {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
     content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2099-11-15T00:00:00.000Z'
   })
   assert.ok(owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'Management access is independent of pre-send checks')
+  const ownerStudio = owner.nodes().find(node => node.type === '../components/StudioNarration')
+  assert.ok(ownerStudio)
+  assert.deepEqual(await ownerStudio.props.check(0, new AbortController().signal), { enabled: true, ready: false, blocked: false })
+  assert.equal((await ownerStudio.props.generate(0, new AbortController().signal)).ready, true)
+  assert.deepEqual(owner.requests.at(-1), { action: 'studio-generate', token: 'fixture', sceneIndex: 0, consentVersion: 'test' })
+  await ownerStudio.props.load(0, new AbortController().signal)
+  assert.deepEqual(owner.requests.at(-1), { action: 'studio-audio', token: 'fixture', preview: true, sceneIndex: 0 })
   const rotateLabel = 'Replace recipient link (invalidates the previous one)'
   assert.equal(owner.nodes().some(node => node.type === 'button' && label(node) === rotateLabel), false)
   const check = owner.nodes().find(node => node.type === '../components/PreSendCheck')

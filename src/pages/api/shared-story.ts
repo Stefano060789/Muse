@@ -17,14 +17,15 @@ import { sharedMediaStore, type SharedMediaStore } from '../../lib/sharedMediaSt
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
 import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRomance'
+import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } from '../../lib/studioNarration'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply']
-const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview']
+const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
+const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function matches(secretValue: string, storedHash: string): boolean {
   const actual = Buffer.from(hash(secretValue), 'hex')
@@ -46,6 +47,7 @@ function parseCapability(value: unknown) {
 // Removes stored objects whose media rows were deleted (replacement, failure,
 // owner removal, story deletion or expiry). Failures stay queued for later.
 async function purgeMedia(db: StoryRepository, store?: SharedMediaStore, strict = false) {
+  if (!strict) await sweepStudioAudio(db, store)
   try {
     // Strict mode (before paid generation) only proves the media tables are reachable.
     const mediaKeys = await db.mediaPurgeQueue(strict ? 0 : 20)
@@ -58,6 +60,17 @@ async function purgeMedia(db: StoryRepository, store?: SharedMediaStore, strict 
   } catch (error) {
     if (strict) throw error
     console.error('Shared media cleanup deferred', error instanceof Error ? error.name : 'Unknown error')
+    await reportOperation('storage-failure')
+  }
+}
+
+async function sweepStudioAudio(db: StoryRepository, store?: SharedMediaStore) {
+  try {
+    await purgeStudioAudio(db, store)
+  } catch (error) {
+    // Keep legacy playback usable before the optional migration; never acknowledge
+    // failed object removal, so migrated installations retain their purge queue.
+    console.error('Studio audio cleanup deferred', error instanceof Error ? error.name : 'Unknown error')
     await reportOperation('storage-failure')
   }
 }
@@ -123,8 +136,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!['create', ...OWNER_ACTIONS, ...PLAYER_ACTIONS].includes(String(action))) {
       throw new SharedStoryError('Unsupported story action.')
     }
-    if (!PLAYER_ACTIONS.includes(String(action)) && !requireCreatorAccess(req, res)) return
-    if (action === 'create' || action === 'adventure') requireProviderConsent(body)
+    const studioPreview = action === 'studio-audio' && body.preview === true
+    if ((!PLAYER_ACTIONS.includes(String(action)) || studioPreview) && !requireCreatorAccess(req, res)) return
+    if (action === 'create' || action === 'adventure' || action === 'studio-generate') requireProviderConsent(body)
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
@@ -159,6 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         brief, content, answer_normalized: normalizeSharedAnswer(brief.solution),
         alternative_answers_normalized: (brief.alternativeAnswers ?? []).map(normalizeSharedAnswer), expires_at: expiresAt
       })
+      await reportOperation('story-created')
       return res.status(201).json({
         ownerToken: `${id}.${ownerKey}`, playToken: `${id}.${playKey}`, brief, content, expiresAt,
         media: null, voice: null, mediaRequired: !brief.message
@@ -166,8 +181,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const { id, key } = parseCapability(body.token)
     const db = database()
+    await sweepStudioAudio(db)
     const story = await db.findUnexpired(id)
-    const ownerAction = OWNER_ACTIONS.includes(String(action))
+    const ownerAction = OWNER_ACTIONS.includes(String(action)) || studioPreview
     if (!story || !matches(key, ownerAction ? story.owner_hash : story.play_hash)) {
       throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
     }
@@ -185,6 +201,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await db.delete(id)
       await purgeMedia(db)
       return res.status(200).json({ deleted: true })
+    }
+    if (action === 'studio-status' || action === 'studio-generate') {
+      await purgeStudioAudio(db)
+      const studio = action === 'studio-status' ? await studioStatus(db, story) :
+        await generateStudioScene(db, story, body.sceneIndex)
+      return res.status(200).json({ studio })
+    }
+    if (studioPreview) {
+      const audio = await readStudioAudio(db, story, body.sceneIndex)
+      res.setHeader('Content-Type', 'audio/mpeg')
+      res.setHeader('Content-Length', String(audio.length))
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.setHeader('Content-Disposition', 'inline')
+      return res.status(200).send(Buffer.from(audio))
     }
     if (action === 'manage') {
       if (story.brief.gift) await db.giftReady()
@@ -357,6 +387,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const ready = await db.mediaReady(id)
     const readyVoice = story.brief.gift ? await db.voiceReady(id) : null
+    if (action === 'studio-audio') {
+      if (!story.brief.message && !ready) throw new SharedStoryError('The creator is still finishing this story.', 409)
+      const audio = await readStudioAudio(db, story, body.sceneIndex, hash(sessionToken))
+      res.setHeader('Content-Type', 'audio/mpeg')
+      res.setHeader('Content-Length', String(audio.length))
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.setHeader('Content-Disposition', 'inline')
+      return res.status(200).send(Buffer.from(audio))
+    }
     if (action === 'media') {
       if (!story.brief.message && !ready) {
         throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
