@@ -22,6 +22,9 @@ const label = node => flatten(node.props?.children).filter(value => ['string', '
 async function main() {
   let cursor = 0, tree
   const slots = [], effects = [], requests = [], storage = new Map()
+  let loadedStory = null
+  let interactionRecordingTarget = ''
+  let stopRecordingCalls = 0, dictateCalls = 0
   const react = {
     useState(initial) {
       const i = cursor++
@@ -42,14 +45,17 @@ async function main() {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link' || id.startsWith('../components/')) return { __esModule: true, default: id }
-    if (id.endsWith('/story')) return { loadPersonalStory: () => null }
+    if (id.endsWith('/story')) return { loadPersonalStory: () => loadedStory }
     if (id.endsWith('/profile')) return { loadMuseProfile: () => null }
     if (id.endsWith('/storyLibrary')) return {}
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({ stop() {} }), NarrationButton: 'narration' }
-    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({ stopRecording() {} }) }
+    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({
+      recordingTarget: interactionRecordingTarget, ready: true, error: '',
+      stopRecording() { stopRecordingCalls++ }, dictate() { dictateCalls++ }
+    }) }
     throw new Error('Unexpected dependency: ' + id)
   }
   const browser = { addEventListener() {}, removeEventListener() {}, localStorage: {
@@ -122,6 +128,29 @@ async function main() {
   assert.ok(find('button', 'Sync saved progress (no AI call)'))
   await click('Abandon (no refund)')
   assert.equal(visible()[0].props.disabled, false, 'Abandoning pending preparation restores editing')
-  console.log('PASS personal wizard preserves fields across steps, never generates on navigation, retains consent/reset boundaries and surfaces failures')
+  loadedStory = {
+    id: 'saved-story', title: 'A quiet door', description: 'A small beginning.', mood: 'curious',
+    language: 'en-US', generation: 'ai', currentStep: 0, responses: [],
+    scenes: [{ title: 'The Door', body: 'A light glows.', question: 'Will you step inside?', choices: ['Enter'] },
+      { title: 'The Garden', body: 'A path opens.', question: 'Where next?', choices: ['Follow'] }]
+  }
+  interactionRecordingTarget = 'response'
+  slots.length = 0
+  effects.length = 0
+  await flush()
+  const activeConsent = nodes().filter(node => node.type === '../components/ExplicitConsent')
+  assert.equal(activeConsent.length, 1, 'An active story presents one AI consent prompt before responses')
+  activeConsent[0].props.onChange(true)
+  await flush()
+  nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Editable response')
+    .props.onChange({ target: { value: 'I step inside.' } })
+  await flush()
+  assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true,
+    'Editing response text does not make the story-wide consent prompt recur')
+  const stopsBefore = stopRecordingCalls
+  await click('Stop listening')
+  assert.equal(stopRecordingCalls, stopsBefore + 1, 'Stop listening explicitly ends the active recording')
+  assert.equal(dictateCalls, 0, 'Stop listening does not restart dictation')
+  console.log('PASS personal wizard preserves fields, presents one story-wide consent prompt, and explicitly stops dictation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

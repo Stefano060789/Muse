@@ -6,6 +6,7 @@ import { removeLibraryEntry } from '../lib/storyLibrary'
 import { loadMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
+import ReadAlongText from '../components/ReadAlongText'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
@@ -86,6 +87,12 @@ export default function StoryPage() {
   }, [])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
+  const sceneTitle = scene?.title.trim().replace(/\s+/g, ' ') || ''
+  const sceneBody = scene?.body.trim().replace(/\s+/g, ' ') || ''
+  const sceneQuestion = scene?.question.trim().replace(/\s+/g, ' ') || ''
+  const narrationText = scene ? `${sceneTitle}. ${sceneBody} ${sceneQuestion}` : ''
+  const sceneBodyStart = sceneTitle ? sceneTitle.length + 2 : 0
+  const sceneQuestionStart = sceneBodyStart + sceneBody.length + 1
 
   const requestStory = async (body: Record<string, unknown>): Promise<PersonalStory> => {
     const response = await fetch('/api/personal-story', {
@@ -159,7 +166,6 @@ export default function StoryPage() {
       return
     }
     const consentVersion = MUSE_AI_CONSENT_VERSION
-    setAiConsent(false)
     requestLock.current = true
     setIsGenerating(true)
     setStoryError('')
@@ -195,7 +201,6 @@ export default function StoryPage() {
       return
     }
     const consentVersion = sendsToAi ? MUSE_AI_CONSENT_VERSION : undefined
-    if (sendsToAi) setAiConsent(false)
     requestLock.current = true
     setStoryError('')
     setIsGenerating(true)
@@ -267,9 +272,9 @@ export default function StoryPage() {
     }
   }
 
-  const toggleRecording = () => {
-    interaction.dictate('response', value => { setResponseDraft(value.slice(0, story?.journey ? 800 : 600)); setAiConsent(false) })
-  }
+  const toggleRecording = () => isRecording
+    ? stopRecording()
+    : interaction.dictate('response', value => { setResponseDraft(value.slice(0, story?.journey ? 800 : 600)) })
 
   return (
     <>
@@ -344,7 +349,7 @@ export default function StoryPage() {
               <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} />
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my need and story settings will be sent to Muse&apos;s configured AI provider to generate this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days.
+                I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
               </ExplicitConsent>
               <details style={{ marginTop: '1rem' }}>
                 <summary>Privacy and limits</summary>
@@ -365,19 +370,19 @@ export default function StoryPage() {
               <h1 lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
               <p lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
               <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
+              {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished ? (
+                <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+                  I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
+                </ExplicitConsent>
+              ) : null}
               <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
                 <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
-                <h2 style={{ margin: '0.5rem 0 1rem' }}>{scene?.title}</h2>
-                <p className="atelier-prose">{scene?.body}</p>
-                <NarrationButton narrator={narrator} text={scene ? `${scene.title}. ${scene.body} ${scene.question}` : ''} beforeSpeak={stopRecording} />
+                <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></h2>
+                <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></p>
+                <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} />
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
-                <h3 style={{ marginTop: '2rem' }}>{story.journey ? 'What do you do or say?' : scene?.question}</h3>
-                {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) ? (
-                  <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                    I understand that this new response is sent to Muse&apos;s configured AI provider to generate the next part of my story, which is kept on Muse&apos;s server for up to 30 days.
-                  </ExplicitConsent>
-                ) : null}
+                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} />}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>Each choice uses one AI attempt.</p>
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
@@ -386,7 +391,7 @@ export default function StoryPage() {
                   {!story.journey.choices?.length ? <p>Sync progress to load actions.</p> : null}
                 </> : <>
                 <label>Editable response
-                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => { setResponseDraft(event.target.value); setAiConsent(false) }} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
                 <label>Dictation language <select value={dictationLanguage} disabled={isGenerating || isRecording} onChange={event => setDictationLanguage(event.target.value)}>
                   {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}<option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option>

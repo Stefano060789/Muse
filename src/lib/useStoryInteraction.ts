@@ -9,6 +9,7 @@ type Recognition = {
   onaudiostart: (() => void) | null
   onerror: ((event: { error: string }) => void) | null
   onresult: ((event: RecognitionEvent) => void) | null
+  abort: () => void
   start: () => void
   stop: () => void
 }
@@ -26,7 +27,13 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   const stopRecording = () => {
     const recognition = recognitionRef.current
     recognitionRef.current = null
-    recognition?.stop()
+    if (recognition) {
+      try { recognition.abort() } catch {
+        try { recognition.stop() } catch {
+          setError('Could not stop voice recording. Close this page or disable microphone access to end dictation.')
+        }
+      }
+    }
     setRecordingTarget('')
     setReady(false)
   }
@@ -34,7 +41,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   useEffect(() => () => {
     const recognition = recognitionRef.current
     recognitionRef.current = null
-    recognition?.stop()
+    recognition?.abort()
   }, [])
 
   const dictate = (target: string, onTranscript: (value: string) => void, singlePhrase = false) => {

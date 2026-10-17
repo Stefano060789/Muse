@@ -34,9 +34,11 @@ export function NarrationButton({ narrator, text, beforeSpeak, label = 'Listen t
       <audio src={narrator.cloudAudioUrl} controls preload="metadata" aria-label={label}
         onPlay={event => { beforeSpeak?.(); narrator.onCloudPlay(event.currentTarget) }}
         onPause={event => narrator.onCloudPause(event.currentTarget)}
+        onTimeUpdate={event => narrator.onCloudTimeUpdate(event.currentTarget)}
         onEnded={event => narrator.onCloudEnd(event.currentTarget)}
         onError={event => narrator.onCloudError(event.currentTarget)}
         style={{ display: 'block', width: '100%' }} />
+      <button type="button" style={buttonStyle} aria-label={`Stop narration: ${label}`} onClick={narrator.stop}>Stop narration</button>
     </div> : current ? <PlaybackButtons narrator={narrator} label={label} />
       : <button type="button" style={buttonStyle} disabled={!text.trim() || elsewhere} title={elsewhere ? 'Stop the current narration before listening to this.' : undefined}
         onClick={() => { beforeSpeak?.(); void narrator.speak(text, context) }}>{label}</button>}

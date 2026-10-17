@@ -26,6 +26,7 @@ try {
     constructor() { current = this }
     start() {}
     stop() { this.stopped = true }
+    abort() { this.aborted = true }
   } }
   const { useStoryInteraction } = require(path.join(output, 'useStoryInteraction.js'))
   const hook = useStoryInteraction(undefined, 'it-IT')
@@ -48,9 +49,17 @@ try {
   assert.match(states[1].value, /could not connect/)
   hook.dictate('setting', value => { text = value })
   assert.equal(current.continuous, true)
+  hook.stopRecording()
+  assert.equal(current.aborted, true, 'Stop listening aborts recognition immediately')
+  assert.equal(states[0].value, '', 'Stop listening clears the active recording target immediately')
+  current.onend()
+  assert.equal(states[1].value, '', 'Intentional stop does not surface a no-speech error')
+  current.onerror({ error: 'not-allowed' })
+  assert.equal(states[1].value, '', 'Intentional stop ignores late recognition errors')
   const before = text
   old.onresult({ results: [[{ transcript: 'stale result' }]] })
   assert.equal(text, before)
+  hook.dictate('recipientName', () => {}, true)
   current.onerror({ error: 'not-allowed' })
   assert.match(states[1].value, /access was denied/)
   hook.dictate('recipientName', () => {}, true)

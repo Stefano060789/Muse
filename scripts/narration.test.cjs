@@ -221,7 +221,12 @@ async function main() {
       assert.equal(hook.spoken[0].voice.lang, 'de-DE')
       assert.equal(hook.spoken[0].rate, NARRATION_PRESETS.warm.rate)
       assert.equal(hook.render().speaking, true)
+      hook.spoken[0].onboundary({ charIndex: 4 })
+      assert.equal(hook.render().textPosition, 4)
+      const normalized = 'Die Tür öffnet sich. Eine neue Geschichte beginnt.'
       hook.spoken[0].onend()
+      hook.spoken[1].onboundary({ charIndex: 2 })
+      assert.equal(hook.render().textPosition, normalized.indexOf(hook.spoken[1].text) + 2)
       hook.spoken[1].onend()
       assert.equal(hook.render().speaking, false)
       assert.equal(hook.render().loading, false)
@@ -363,9 +368,12 @@ async function main() {
       assert.equal(hook.render().cloudAudioUrl, 'blob:google-recording')
       assert.equal(hook.render().busy, false)
       assert.equal(hook.spoken.length, 0)
-      const player = { src: 'blob:google-recording', volume: 1, pause() {}, play() {} }
+      const player = { src: 'blob:google-recording', volume: 1, duration: 100, currentTime: 0, pause() {}, play() {} }
       hook.render().onCloudPlay(player)
       assert.equal(hook.render().speaking, true)
+      player.currentTime = 35
+      hook.render().onCloudTimeUpdate(player)
+      assert.equal(hook.render().textPosition, Math.floor('An original scene.'.length * 0.35))
       hook.render().onCloudPause(player)
       assert.equal(hook.render().paused, true)
       hook.render().stop()

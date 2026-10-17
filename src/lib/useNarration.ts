@@ -34,6 +34,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [selectedVoice, setSelectedVoice] = useState('')
   const [status, setStatus] = useState<NarrationStatus>('idle')
   const [activeText, setActiveText] = useState('')
+  const [textPosition, setTextPosition] = useState(0)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [cloudConsent, setCloudConsent] = useState(false)
@@ -130,13 +131,14 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   }, [])
   const stop = useCallback(() => {
     release()
-    if (mounted.current) { setStatus('idle'); setActiveText(''); setCloudAudioUrl('') }
+    if (mounted.current) { setStatus('idle'); setActiveText(''); setTextPosition(0); setCloudAudioUrl('') }
   }, [release])
   const fail = (message = '') => {
     release()
     if (!mounted.current) return
     setStatus('idle')
     setActiveText('')
+    setTextPosition(0)
     setCloudAudioUrl('')
     if (message) setError(message)
   }
@@ -187,6 +189,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     if (!text.trim()) { setError('There is no text to narrate.'); return }
     const id = active.current
     setActiveText(text)
+    setTextPosition(0)
     setStatus('loading')
     const valid = () => mounted.current && active.current === id
     const finish = (message = '') => { if (valid()) fail(message) }
@@ -214,7 +217,9 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       }
       if (!valid()) return
       const chunks = narrationChunks(text)
+      const normalizedText = text.trim().replace(/\s+/g, ' ')
       let index = 0
+      let searchFrom = 0
       const next = () => {
         if (!valid()) return
         clearTimer()
@@ -222,7 +227,11 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         if (paused.current) { pendingAdvance.current = next; return }
         pendingAdvance.current = null
         if (index >= chunks.length) { finish(); return }
-        const current = new SpeechSynthesisUtterance(chunks[index++])
+        const chunk = chunks[index++]
+        const foundAt = normalizedText.indexOf(chunk, searchFrom)
+        const chunkStart = foundAt < 0 ? searchFrom : foundAt
+        searchFrom = chunkStart + chunk.length
+        const current = new SpeechSynthesisUtterance(chunk)
         utterance.current = current
         current.voice = voice
         current.lang = voice.lang
@@ -230,8 +239,22 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         current.rate = delivery.rate
         current.pitch = delivery.pitch
         current.volume = delivery.volume
-        current.onstart = () => { if (valid() && !paused.current) setStatus('speaking') }
-        current.onend = () => { if (valid() && utterance.current === current) next() }
+        current.onstart = () => {
+          if (valid() && !paused.current) {
+            setStatus('speaking')
+            setTextPosition(chunkStart)
+          }
+        }
+        current.onboundary = event => {
+          if (!valid() || utterance.current !== current || !Number.isFinite(event.charIndex)) return
+          setTextPosition(Math.min(text.length, chunkStart + event.charIndex))
+        }
+        current.onend = () => {
+          if (valid() && utterance.current === current) {
+            setTextPosition(Math.min(text.length, chunkStart + chunk.length))
+            next()
+          }
+        }
         current.onerror = () => finish('Browser narration failed. You can retry or keep reading.')
         armTimer(45000, () => finish('Browser narration did not finish. Please retry or select another voice.'))
         try { window.speechSynthesis.speak(current) } catch { finish('Could not start browser narration.') }
@@ -411,14 +434,20 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   return {
     voices, supported, styleOverride, languageOverride, selectedVoice, style, language, voice,
     status, speaking: status === 'speaking', loading: status === 'loading', paused: status === 'paused', busy: status !== 'idle',
-    activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider, cloudAudioUrl,
+    activeText, textPosition, canPause, error, notice, preferenceNotice, voiceNotice, provider, cloudAudioUrl,
     onCloudPlay: (player: HTMLAudioElement) => {
       if (!currentCloudPlayer(player)) return
       audio.current = player
       mode.current = 'audio'
       paused.current = false
       player.volume = immersiveRef.current.voiceVolume
+      setTextPosition(0)
       setStatus('speaking')
+    },
+    onCloudTimeUpdate: (player: HTMLAudioElement) => {
+      if (!currentCloudPlayer(player) || audio.current !== player || !Number.isFinite(player.duration) || player.duration <= 0) return
+      const progress = Math.min(1, Math.max(0, player.currentTime / player.duration))
+      setTextPosition(Math.floor(activeText.length * progress))
     },
     onCloudPause: (player: HTMLAudioElement) => {
       if (!currentCloudPlayer(player) || mode.current !== 'audio' || audio.current !== player) return
