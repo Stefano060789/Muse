@@ -2,8 +2,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useState } from 'react'
 import { SAMPLE_STORY, sampleAnswerMatches } from '../lib/sampleStory'
-import { useNarration } from '../lib/useNarration'
-import { NarrationButton } from '../components/NarrationControls'
+import sampleAudio from '../lib/sampleAudio.json'
+import SampleNarration from '../components/SampleNarration'
 
 const button = { padding: '0.85rem 1.1rem', minHeight: 48, borderRadius: 28, border: '1px solid #d9cfc5', cursor: 'pointer', fontSize: '1rem' }
 
@@ -14,14 +14,13 @@ export default function DemoPage() {
   const [revealed, setRevealed] = useState(false)
   const [hint, setHint] = useState(false)
   const [feedback, setFeedback] = useState('')
-  const narrator = useNarration({ narrationLanguage: 'en-US', narrationStyle: 'warm' }, undefined, {}, { browserOnly: true })
   const current = SAMPLE_STORY.scenes[scene]
+  const recording = scene === 0 ? sampleAudio['scene-1'] : sampleAudio['scene-2']
   return <main className="atelier-page">
     <Head><title>Muse - Try a sample story</title><meta name="description" content="Try an original, fictional Muse mystery. No account, AI generation or private recipient data." /><meta name="referrer" content="no-referrer" /></Head>
     <div className="atelier-shell atelier-shell--narrow">
       <div className="atelier-reading">
       <p style={{ fontSize: '0.9rem' }}>Sample story - fictional, handcrafted, and free to try. This is not a real gift or an AI-generated result.</p>
-      {narrator.error ? <p role="alert">{narrator.error}</p> : null}
       {!opened ? <section className="atelier-card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
         <p>A little adventure for you</p><h1 style={{ fontSize: 'clamp(2rem, 7vw, 3rem)' }}>{SAMPLE_STORY.title}</h1>
         <p style={{ lineHeight: 1.8 }}>{SAMPLE_STORY.dedication}</p>
@@ -29,18 +28,18 @@ export default function DemoPage() {
         <p>About two minutes. Nothing plays automatically.</p>
       </section> : revealed ? <section className="atelier-card">
         <h1>Your sample surprise</h1><p style={{ lineHeight: 1.8 }}>{SAMPLE_STORY.message}</p>
-        <NarrationButton narrator={narrator} text={SAMPLE_STORY.message} label="Listen to the message" />
+        <SampleNarration key={sampleAudio.message.src} src={sampleAudio.message.src} label="Listen to the message" />
         <p>This is how a thoughtful gift can end. Your own story can include a private message, photo, video or voice recording.</p>
         <Link href="/shared#new" style={{ ...button, display: 'inline-block', background: '#2d2926', color: 'white', textDecoration: 'none' }}>Make a story for someone</Link>
         <p><Link href="/story" style={{ color: 'inherit' }}>Or try a story for yourself</Link></p>
-        <button style={button} onClick={() => { narrator.stop(); setOpened(false); setScene(0); setRevealed(false); setHint(false); setAnswer(''); setFeedback('') }}>Try the sample again</button>
+        <button style={button} onClick={() => { setOpened(false); setScene(0); setRevealed(false); setHint(false); setAnswer(''); setFeedback('') }}>Try the sample again</button>
       </section> : <section className="atelier-card">
         <p>Scene {scene + 1} of {SAMPLE_STORY.scenes.length}</p><h1>{current.title}</h1>
         <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{current.body}</p><p style={{ lineHeight: 1.7 }}><strong>Clue:</strong> {current.clue}</p>
-        <NarrationButton narrator={narrator} text={`${current.title}. ${current.body} ${current.clue}`} label="Listen to this scene" />
-        {scene === 0 ? <p><button style={{ ...button, background: '#2d2926', color: 'white' }} onClick={() => { narrator.stop(); setScene(1) }}>Follow the lanterns</button></p> : <form onSubmit={event => {
+        <SampleNarration key={recording.src} src={recording.src} label="Listen to this scene" />
+        {scene === 0 ? <p><button style={{ ...button, background: '#2d2926', color: 'white' }} onClick={() => setScene(1)}>Follow the lanterns</button></p> : <form onSubmit={event => {
           event.preventDefault()
-          if (sampleAnswerMatches(answer)) { narrator.stop(); setRevealed(true); setFeedback('') }
+          if (sampleAnswerMatches(answer)) { setRevealed(true); setFeedback('') }
           else setFeedback('Not quite. Think of a meal shared outside. You can try again or open the sample reveal below.')
         }}>
           <label htmlFor="sample-answer">What has Sam planned?</label>
@@ -51,10 +50,10 @@ export default function DemoPage() {
         <details style={{ margin: '1.5rem 0' }}><summary>Need a little help?</summary>
           <button style={{ ...button, marginTop: 12 }} onClick={() => setHint(true)}>Show a hint</button>
           {hint ? <p>The answer is a picnic. This sample is here to show how Muse works, not to test you.</p> : null}
-          <p><button style={button} onClick={() => { narrator.stop(); setRevealed(true) }}>Open the sample reveal</button></p>
+          <p><button style={button} onClick={() => setRevealed(true)}>Open the sample reveal</button></p>
         </details>
       </section>}
-      <p style={{ fontSize: '0.9rem', lineHeight: 1.6, marginTop: '2rem' }}>This demo makes no story-generation requests and saves no playthrough. Optional narration uses your device/browser speech service; voice availability varies.</p>
+      <p style={{ fontSize: '0.9rem', lineHeight: 1.6, marginTop: '2rem' }}>This demo makes no story-generation requests and saves no playthrough. Optional narration plays public, prerecorded Google WaveNet audio. Listening sends no story text to Google and uses no paid generation allowance.</p>
       </div>
     </div>
   </main>

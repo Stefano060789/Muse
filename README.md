@@ -10,7 +10,8 @@ Google requires server-only credentials, an explicit character budget and durabl
 storage: Supabase on Vercel, or Node.js 24 with private disk locally.
 It is disabled until configured; no paid setup or
 provider calls happen automatically. Live gift turns and final reveals are not
-included in prepared scene audio. The handcrafted demo still uses device voices.
+included in prepared scene audio. The handcrafted demo uses public, prerecorded
+Google WaveNet MP3s, with no generation request or device speech during playback.
 
 Muse is a personalized storytelling prototype with three areas:
 
@@ -49,9 +50,11 @@ private gift-management links. Personal touches (`/myself`) remains optional
 inside story creation, not a separate primary destination. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
 **Try a 2-minute sample** opens an original, fictional
-two-scene gift at `/demo`: no AI generation, paid TTS, story storage, or account.
-Sample narration always uses browser speech, even when cloud TTS is configured.
-Browser speech availability and connectivity depend on the device.
+two-scene gift at `/demo`: no runtime AI generation, paid TTS, story storage, or account.
+Sample narration uses three public, prerecorded Google WaveNet MP3s (two scenes
+and the reveal). Native controls require a Play tap; errors never switch to device
+speech. Internet is required to load recordings. See the Google setup guide for
+regenerating these assets when sample text changes.
 
 Muse includes a web manifest, original home-screen icons and a production-only,
 network-only service worker. Install using the browser prompt/menu; on iPhone,

@@ -1,0 +1,20 @@
+{
+  "scene-1": {
+    "src": "/sample-audio/scene-1-b5c7b301d731.mp3",
+    "textHash": "51512450c3d4bc599907c5895e109a5a32beb93085bd4b3afdbe7a24e862c548",
+    "audioHash": "b5c7b301d731d7b8207aee0ea206d4944e00ccb39dafa8e997a90079e740cae1",
+    "bytes": 167808
+  },
+  "scene-2": {
+    "src": "/sample-audio/scene-2-baef2cae0639.mp3",
+    "textHash": "cbcd00f79eea6da24c6358b238bdf8925a306f41f15c2501f029fc8a3ad8588f",
+    "audioHash": "baef2cae0639deeb1e902b7da2b2e79a683564817c500eccee90b32c10e66e28",
+    "bytes": 202752
+  },
+  "message": {
+    "src": "/sample-audio/message-7016cac30c48.mp3",
+    "textHash": "d66c5dff6bd06aee23dc6f57eb1c8aef27fdb1537de771f37878b2b3637cb08f",
+    "audioHash": "7016cac30c487afa579cd54a82d20ce851fa9aa4071977c0a0247c5795eb8f70",
+    "bytes": 63936
+  }
+}

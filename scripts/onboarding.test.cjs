@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+const { createHash } = require('node:crypto')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
 let passed = 0
@@ -63,6 +64,7 @@ function component(relative, extra = {}) {
   return { render, nodes, find }
 }
 const sample = load('src/lib/sampleStory.ts')
+const sampleAudio = require('../src/lib/sampleAudio.json')
 check('optional romance defaults stay compact and mode changes reset acknowledgment', () => {
   const changes = [], confirmations = []
   const options = component('src/components/RomanceOptions.tsx')
@@ -86,24 +88,65 @@ check('sample is original static fiction with bounded answer handling', () => {
   for (const answer of ['', 'not a picnic', '<script>']) assert.equal(sample.sampleAnswerMatches(answer), false)
 })
 check('demo can be completed and replayed with no API or storage dependencies', () => {
-  let browserOnly
   const demo = component('src/pages/demo.tsx', {
     '../lib/sampleStory': sample,
-    '../lib/useNarration': { useNarration(_metadata, _mood, _context, options) { browserOnly = options.browserOnly; return { stop() {}, error: '' } } },
-    '../components/NarrationControls': { NarrationButton: 'narration' }
+    '../lib/sampleAudio.json': sampleAudio,
+    '../components/SampleNarration': { __esModule: true, default: 'sample-narration' }
   })
   demo.render()
-  assert.equal(browserOnly, true, 'Demo must not call a paid cloud narration provider')
+  assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
   demo.find('button', 'Open sample story').props.onClick(); demo.render()
+  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-1'].src)
   demo.find('button', 'Follow the lanterns').props.onClick(); demo.render()
+  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-2'].src)
   demo.nodes().find(node => node.props.id === 'sample-answer').props.onChange({ target: { value: 'wrong' } }); demo.render()
   demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
   assert.ok(demo.nodes().some(node => node.props.role === 'status'))
   demo.nodes().find(node => node.props.id === 'sample-answer').props.onChange({ target: { value: 'A picnic' } }); demo.render()
   demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
   assert.ok(demo.nodes().some(node => node.props.href === '/shared#new'))
+  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
   demo.find('button', 'Try the sample again').props.onClick(); demo.render()
   assert.ok(demo.find('button', 'Open sample story'))
+  assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
+  demo.find('button', 'Open sample story').props.onClick(); demo.render()
+  demo.find('button', 'Open the sample reveal').props.onClick(); demo.render()
+  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
+})
+check('sample recordings match current public text and committed MP3 content', () => {
+  const hash = value => createHash('sha256').update(value).digest('hex')
+  const entries = [
+    ...sample.SAMPLE_STORY.scenes.map((scene, index) => [`scene-${index + 1}`, `${scene.title}. ${scene.body} Clue: ${scene.clue}`]),
+    ['message', sample.SAMPLE_STORY.message]
+  ]
+  assert.deepEqual(Object.keys(sampleAudio), entries.map(([name]) => name))
+  for (const [name, text] of entries) {
+    const recording = sampleAudio[name]
+    assert.equal(recording.textHash, hash(text), 'Regenerate audio when sample text changes')
+    assert.match(recording.src, /^\/sample-audio\/[a-z0-9-]+\.mp3$/)
+    const audio = fs.readFileSync(path.join(root, 'public', recording.src))
+    assert.equal(audio.length, recording.bytes)
+    assert.equal(hash(audio), recording.audioHash)
+    assert.ok(recording.src.endsWith(`-${recording.audioHash.slice(0, 12)}.mp3`))
+    assert.ok(audio.length > 1000)
+    assert.equal(audio[0], 255)
+    assert.equal(audio[1] & 224, 224)
+  }
+})
+check('sample audio requires a Play tap, surfaces failures and never switches to device speech', () => {
+  const player = component('src/components/SampleNarration.tsx')
+  const props = { src: sampleAudio['scene-1'].src, label: 'Listen to this scene' }
+  player.render(props)
+  const audio = player.nodes().find(node => node.type === 'audio')
+  assert.equal(audio.props.src, props.src)
+  assert.equal(audio.props.controls, true)
+  assert.equal(audio.props.preload, 'none')
+  assert.equal(audio.props.autoPlay, undefined)
+  assert.equal(audio.props.loop, undefined)
+  audio.props.onError(); player.render(props)
+  assert.ok(player.nodes().some(node => node.props.role === 'alert' && text(node).includes('has not switched to a device voice')))
+  audio.props.onLoadedMetadata(); player.render(props)
+  assert.equal(player.nodes().filter(node => node.props.role === 'alert').length, 0)
 })
 check('pre-send requires complete preview, answer and attachment checks and resets for uploads', () => {
   let ready

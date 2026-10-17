@@ -120,7 +120,32 @@ session, story-expiry, link-revocation and romance-content gates.
 and clues only, not live recipient adventure turns or the private final reveal.
 The final message can use the sender's uploaded voice recording. Optional device
 speech is clearly labeled and is not the Google listening experience.
-The handcrafted demo remains free device narration; it is not a Google voice demo.
+### Free sample
+
+The handcrafted `/demo` plays public, prerecorded Google WaveNet MP3s for both
+scenes and the final message. Native controls require a Play tap, and a failed
+recording never falls back to device speech. Visitors need no account or consent
+to send text to Google: playback serves static files from Muse and makes no
+synthesis request or character reservation.
+
+After changing `src/lib/sampleStory.ts`, regenerate the recordings once using
+private Google credentials and an explicitly approved budget:
+
+```powershell
+$env:NEXT_PUBLIC_NARRATION_PROVIDER='google'
+$env:MUSE_GOOGLE_TTS_BUDGET_CHARACTERS='100000'
+# Use the intended durable budget store, including Supabase settings on hosted Muse.
+node scripts\prepare-sample-audio.cjs
+npm run test:onboarding
+```
+
+The script loads `.env.local` without overriding supplied environment settings.
+It uses the same shared budget/cache as other narration, then writes only public
+sample audio to `public/sample-audio` and content hashes to
+`src/lib/sampleAudio.json`. Commit both generated outputs. Generation uses budget
+once per uncached recording; visitors' repeated listening does not. Tests reject
+stale sample text, missing assets and altered recordings. Never put private
+stories, credentials or recipient recordings in this public asset directory.
 
 ## 4. Verify before launch
 
