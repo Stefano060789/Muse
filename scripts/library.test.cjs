@@ -359,11 +359,9 @@ try {
     assert.ok(!page.includes('fetch('))
     assert.ok(page.includes('selectPersonalStory(id)'))
   })
-  check('home, personal and shared pages expose library and canonical shared persistence', () => {
-    for (const filename of ['index.tsx', 'story.tsx', 'shared.tsx']) {
-      const page = fs.readFileSync(path.join(root, 'src', 'pages', filename), 'utf8')
-      assert.ok(page.includes('href="/library"'))
-    }
+  check('shared navigation exposes saved stories and shared persistence remains canonical', () => {
+    const navigation = fs.readFileSync(path.join(root, 'src', 'components', 'SiteNavigation.tsx'), 'utf8')
+    assert.ok(navigation.includes("href: '/library', label: 'Saved stories'"))
     const sharedPage = fs.readFileSync(path.join(root, 'src', 'pages', 'shared.tsx'), 'utf8')
     assert.ok(sharedPage.includes('saveLibraryCreatorStory(restored)'))
     assert.ok(sharedPage.includes("removeLibraryEntry('shared', creator.ownerToken)"))

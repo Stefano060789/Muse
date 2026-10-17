@@ -80,6 +80,7 @@ async function mount(hash, player = null, owner = null) {
       return { ok: requestCount > 1, json: async () => requestCount > 1 ? { sent: true } : { error: 'Test reply failure' } }
     }
     if (request.action === 'manage') return { ok: true, json: async () => ({ ...owner, voice: { mime: 'audio/wav', size: 32044 }, replies: [{ message: 'A voluntary thanks', createdAt: '2026-10-15T00:00:00.000Z' }], media: null }) }
+    if (request.action === 'progress') return { ok: true, json: async () => ({ progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } }) }
     if (request.action === 'voice-start') return { ok: true, json: async () => ({ uploadId: 'test-upload', upload: { method: 'PUT', url: '/api/upload', headers: {} } }) }
     if (request.action === 'voice-finish') return { ok: true, json: async () => ({ voice: { mime: 'audio/wav', size: 32044 } }) }
     if (request.action === 'open' && player?.romance && request.romanceConfirmed !== true) {
@@ -156,6 +157,7 @@ async function main() {
     gift: { occasion: 'birthday', dedication: 'A note', allowReply: true }
   }
   const recipient = await mount('#play=fixture', player)
+  assert.equal(recipient.nodes().find(node => node.type === '../components/SiteNavigation').props.recipient, true, 'Recipient menu stays minimal')
   assert.ok(recipient.button(language.recipientCopy().openStory))
   assert.equal(recipient.nodes().some(node => node.props.id === 'gift-reply'), false)
   await recipient.click(language.recipientCopy().openStory)
@@ -235,8 +237,19 @@ async function main() {
   const initialRequests = owner.requests.length
   await owner.flush()
   assert.equal(owner.requests.length, initialRequests, 'No background reply polling')
+  const progressPanel = owner.nodes().find(node => node.type === '../components/GiftProgress')
+  assert.ok(progressPanel)
+  const progress = await progressPanel.props.load()
+  assert.deepEqual(progress, { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 })
+  assert.deepEqual(owner.requests.at(-1), { action: 'progress', token: 'fixture' })
   await owner.click('Refresh replies')
   assert.ok(owner.nodes().some(node => label(node) === 'A voluntary thanks'))
   console.log('PASS owner recording upload and manual-only private replies are wired')
+  owner.nodes().find(node => node.type === '../components/SiteNavigation').props.onCreateGift()
+  await owner.flush()
+  assert.equal(owner.browser.location.hash, '#new')
+  assert.equal(owner.nodes().some(node => node.type === '../components/StudioNarration'), false, 'Create a gift leaves management and starts a draft')
+  assert.equal(owner.field('brief-creatorName').props.value, '', 'New gift does not copy private sender fields')
+  console.log('PASS Create a gift menu starts a blank gift from management')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

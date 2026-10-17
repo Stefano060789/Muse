@@ -4,6 +4,7 @@ import { requireCreatorAccess } from '../../lib/creatorAccess'
 import { apiSafety, reserveAiAttempt, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { requireProviderConsent } from '../../lib/providerConsent'
+import { synthesizeGoogleNarration } from '../../lib/googleNarration'
 
 export const config = { api: { bodyParser: { sizeLimit: '64kb' } } }
 
@@ -14,27 +15,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER !== 'elevenlabs') {
+  const provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER
+  if (provider !== 'elevenlabs' && provider !== 'google') {
     return res.status(503).json({ error: 'Provider narration is disabled. Use browser narration.' })
   }
   if (!await apiSafety(req, res)) return
   if (!requireCreatorAccess(req, res)) return
   try { requireProviderConsent(req.body) } catch {
-    return res.status(400).json({ error: 'Cloud narration requires consent to send text to ElevenLabs and use a paid attempt.' })
+    return res.status(400).json({ error: `Cloud narration requires consent to send text to ${provider === 'google' ? 'Google' : 'ElevenLabs'} and use a paid attempt.` })
   }
   const apiKey = process.env.ELEVEN_API_KEY
   const voiceId = process.env.ELEVEN_VOICE_ID
   const text = String(req.body?.text || '').trim()
   const mood = String(req.body?.mood || '').trim()
   let style = legacyNarrationStyle(mood)
+  let language = 'en-US'
   try {
     const metadata = parseNarrationMetadata({
       narrationStyle: req.body?.narrationStyle ?? style,
       narrationLanguage: req.body?.narrationLanguage ?? 'en-US'
     }, true)
     style = metadata.narrationStyle!
+    language = metadata.narrationLanguage!
   } catch {
     return res.status(400).json({ error: 'Invalid narration style or language.' })
+  }
+
+  if (provider === 'google') {
+    try {
+      const audio = await synthesizeGoogleNarration(req.body?.text, language, style, { reserveAttempt: reserveAiAttempt })
+      res.setHeader('Content-Type', 'audio/mpeg')
+      return res.status(200).send(Buffer.from(audio))
+    } catch (error) {
+      if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('provider-failure')
+      return res.status(error instanceof SharedStoryError ? error.status : 503).json({
+        error: error instanceof SharedStoryError ? error.message : 'Google narration is unavailable.',
+        code: error instanceof SharedStoryError && 'code' in error ? error.code : 'google-provider-failure'
+      })
+    }
   }
 
   if (!apiKey || !voiceId) {

@@ -1,5 +1,17 @@
 # Muse
 
+## Google WaveNet narration
+
+For lower-cost multilingual MP3 narration, follow
+[the Google Cloud setup guide](docs/GOOGLE-NARRATION.md).
+Personal stories use consented server-generated recordings; prepared story gifts
+let senders generate scene audio once and recipients replay it without generation.
+Google requires server-only credentials, an explicit character budget and durable
+storage: Supabase on Vercel, or Node.js 24 with private disk locally.
+It is disabled until configured; no paid setup or
+provider calls happen automatically. Live gift turns and final reveals are not
+included in prepared scene audio. The handcrafted demo still uses device voices.
+
 Muse is a personalized storytelling prototype with three areas:
 
 - **Myself:** a browser-local profile entered by typing or voice.
@@ -28,9 +40,15 @@ The full product definition lives in four documents:
 
 ### Simple start and app installation
 
-The home screen starts with **A story for me** and **A story for someone**.
-Myself is optional, not an onboarding requirement; the existing local library
-remains one tap away. **Try a free sample** opens an original, fictional
+The same primary menu appears across Muse: **Home**, **Create a story**
+(`/story`), **Create a gift** (`/shared#new`), and **Saved stories** (`/library`).
+It sits above decorative artwork, highlights the current area, and uses a
+two-column menu on phones. Gift recipients retain a quiet, brand-only header.
+Saved stories groups **Stories for me** and **Gifts for others**, including
+private gift-management links. Personal touches (`/myself`) remains optional
+inside story creation, not a separate primary destination. Plans, sample,
+help and legal pages are available in the footer; creator tools stay unlisted.
+**Try a 2-minute sample** opens an original, fictional
 two-scene gift at `/demo`: no AI generation, paid TTS, story storage, or account.
 Sample narration always uses browser speech, even when cloud TTS is configured.
 Browser speech availability and connectivity depend on the device.
@@ -137,7 +155,8 @@ never a silent replacement when cloud audio fails.
 Studio is a separate, opt-in recording for **prepared stories**, not live
 adventure turns or final reveals. The creator chooses a scene, checks
 availability and separately consents before preparing its title, body and clue
-with ElevenLabs. No generation runs on page load. Recipients can only load an
+with Google Cloud when the Google provider is selected, or ElevenLabs in the
+legacy configuration. No generation runs on page load. Recipients can only load an
 existing recording for a reached scene. **Load Studio audio** fetches private
 bytes; the recipient then taps the native player's **Play**, avoiding an
 autoplay assumption after Safari's asynchronous fetch. Replays use the cache,
@@ -147,8 +166,10 @@ already downloaded cannot be recalled.
 Generation stays disabled unless all server-only settings are present:
 
 - `MUSE_STUDIO_NARRATION_ENABLED=true`
-- `ELEVEN_API_KEY` and `ELEVEN_VOICE_ID`
-- `MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS`: an explicit positive integer
+- Google: `NEXT_PUBLIC_NARRATION_PROVIDER=google`, `GOOGLE_TTS_API_KEY` and
+  `MUSE_GOOGLE_TTS_BUDGET_CHARACTERS`, with the storage setup in the Google guide.
+- Legacy ElevenLabs: `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` and
+  `MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS`, an explicit positive integer
   lifetime reservation cap, shared across stories. This is **not a euro cap**;
   check provider pricing and set provider-side billing limits too.
 
@@ -166,8 +187,9 @@ including expired links. A five-minute storage grace period protects late
 in-flight writes. Physical removal can wait for another request; schedule the
 same purge during idle periods if a predictable cleanup cadence is required.
 
-The legacy generic `/api/tts` path remains separate for older personal flows;
-it is not this cached recipient solution. Do not enable that route as a
+The `/api/tts` path serves consented personal Google narration, with a private
+cache and durable global budget. Its legacy ElevenLabs mode remains separate;
+it is not this cached recipient solution. Do not enable that legacy mode as a
 production replacement for Studio. No credentials, spending settings or paid
 provider calls were enabled by implementing these controls.
 Run `npm run test:studio`, `npm run test:narration` and `npm run test:gateway`.
@@ -256,7 +278,7 @@ accounting and verified payment integration are required before paid launch.
 2. Use Node.js 24 LTS and set `STORY_STORAGE=sqlite`,
    `LLM_PROVIDER=ANTHROPIC`, `LLM_MODEL=claude-haiku-5-5` and your private
    `ANTHROPIC_API_KEY`. Supabase, Neon and Stripe are not required for local
-   story testing. ElevenLabs is optional; browser narration remains available.
+   story testing. Cloud narration is optional; browser narration remains available.
 3. Install dependencies with `npm install`.
 4. Start the development server with `npm run dev`.
 5. Open `http://localhost:3000`.
@@ -443,7 +465,7 @@ invalid settings or storage failures do not silently fall back.
 - Claude Haiku 5.5 for My Story and Shared Story (OpenAI/Groq optional)
 - Separate creator-management and recipient-play capabilities; no sign-in
 - Server-side answer checking and a final message returned only when solved
-- Device narration and separately prepared, private ElevenLabs Studio audio;
+- Device narration and separately prepared, private Google/ElevenLabs Studio audio;
   failures never silently switch voices
 - GitHub Actions production-build workflow
 
@@ -515,7 +537,7 @@ Old self-contained `/couples?share=...` links are explicitly retired;
 
 The entire creator brief, including the answer and final message, is sent
 to the configured provider (Claude Haiku by default; OpenAI/Groq when selected).
-Narration text is sent to ElevenLabs when configured; browser
+Narration text is sent to Google Cloud or ElevenLabs when selected and consented; browser
 dictation can use the browser vendor's speech service. Do not include
 sensitive third-party personal data. Shared Story does not read or forward
 the creator's local Myself profile automatically.
@@ -537,10 +559,22 @@ return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 
 Created shared stories stay in this browser's Story Library independently of
 recipient progress. The Shared Stories section offers management, recipient-link
-copying, brief reuse and expiry dates. It does not claim a recipient has started,
-solved or skipped: no identity-based tracking or aggregate status dashboard has
-been introduced. Browser entries are not account sync or backups; server expiry
-still applies.
+copying, brief reuse and expiry dates. In private gift management, **Recipient
+progress** offers manual Load/Refresh: opened browser playthroughs, still in
+progress, completed by solving, revealed without solving, and the furthest
+prepared scene reached. Live adventures show outcome counts, not a scene-based
+percentage. Reaching the final scene does not mean the mystery was solved.
+These are anonymous browser sessions, not unique people or proof of reading:
+opening a link counts even before opening its gift cover; another browser or
+cleared storage may count again. Counts include earlier recipient links for the
+same story, and unfinished never means failed. Recipient pages disclose this.
+The owner-only API requires the private management capability and creator access;
+it never exposes identifiers, answers or private messages in the summary.
+It uses existing session data, no extra AI calls, no polling and no new migration
+(the existing puzzle-help migration supplying `skipped` is required on Supabase).
+Browser entries are not account sync or backups; server expiry still applies.
+Validate with `npm run test:progress`, `npm run test:sqlite`, `npm run test:shared`
+and `npm run test:gift-experience`.
 
 The creator chooses **Solve to unlock** (default, including older stories) or
 **Allow a skip** before generation. Recipient **Need help?** explains same-browser
@@ -725,8 +759,8 @@ continuations still use bounded visited scenes). No raw profile or unbounded cha
 is included. Existing saved template stories remain playable locally;
 new generation failures do not replace them with an undisclosed template.
 
-Audio remains a separate optional interaction using the existing ElevenLabs
-or browser voice path; Haiku produces text, not speech.
+Audio remains a separate optional interaction using Google WaveNet, legacy
+ElevenLabs or explicit device voices; Haiku produces text, not speech.
 
 ## Adaptive browser narration for local testing
 
@@ -930,7 +964,7 @@ Apply `supabase/operations.sql` after the existing journey/media migrations
 **before deploying this release**. Missing operational storage fails closed:
 no provider call is made without a durable reservation.
 
-- All paid story requests and enabled ElevenLabs requests share
+- All paid story requests and generic cloud narration cache misses share
   `MUSE_AI_DAILY_ATTEMPT_CAP` (default 100, allowed 1-100) across instances.
   Failed calls count. The 80% warning and exhaustion events appear in server
   logs and `/operations`, protected by the creator access code.
@@ -953,7 +987,7 @@ no provider call is made without a durable reservation.
   checkbox, enforced by a versioned field on the server before any paid
   reservation. Consent is not stored. Reading, hints, guessing and deletion do
   not require AI consent. Enabled cloud narration has a separate, session-only
-  opt-in to send spoken text to ElevenLabs and consume a paid attempt.
+  opt-in to send spoken text to the configured Google/ElevenLabs provider.
 - My Story deletion removes the capability-bound server journey and dependent
   requests, without resetting aggregate spending/abuse allowances. Shared Story
   management deletion continues to invalidate links and queue media cleanup.

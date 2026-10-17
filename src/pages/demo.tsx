@@ -19,7 +19,6 @@ export default function DemoPage() {
   return <main className="atelier-page">
     <Head><title>Muse - Try a sample story</title><meta name="description" content="Try an original, fictional Muse mystery. No account, AI generation or private recipient data." /><meta name="referrer" content="no-referrer" /></Head>
     <div className="atelier-shell atelier-shell--narrow">
-      <header className="atelier-header"><Link href="/" className="atelier-brand">Muse</Link><Link href="/library">Story Library</Link></header>
       <div className="atelier-reading">
       <p style={{ fontSize: '0.9rem' }}>Sample story - fictional, handcrafted, and free to try. This is not a real gift or an AI-generated result.</p>
       {narrator.error ? <p role="alert">{narrator.error}</p> : null}

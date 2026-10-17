@@ -151,12 +151,9 @@ export default function MyselfPage() {
       <Head><title>Muse — Personal touches</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
       <main className="atelier-page">
         <div className="atelier-shell atelier-shell--narrow">
-          <header className="atelier-header">
-            <Link href="/" className="atelier-brand">Muse</Link>
-            <Link href="/" style={{ color: '#2d2926', textDecoration: 'none' }}>Home</Link>
-          </header>
+          <Link href="/story">Back to story creation</Link>
           <p className="atelier-eyebrow">Personal touches · Optional</p>
-          <h1 className="atelier-title">The little things that make you, you.</h1>
+          <h1 className="atelier-title">Personal touches</h1>
           <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Saving does not send them to AI; include your latest five in My Story only if you choose. Browser storage is readable text, so keep this browser private.</p>
           <p style={{ maxWidth: 620, lineHeight: 1.7 }}>Speaking uses speech recognition from your browser or device and may be processed by an online speech service. Review the text before using it.</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>

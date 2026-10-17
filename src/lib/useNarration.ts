@@ -26,7 +26,7 @@ function readStoredPreferences(): { preferences: NarrationPreferences; notice: s
   return { preferences: parsed.preferences, notice: parsed.invalid ? STORAGE_INVALID_NOTICE : '' }
 }
 
-export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}, options: { browserOnly?: boolean } = {}) {
+export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}, options: { browserOnly?: boolean; creatorCode?: string } = {}) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [supported, setSupported] = useState<boolean | null>(null)
   const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>(DEFAULT_NARRATION_PREFERENCES.style)
@@ -38,6 +38,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [notice, setNotice] = useState('')
   const [cloudConsent, setCloudConsent] = useState(false)
   const [deviceOnly, setDeviceOnly] = useState(false)
+  const [cloudAudioUrl, setCloudAudioUrl] = useState('')
   const [preferenceNotice, setPreferenceNotice] = useState('')
   const [immersive, setImmersive] = useState<ImmersivePreferences>({ ...DEFAULT_IMMERSIVE_PREFERENCES })
   const [ambientNotice, setAmbientNotice] = useState('')
@@ -58,7 +59,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const mode = useRef<'browser' | 'audio' | null>(null)
   const paused = useRef(false)
   const pendingAdvance = useRef<(() => void) | null>(null)
-  const provider = !options.browserOnly && !deviceOnly && process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'browser'
+  const configuredProvider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER
+  const provider = !options.browserOnly && !deviceOnly && (configuredProvider === 'elevenlabs' || configuredProvider === 'google') ? configuredProvider : 'browser'
   const aiStyle = NARRATION_STYLES.includes(metadata.narrationStyle as NarrationStyle) ? metadata.narrationStyle : undefined
   const style = styleOverride === 'auto' ? aiStyle || legacyNarrationStyle(mood) : styleOverride
   let inferredLanguage = 'en-US'
@@ -128,13 +130,14 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   }, [])
   const stop = useCallback(() => {
     release()
-    if (mounted.current) { setStatus('idle'); setActiveText('') }
+    if (mounted.current) { setStatus('idle'); setActiveText(''); setCloudAudioUrl('') }
   }, [release])
   const fail = (message = '') => {
     release()
     if (!mounted.current) return
     setStatus('idle')
     setActiveText('')
+    setCloudAudioUrl('')
     if (message) setError(message)
   }
 
@@ -247,18 +250,30 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setStatus('loading')
     const controller = new AbortController()
     request.current = controller
-    armTimer(20000, () => controller.abort())
+    armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
     try {
       const response = await fetch('/api/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.creatorCode ? { 'x-muse-creator-code': options.creatorCode } : {}) },
         body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION }), signal: controller.signal
       })
-      if (!response.ok) throw new Error('Provider unavailable')
+      if (!response.ok) {
+        const unavailable = `Narration provider unavailable (HTTP ${response.status}).`
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error(unavailable)
+        let body: unknown
+        try { body = await response.json() } catch { throw new Error(unavailable) }
+        throw new Error(body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error.length <= 500 ? body.error : unavailable)
+      }
       const blob = await response.blob()
       if (!valid()) return
+      if (!blob.size || !blob.type.startsWith('audio/')) throw new Error('Narration returned an invalid audio file.')
       clearTimer()
       request.current = null
       url.current = URL.createObjectURL(blob)
+      if (provider === 'google') {
+        setCloudAudioUrl(url.current)
+        setStatus('idle')
+        return
+      }
       const player = new Audio(url.current)
       audio.current = player
       player.onended = () => finish()
@@ -270,7 +285,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         mode.current = 'audio'
         setStatus('speaking')
       }
-    } catch {
+    } catch (cause) {
       if (!valid()) return
       clearTimer()
       request.current = null
@@ -278,7 +293,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       audio.current = null
       if (url.current) URL.revokeObjectURL(url.current)
       url.current = ''
-      finish('Studio narration is unavailable. Retry, read instead, or explicitly choose device voice in Audio settings. No device voice was started.')
+      finish(`${cause instanceof Error ? cause.message : 'Studio narration is unavailable.'} Read instead, or explicitly choose device voice in Audio settings. No device voice was started.`)
     }
   }
 
@@ -391,10 +406,27 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     else if (remembered !== voice) voiceNotice = `Your chosen browser voice "${name}" (${remembered.lang}) does not match ${language}. Using ${fallback} instead.`
   }
 
+  const currentCloudPlayer = (player: HTMLAudioElement) => mounted.current && Boolean(url.current) && (player.currentSrc || player.src) === url.current
+
   return {
     voices, supported, styleOverride, languageOverride, selectedVoice, style, language, voice,
     status, speaking: status === 'speaking', loading: status === 'loading', paused: status === 'paused', busy: status !== 'idle',
-    activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider,
+    activeText, canPause, error, notice, preferenceNotice, voiceNotice, provider, cloudAudioUrl,
+    onCloudPlay: (player: HTMLAudioElement) => {
+      if (!currentCloudPlayer(player)) return
+      audio.current = player
+      mode.current = 'audio'
+      paused.current = false
+      player.volume = immersiveRef.current.voiceVolume
+      setStatus('speaking')
+    },
+    onCloudPause: (player: HTMLAudioElement) => {
+      if (!currentCloudPlayer(player) || mode.current !== 'audio' || audio.current !== player) return
+      paused.current = true
+      setStatus('paused')
+    },
+    onCloudEnd: (player: HTMLAudioElement) => { if (currentCloudPlayer(player)) stop() },
+    onCloudError: (player: HTMLAudioElement) => { if (currentCloudPlayer(player)) fail('This browser could not play the recording. Load it again or keep reading.') },
     speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
     immersive, setImmersivePreference, ambientNotice, ambientKind, cloudConsent,
     deviceOnly, setDeviceOnly: (value: boolean) => { stop(); setDeviceOnly(value); setCloudConsent(false) },

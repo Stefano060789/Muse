@@ -162,12 +162,13 @@ check('service worker claims scope but does not intercept/cache private requests
   assert.equal(activated, true)
   events.fetch({ request: { url: 'https://muse.example/shared#play=PRIVATE' }, respondWith() { throw new Error('Private requests must remain network-only') } })
 })
-check('home exposes two clear creation paths, demo and optional personalization', () => {
+check('home exposes two clear creation paths, demo and saved stories', () => {
   const home = component('src/pages/index.tsx', { '../components/InstallApp': { __esModule: true, default: 'install' } })
   home.render()
-  for (const href of ['/story', '/shared#new', '/demo', '/myself', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
-  assert.ok(home.nodes().some(node => node.props.href === '/story' && text(node) === 'Create my story'))
-  assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Make a story gift'))
+  for (const href of ['/story', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
+  assert.ok(home.nodes().some(node => node.props.href === '/story' && text(node) === 'Create a story'))
+  assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create a gift'))
+  assert.equal(home.nodes().some(node => node.props.href === '/myself'), false, 'Optional personalization belongs inside story creation')
   assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
   assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
   assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')

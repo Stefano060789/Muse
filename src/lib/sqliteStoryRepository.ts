@@ -4,6 +4,7 @@ import type { DatabaseSync as SqliteDatabase } from 'node:sqlite'
 import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import type { StoryRepository, StoredStory, PlayerState, RequestKind } from './storyRepository'
 import type { StudioRecord, StudioRequest, StudioResult } from './studioNarration'
+import type { SharedStoryProgress } from './sharedStoryProgress'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
 import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
@@ -112,6 +113,17 @@ END;`
 
 export class SqliteStoryRepository implements StoryRepository {
   private readonly filename: string
+  async progress(storyId: string): Promise<SharedStoryProgress> {
+    return this.transaction(db => {
+      const row = db.prepare(`SELECT count(*) AS opened,
+        coalesce(sum(CASE WHEN solved = 0 AND skipped = 0 THEN 1 ELSE 0 END), 0) AS in_progress,
+        coalesce(sum(CASE WHEN solved = 1 THEN 1 ELSE 0 END), 0) AS solved,
+        coalesce(sum(CASE WHEN solved = 0 AND skipped = 1 THEN 1 ELSE 0 END), 0) AS skipped,
+        max(current_scene) AS furthest_scene FROM shared_story_sessions WHERE story_id = ?`).get(storyId)!
+      return { opened: Number(row.opened), inProgress: Number(row.in_progress), solved: Number(row.solved),
+        skipped: Number(row.skipped), furthestScene: row.furthest_scene === null ? null : Number(row.furthest_scene) }
+    })
+  }
   async studio(request: StudioRequest): Promise<StudioResult> {
     return this.transaction((db, now) => {
       const result: StudioResult = { records: [], reserved: false, keys: [] }

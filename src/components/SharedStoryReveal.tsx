@@ -43,6 +43,9 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
         onLoadedMetadata={event => { if (resumeAt.current > 0 && resumeAt.current < event.currentTarget.duration) event.currentTarget.currentTime = resumeAt.current }}
         aria-label={language ? copy.surpriseVideo : "The creator's surprise video"}
         style={{ display: 'block', width: '100%', maxHeight: '70vh', borderRadius: 12, margin: '12px 0', background: '#000' }} />)}
-    {text && <NarrationButton narrator={narrator} text={text} label={language ? copy.playMessage : 'Play the final message'} beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />}
+    {text && <details><summary>Read aloud with device voice (optional)</summary>
+      <p>This uses your device voice, not the prepared scene recording.</p>
+      <NarrationButton narrator={narrator} text={text} label={language ? copy.playMessage : 'Play the final message'} beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />
+    </details>}
   </section>
 }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto'
 import { SharedStoryError } from './sharedStory'
 import type { StoredStory, StoryRepository } from './storyRepository'
 import { sharedMediaStore, type SharedMediaStore } from './sharedMediaStore'
+import { googleNarrationConfiguration, googleVoice, synthesizeGoogleNarration } from './googleNarration'
 
 // A reservation is never retried or refunded: an interrupted provider request may
 // already have been billed. The budget is lifetime characters, not a dollar quote.
@@ -21,6 +22,12 @@ export type StudioRequest =
 export type StudioResult = { records: StudioRecord[]; reserved: boolean; keys: string[] }
 
 export function studioConfiguration() {
+  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
+    const google = googleNarrationConfiguration()
+    return { available: process.env.MUSE_STUDIO_NARRATION_ENABLED === 'true' && google.available,
+      budget: google.budget, voice: 'google-wavenet', key: '',
+      reason: process.env.MUSE_STUDIO_NARRATION_ENABLED !== 'true' ? 'disabled' : google.reason }
+  }
   const raw = process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS
   const budget = raw && /^[1-9]\d*$/.test(raw) ? Number(raw) : 0
   const voice = process.env.ELEVEN_VOICE_ID || ''
@@ -44,6 +51,9 @@ export function studioScene(story: StoredStory, sceneIndex: unknown) {
 
 export async function studioStatus(db: StoryRepository, story: StoredStory) {
   const config = studioConfiguration()
+  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
+    googleVoice(story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
+  }
   const { records } = await db.studio({ operation: 'status', storyId: story.id })
   return {
     available: config.available && !story.brief.adventure,
@@ -98,17 +108,23 @@ export async function generateStudioScene(db: StoryRepository, story: StoredStor
   }
   const config = studioConfiguration()
   if (!config.available) throw new SharedStoryError('Studio generation is disabled or lacks credentials and an explicit character budget.', 503)
+  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
+    googleVoice(story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
+  }
   await store.ready('audio/mpeg')
   const record: StudioRecord = {
     story_id: story.id, scene_index: sceneIndex,
-    fingerprint: createHash('sha256').update(JSON.stringify([text, STUDIO_MODEL, config.voice, 'mp3_44100_128'])).digest('hex'),
+    fingerprint: createHash('sha256').update(JSON.stringify([text, process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google-wavenet' : STUDIO_MODEL,
+      config.voice, story.content.narrationLanguage, story.content.narrationStyle, 'mp3_44100_128'])).digest('hex'),
     object_key: `stories/${story.id}/${randomUUID()}.mp3`, status: 'pending',
     characters: text.length, size: 0, created_at: new Date().toISOString()
   }
   const reservation = await db.studio({ operation: 'reserve', record, budget: config.budget })
   if (!reservation.reserved) throw new SharedStoryError('This scene already has a Studio reservation. Refresh its status.', 409)
   try {
-    const audio = await synthesize(text, config)
+    const audio = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google'
+      ? await synthesizeGoogleNarration(text, story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
+      : await synthesize(text, config)
     await store.write(record.object_key, audio, 'audio/mpeg')
     await db.studio({ operation: 'finish', record: { ...record, size: audio.length } })
   } catch (error) {

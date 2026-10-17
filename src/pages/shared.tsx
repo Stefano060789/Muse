@@ -1,5 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import SiteNavigation from '../components/SiteNavigation'
+import PageIllustration from '../components/PageIllustration'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { SHARED_STORY_DURATIONS, type SharedStoryBrief, type SharedStoryPlayer } from '../lib/sharedStory'
 import { latestCreatorStory, loadStoryLibrary, removeLibraryEntry, saveLibraryCreatorStory, type CreatorStory } from '../lib/storyLibrary'
@@ -14,6 +16,8 @@ import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
 import GiftCard from '../components/GiftCard'
+import GiftProgress from '../components/GiftProgress'
+import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 import StudioNarration, { type StudioSceneStatus } from '../components/StudioNarration'
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
@@ -261,11 +265,11 @@ export default function SharedStoryPage() {
         const reuseOwner = fragment.get('reuse')
         if (reuseOwner) {
           const source = libraryResult.library.entries.find(entry => entry.kind === 'shared' && entry.id === reuseOwner)
-          if (source?.kind !== 'shared') throw new Error('This brief is not saved in this browser. Reopen it from its original Story Library.')
+          if (source?.kind !== 'shared') throw new Error('This brief is not saved in this browser. Reopen it from Saved stories.')
           setBrief(source.story.brief)
           setAssistanceHintsText((source.story.brief.assistanceHints ?? []).join('\n'))
           setAlternativeAnswersText((source.story.brief.alternativeAnswers ?? []).join('\n'))
-          setNotice('Brief copied from Story Library. Review it before preparing a new story. Previous links and progress are unchanged; attach any media again.')
+          setNotice('Brief copied from Saved stories. Review it before preparing a new story gift. Previous links and progress are unchanged; attach any media again.')
           try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
           setDraftReady(true)
           setCreatorStep(0)
@@ -397,7 +401,7 @@ export default function SharedStoryPage() {
     setUpload(idleUpload)
     setAiConsent(false)
     setError('')
-    setNotice('Your previous story is in Story Library. Its recipient link and progress are unchanged.')
+    setNotice('Your previous story gift is in Saved stories. Its recipient link and progress are unchanged.')
     objectUrls.current.forEach(url => URL.revokeObjectURL(url))
     objectUrls.current = []
     window.history.replaceState(null, '', '/shared#new')
@@ -774,7 +778,7 @@ export default function SharedStoryPage() {
     )
   }
 
-  const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} label={player ? recipientText.playScene : undefined} beforeSpeak={interaction.stopRecording} />
+  const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} label="Use device voice (quality varies)" beforeSpeak={interaction.stopRecording} />
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const playerLink = shareDetails?.url || ''
@@ -807,21 +811,14 @@ export default function SharedStoryPage() {
   return (
     <main className="atelier-page">
       <Head>
-        <title>Muse - Shared Story</title>
+        <title>{playToken ? 'Muse - A story gift for you' : creator ? 'Muse - Manage your gift' : 'Muse - Create a gift'}</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
       </Head>
+      <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} onCreateGift={creator ? () => startNewStory() : undefined} />
+      <PageIllustration pathname="/shared" />
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
-        <header className="atelier-header" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: '2.5rem' }}>
-          <Link href="/" className="atelier-brand">Muse</Link>
-          {!playToken ? <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <Link href="/myself" style={{ color: 'inherit' }}>Personal touches</Link>
-            <Link href="/story" style={{ color: 'inherit' }}>My Story</Link>
-            <Link href="/shared" style={{ color: 'inherit' }}>Shared Story</Link>
-            <Link href="/library" style={{ color: 'inherit' }}>Story Library</Link>
-          </nav> : null}
-        </header>
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {creatorLocked && !playToken ? <section style={cardStyle} aria-label="Private creator access">
@@ -868,6 +865,7 @@ export default function SharedStoryPage() {
           </section>
         ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
           <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
+            <p lang="en" dir="ltr">The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. <Link href="/privacy">Privacy</Link></p>
             {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
               <p className="atelier-eyebrow">{recipientText.madeForYou}</p>
               <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
@@ -920,7 +918,10 @@ export default function SharedStoryPage() {
               {player.adventure ? <article style={cardStyle}>
                 <h2>{player.adventure.turn ? recipientText.adventureContinues : player.scene.title}</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.adventure.turn?.narration || player.scene.body}</p>
-                <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={interaction.stopRecording} />
+                <details><summary>Device voice (optional, quality varies)</summary>
+                  <p>Prepared cloud recordings do not cover live adventure turns. This option uses your phone&apos;s voice, not Google narration.</p>
+                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={interaction.stopRecording} />
+                </details>
                 <p>{recipientText.adventureBudget(player.adventure.actionsRemaining, player.adventure.budgetRemaining, player.adventure.budget)}</p>
                 <p>{recipientText.actionCost}</p>
                 {player.adventure.turn ? <section aria-label="Adventure state">
@@ -951,10 +952,12 @@ export default function SharedStoryPage() {
                     <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {player.scene.clue}</p>
                   </> : <details><summary>{recipientText.read}</summary><p style={{ lineHeight: 1.8 }}>{player.scene.body}</p><p><strong>{recipientText.clue}:</strong> {player.scene.clue}</p></details>}
-                  <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
                   <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
                     disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
                     load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
+                  <details><summary>Device voice (optional, quality varies)</summary>
+                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
+                  </details>
                   {player.sceneIndex + 1 < player.sceneCount ? <>
                     <h3>{recipientText.next}</h3>
                     <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -1019,7 +1022,7 @@ export default function SharedStoryPage() {
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
             </div>
-            <p>Sent stories stay active. Reopen them from <Link href="/library">Story Library</Link>.</p>
+            <p>Sent story gifts stay active. Reopen them from <Link href="/library">Saved stories</Link>.</p>
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
             <StoryKeepsake story={{ title: creator.content.title, creatorName: creator.brief.creatorName, recipientName: creator.brief.recipientName, dedication: creator.brief.gift?.dedication, scenes: creator.content.scenes.map(scene => ({ title: scene.title, body: scene.body })), message: creator.brief.message }} />
@@ -1105,9 +1108,14 @@ export default function SharedStoryPage() {
                 {voiceUploading ? <p role="status">Uploading your voice message privately...</p> : voiceFile ? <button type="button" disabled={busy || voiceRecording} onClick={() => void uploadVoice(creator, voiceFile)} style={primaryStyle}>{ownerVoice ? 'Upload replacement recording' : 'Attach recording'}</button> : null}
               </details>
             </article>
+            <GiftProgress key={creator.ownerToken} sceneCount={creator.content.scenes.length} adventure={Boolean(creator.brief.adventure)}
+              load={async () => {
+                const result = await request<{ progress: SharedStoryProgress }>({ action: 'progress', token: creator.ownerToken }, creatorCode)
+                return result.progress
+              }} />
             {creator.brief.gift?.allowReply ? <details style={cardStyle}>
               <summary>Private replies ({replies.length})</summary>
-              <p>Only messages recipients choose to send. No identities, read receipts or completion tracking.</p>
+              <p>Only messages recipients choose to send. Replies are separate from the anonymous progress overview above; recipient identities are not verified.</p>
               <button type="button" disabled={busy} style={buttonStyle} onClick={() => void refreshReplies()}>Refresh replies</button>
               {!replies.length ? <p>No replies yet.</p> : replies.map((reply, index) => <article key={index} style={{ borderTop: '1px solid #d9cfc5', marginTop: 12 }}>
                 <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reply.message}</p>
@@ -1180,7 +1188,8 @@ export default function SharedStoryPage() {
         ) : (
           <section>
             <p className="atelier-eyebrow">A story to give</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Your idea, their discovery.</h1>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift</h1>
+            <p className="atelier-subtitle">Make a story for someone else. They follow the clues to discover your personal surprise.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>

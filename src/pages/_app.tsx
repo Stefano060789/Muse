@@ -3,6 +3,7 @@ import { Component, type ErrorInfo, type ReactNode, useEffect } from 'react'
 import SiteFooter from '../components/SiteFooter'
 import AppInstallSupport from '../components/AppInstallSupport'
 import PageIllustration from '../components/PageIllustration'
+import SiteNavigation from '../components/SiteNavigation'
 import '../styles/globals.css'
 
 type ErrorBoundaryState = {
@@ -85,7 +86,10 @@ export default function App({ Component, pageProps, router }: AppProps) {
       <AppInstallSupport />
       <VisitBeacon />
       <div className="muse-world">
-        {router.pathname !== '/' ? <PageIllustration pathname={router.pathname} /> : null}
+        {!['/shared', '/couples'].includes(router.pathname) ? <>
+          <SiteNavigation pathname={router.pathname} />
+          {router.pathname !== '/' ? <PageIllustration pathname={router.pathname} /> : null}
+        </> : null}
         <Component {...pageProps} />
       </div>
       <SiteFooter />

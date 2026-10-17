@@ -10,10 +10,6 @@ export default function BillingPage() {
     </Head>
     <main className="atelier-page">
       <div className="atelier-shell">
-        <header className="atelier-header">
-          <Link href="/" className="atelier-brand">Muse</Link>
-          <Link href="/library" style={{ color: 'inherit', padding: '0.75rem 0' }}>Story Library</Link>
-        </header>
         <p className="atelier-eyebrow">Room for more stories</p>
         <h1 className="atelier-title">Plans &amp; Billing</h1>
         <p style={{ fontSize: '1.15rem', lineHeight: 1.7 }}>A moment for yourself. A thoughtful gift for someone.</p>

@@ -57,6 +57,37 @@ function mount(extra = {}) {
   return { calls, props, revoked, flush, button, nodes, unmount() { cleanups.forEach(cleanup => cleanup()); cleanups.clear() } }
 }
 async function main() {
+  const controlsSource = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'NarrationControls.tsx'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX }
+  }).outputText
+  const controls = { exports: {} }
+  const jsx = (type, props) => ({ type, props: props || {} })
+  new Function('module', 'exports', 'require', controlsSource)(controls, controls.exports, id => {
+    if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
+    if (id === '../lib/narration') return { NARRATION_STYLES: ['calm'], voiceKey: voice => voice.name }
+    return require(id)
+  })
+  const preparedNarrator = {
+    provider: 'google', cloudConsent: true, cloudAudioUrl: 'blob:prepared', activeText: 'A new story',
+    busy: false, onCloudPlay() {}, onCloudPause() {}, onCloudEnd() {}, onCloudError() {}
+  }
+  const personalAudio = flatten(controls.exports.NarrationButton({ narrator: preparedNarrator, text: 'A new story' }))
+    .find(node => node?.type === 'audio')
+  assert.ok(personalAudio.props.controls)
+  assert.equal(personalAudio.props.autoPlay, undefined)
+  assert.equal(personalAudio.props.preload, 'metadata')
+  const unconsented = flatten(controls.exports.NarrationButton({ narrator: { ...preparedNarrator, cloudConsent: false, cloudAudioUrl: null }, text: 'A new story' }))
+  assert.ok(unconsented.some(node => node?.type === 'input' && node.props.checked === false))
+  console.log('PASS personal Google audio uses native controls, explicit Play and visible consent')
+  const google = mount({ provider: 'google' })
+  await google.flush()
+  assert.ok(google.nodes().some(node => node.type === 'section' && node.props['aria-label'] === 'Studio narration'), 'Google scene recording is visible, not hidden in device settings')
+  assert.deepEqual(google.calls, [], 'Google mount does not spend or fetch')
+  google.button('Load scene recording').props.onClick()
+  await google.flush()
+  assert.ok(google.nodes().some(node => node.type === 'audio' && node.props.controls && !node.props.autoPlay))
+  assert.ok(!google.calls.includes('generate'), 'Recipient Google playback never generates audio')
+  google.unmount()
   const owner = mount({ owner: true })
   await owner.flush()
   assert.deepEqual(owner.calls, [], 'Mounting must not query or generate paid audio')

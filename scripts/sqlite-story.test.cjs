@@ -2,7 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
-const { createHash } = require('node:crypto')
+const { createHash, randomUUID } = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 
 const root = path.resolve(__dirname, '..')
@@ -61,12 +61,12 @@ async function main() {
     providerCalls++
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 })
   }
-  async function api(body, selected = handler, address = '127.0.0.1') {
+  async function api(body, selected = handler, address = '127.0.0.1', extraHeaders = {}) {
     let status = 200
     let result
     const headers = {}
     const res = { setHeader: (key, value) => { headers[key] = value }, status: value => { status = value; return res }, json: value => { result = value; return res } }
-    await selected({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: address }, body: { consentVersion: '2026-10-14', ...body } }, res)
+    await selected({ method: 'POST', headers: { host: 'localhost:3000', ...extraHeaders }, socket: { remoteAddress: address }, body: { consentVersion: '2026-10-14', ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status, body: result }
   }
@@ -106,7 +106,7 @@ async function main() {
     assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.brief.solution, brief.solution)
   })
   await check('owner/play separation, wrong/correct answers, cooldown and persisted progress use actual API', async () => {
-    for (const action of ['manage', 'delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)
+    for (const action of ['manage', 'progress', 'delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)
     assert.equal((await api({ action: 'open', token: created.body.ownerToken })).status, 404)
     const opened = await api({ action: 'open', token: created.body.playToken })
     session = opened.body.sessionToken
@@ -131,6 +131,44 @@ async function main() {
       `require(${JSON.stringify(repositoryModule)}).storyRepository().advance(${JSON.stringify(id)}, ${JSON.stringify(hash(session))}, 'open', '').then(s => console.log(JSON.stringify(s)))`
     ], { cwd: root, env: process.env, encoding: 'utf8' }))
     assert.deepEqual(reopened, state)
+  })
+  await check('private progress counts actual playthroughs, separates solved/skip, persists and never calls AI', async () => {
+    const repo = storyRepository()
+    const fixture = { ...await repo.findUnexpired(id), id: randomUUID(), brief: { ...brief, unlockPolicy: 'allow-skip' } }
+    await repo.insert(fixture)
+    const ownerToken = `${fixture.id}.${created.body.ownerToken.split('.')[1]}`
+    const token = `${fixture.id}.${created.body.playToken.split('.')[1]}`
+    const summary = async () => api({ action: 'progress', token: ownerToken })
+    const empty = { opened: 0, inProgress: 0, solved: 0, skipped: 0, furthestScene: null }
+    const callsBefore = providerCalls
+    assert.deepEqual((await summary()).body, { progress: empty })
+    assert.equal((await api({ action: 'progress', token })).status, 404)
+    const opened = await Promise.all(Array.from({ length: 3 }, () => api({ action: 'open', token })))
+    const sessions = opened.map(result => result.body.sessionToken)
+    for (let i = 1; i < content.scenes.length; i++) {
+      await api({ action: 'next', token, sessionToken: sessions[0] })
+    }
+    assert.equal((await summary()).body.progress.solved, 0, 'Last scene reached is not a completion')
+    assert.equal((await api({ action: 'guess', token, sessionToken: sessions[1], guess: brief.solution })).status, 200)
+    assert.equal((await api({ action: 'skip', token, sessionToken: sessions[2], confirmSkip: true })).status, 200)
+    await api({ action: 'open', token, sessionToken: sessions[0] })
+    const expected = { opened: 3, inProgress: 1, solved: 1, skipped: 1, furthestScene: content.scenes.length - 1 }
+    assert.deepEqual((await summary()).body, { progress: expected })
+    assert.deepEqual(await storyRepository().progress(fixture.id), expected, 'A fresh repository sees durable progress')
+    const serialized = JSON.stringify((await summary()).body)
+    for (const secret of [...sessions, brief.solution, brief.message, fixture.owner_hash, fixture.play_hash]) assert.ok(!serialized.includes(secret))
+    process.env.MUSE_CREATOR_ACCESS_CODE = 'progress-test-private-code'
+    assert.equal((await summary()).status, 401)
+    assert.equal((await api({ action: 'progress', token: ownerToken }, handler, '127.0.0.1', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })).status, 200)
+    delete process.env.MUSE_CREATOR_ACCESS_CODE
+    const rotated = await api({ action: 'share', token: ownerToken })
+    assert.equal(rotated.status, 200)
+    assert.deepEqual((await summary()).body.progress, expected, 'Rotation preserves historical counts')
+    assert.equal(providerCalls, callsBefore)
+    inspect(db => db.prepare('UPDATE shared_stories SET expires_at = ? WHERE id = ?').run(new Date(now - 1000).toISOString(), fixture.id))
+    assert.equal((await summary()).status, 404)
+    await repo.delete(fixture.id)
+    assert.equal((await summary()).status, 404)
   })
   await check('30 guesses per session are durable and solved sessions do not consume more attempts', async () => {
     const opened = await api({ action: 'open', token: created.body.playToken })

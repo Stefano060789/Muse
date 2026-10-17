@@ -5,6 +5,7 @@ import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult } from './sharedAdventure'
 import type { JourneyOperation, JourneyResult } from './personalJourney'
 import type { StudioRequest, StudioResult } from './studioNarration'
+import type { SharedStoryProgress } from './sharedStoryProgress'
 import {
   SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
   type SharedVoiceRecord
@@ -29,6 +30,7 @@ export type StoredStory = {
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
+  progress(storyId: string): Promise<SharedStoryProgress>
   studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
@@ -99,6 +101,21 @@ export function storyRepository(): StoryRepository {
   const giftUnavailable = () => new SharedStoryError('Gift features are not available in storage yet. Apply supabase/shared-story-gifts.sql, then retry.', 503)
   const giftStorageError = (error: unknown) => isMissingGiftSchema(error) ? giftUnavailable() : storyStorageError(error)
   return {
+    async progress(storyId) {
+      const sessions = () => db.from('shared_story_sessions')
+      const [active, solved, skipped, furthest] = await Promise.all([
+        sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', false).eq('skipped', false),
+        sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', true),
+        sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', false).eq('skipped', true),
+        sessions().select('current_scene').eq('story_id', storyId).order('current_scene', { ascending: false }).limit(1)
+      ])
+      for (const result of [active, solved, skipped, furthest]) if (result.error) throw storyStorageError(result.error)
+      const counts = [active.count, solved.count, skipped.count]
+      if (counts.some(count => count === null || !Number.isSafeInteger(count) || count < 0) || !Array.isArray(furthest.data)) throw storyStorageError()
+      const scene = furthest.data.length ? furthest.data[0].current_scene : null
+      if (scene !== null && (!Number.isSafeInteger(scene) || scene < 0)) throw storyStorageError()
+      return { opened: active.count! + solved.count! + skipped.count!, inProgress: active.count!, solved: solved.count!, skipped: skipped.count!, furthestScene: scene }
+    },
     async studio(request) {
       const { data, error } = await db.rpc('muse_studio_narration', { request })
       if (error) {

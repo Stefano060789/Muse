@@ -51,7 +51,7 @@ export default function StoryPage() {
       : story ? story.currentStep / Math.max(1, story.scenes.length - 1) : 0,
     ending: story?.journey ? story.journey.status === 'concluded' : Boolean(story && story.currentStep >= story.scenes.length - 1),
     sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
-  })
+  }, { creatorCode })
   const stopSpeaking = narrator.stop
   const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
   const stopRecording = interaction.stopRecording
@@ -273,16 +273,9 @@ export default function StoryPage() {
 
   return (
     <>
-      <Head><title>Muse — My Story</title><meta name="description" content="A personalized interactive story shaped by what you need today." /></Head>
+      <Head><title>{story ? 'Muse - Your story' : 'Muse - Create a story'}</title><meta name="description" content="A personalized interactive story shaped by what you need today." /></Head>
       <main className="atelier-page">
         <div className="atelier-shell atelier-shell--narrow">
-          <header className="atelier-header">
-            <Link href="/" className="atelier-brand">Muse</Link>
-            <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <Link href="/library" style={{ color: '#2d2926', textDecoration: 'none' }}>Story Library</Link>
-              <Link href="/" style={{ color: '#2d2926', textDecoration: 'none' }}>Home</Link>
-            </nav>
-          </header>
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
@@ -305,7 +298,7 @@ export default function StoryPage() {
           {!story ? (
             <section ref={creationSection} tabIndex={-1} aria-labelledby="creation-title">
               <p className="atelier-eyebrow">A story for you</p>
-              <h1 id="creation-title" className="atelier-title">{['Where shall we begin?', 'Make it your own.', 'Your next chapter awaits.'][creationStep]}</h1>
+              <h1 id="creation-title" className="atelier-title">Create a story</h1>
               <p className="atelier-subtitle">{['Choose a feeling. Muse will turn it into an interactive story, with you deciding what happens next.', 'A few small details help shape your escape. Keep it simple, or add something personal.', 'Review your choices before Muse begins writing.'][creationStep]}</p>
               <ol className="atelier-progress" aria-label="Story creation steps">
                 {['Choose a mood', 'Make it yours', 'Review & create'].map((label, index) => <li key={label} aria-current={creationStep === index ? 'step' : undefined}>{index + 1}. {label}</li>)}

@@ -25,7 +25,19 @@ export function NarrationButton({ narrator, text, beforeSpeak, label = 'Listen t
   const current = narrator.busy && narrator.activeText === text
   const elsewhere = narrator.busy && !current
   return <div style={rowStyle}>
-    {current ? <PlaybackButtons narrator={narrator} label={label} />
+    {narrator.provider === 'google' && !narrator.cloudConsent ? <label>
+      <input type="checkbox" checked={false} onChange={event => narrator.setCloudConsent(event.target.checked)} />
+      Allow Google Cloud to narrate this text (paid generation when not already saved). <a href="/privacy">Privacy</a>
+    </label> : null}
+    {narrator.cloudAudioUrl && narrator.activeText === text ? <div style={{ width: '100%' }}>
+      <p>Recording ready. Tap Play below. AI-generated voice by Google WaveNet.</p>
+      <audio src={narrator.cloudAudioUrl} controls preload="metadata" aria-label={label}
+        onPlay={event => { beforeSpeak?.(); narrator.onCloudPlay(event.currentTarget) }}
+        onPause={event => narrator.onCloudPause(event.currentTarget)}
+        onEnded={event => narrator.onCloudEnd(event.currentTarget)}
+        onError={event => narrator.onCloudError(event.currentTarget)}
+        style={{ display: 'block', width: '100%' }} />
+    </div> : current ? <PlaybackButtons narrator={narrator} label={label} />
       : <button type="button" style={buttonStyle} disabled={!text.trim() || elsewhere} title={elsewhere ? 'Stop the current narration before listening to this.' : undefined}
         onClick={() => { beforeSpeak?.(); void narrator.speak(text, context) }}>{label}</button>}
   </div>
@@ -41,10 +53,10 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
   const playingElsewhere = narrator.busy && narrator.activeText !== preview
   return <aside aria-label="Narration settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
     <p style={{ marginTop: 0 }}><strong>Narration: {narrator.style}</strong> · {narrator.source}</p>
-    <p>{narrator.provider === 'browser' ? 'Device voice (free). Quality depends on the voices Safari or your browser makes available; this is not Studio narration.' : 'Cloud voice by ElevenLabs. Failure never starts a device voice automatically.'}</p>
+    <p>{narrator.provider === 'browser' ? 'Device voice (free). Quality depends on the voices Safari or your browser makes available; this is not Studio narration.' : `AI-generated voice by ${narrator.provider === 'google' ? 'Google WaveNet' : 'ElevenLabs'}. Recordings do not depend on iPhone speech voices. Failure never starts a device voice automatically.`}</p>
     {narrator.provider !== 'browser' || narrator.deviceOnly ? <label><input type="checkbox" checked={narrator.deviceOnly} onChange={event => narrator.setDeviceOnly(event.target.checked)} /> Use device voice instead (free)</label> : null}
     {narrator.provider === 'browser' ? <details><summary>Improve the voice on iPhone</summary><p>Try a different matching voice below. You can also download enhanced voices in iPhone Accessibility voice settings, then reopen Safari. Safari may not expose every downloaded voice. Turn off expressive pacing below if the delivery sounds unnatural; device voices are not a consistent premium listening experience.</p></details> : null}
-    {narrator.provider !== 'browser' ? <label><input type="checkbox" checked={narrator.cloudConsent} onChange={event=>narrator.setCloudConsent(event.target.checked)} /> Send spoken text to ElevenLabs and use a paid attempt. <a href="/privacy">Privacy</a></label> : null}
+    {narrator.provider !== 'browser' ? <label><input type="checkbox" checked={narrator.cloudConsent} onChange={event=>narrator.setCloudConsent(event.target.checked)} /> Send spoken text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></label> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>Voice style <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
         <option value="auto">Follow this story (recommended)</option>
@@ -54,12 +66,12 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
         <option value="">Story language ({narrator.languageOverride ? 'auto' : narrator.language})</option>
         {languages.map((language) => <option key={language} value={language}>{language}</option>)}
       </select></label>
-      <label style={fieldStyle}>Browser voice <select style={selectStyle} value={matching.some((voice) => voiceKey(voice) === narrator.selectedVoice) ? narrator.selectedVoice : ''} onChange={(event) => narrator.setVoice(event.target.value)}>
+      {narrator.provider === 'browser' ? <label style={fieldStyle}>Browser voice <select style={selectStyle} value={matching.some((voice) => voiceKey(voice) === narrator.selectedVoice) ? narrator.selectedVoice : ''} onChange={(event) => narrator.setVoice(event.target.value)}>
         <option value="">Recommended voice</option>
         {matching.map((voice) => <option key={voiceKey(voice)} value={voiceKey(voice)}>{voice.name} · {voice.lang}{voice.localService ? ' · local' : ''}</option>)}
-      </select></label>
+      </select></label> : null}
     </div>
-    <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device.</p>
+    {narrator.provider === 'browser' ? <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device.</p> : <p>Cloud voice follows the selected language. Styles adjust pacing; they are not separate dramatic actors. Background sound settings below apply to device speech only.</p>}
     <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Follow story with recommended voice</button>
     <fieldset style={{ margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 8, minWidth: 0 }}>
       <legend>Immersive audio</legend>
@@ -87,9 +99,9 @@ export default function NarrationControls({ narrator, beforeSpeak }: { narrator:
     <p>Settings stay in this browser. Reset keeps your language. Some voices use online speech services.</p>
     {narrator.voiceNotice ? <p role="status">{narrator.voiceNotice}</p> : null}
     {narrator.preferenceNotice ? <p role="status">{narrator.preferenceNotice}</p> : null}
-    {narrator.supported === false ? <p role="alert">Browser speech is unsupported here. You can still read the story.</p> : narrator.supported && !narrator.voices.length ? <p role="status">Waiting for browser voices. If none appear, check your OS speech settings or try another browser.</p> : null}
+    {narrator.provider === 'browser' ? narrator.supported === false ? <p role="alert">Browser speech is unsupported here. You can still read the story.</p> : narrator.supported && !narrator.voices.length ? <p role="status">Waiting for browser voices. If none appear, check your OS speech settings or try another browser.</p> : null : null}
     <NarrationButton narrator={narrator} text={preview} label="Preview selected style" beforeSpeak={beforeSpeak} />
-    {playingElsewhere ? <div style={rowStyle}><PlaybackButtons narrator={narrator} label="current story narration" /></div> : null}
+    {playingElsewhere && !narrator.cloudAudioUrl ? <div style={rowStyle}><PlaybackButtons narrator={narrator} label="current story narration" /></div> : null}
     {narrator.error ? <p role="alert">{narrator.error}</p> : null}
     {narrator.notice ? <p role="status">{narrator.notice}</p> : null}
   </aside>

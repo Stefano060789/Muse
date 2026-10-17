@@ -12,9 +12,11 @@ type Props = {
   check?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
+  provider?: 'google' | 'elevenlabs'
 }
 
-export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load }: Props) {
+export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
+  provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -67,19 +69,19 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
     }
   }
 
-  return <details aria-label="Studio narration" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d8cdd6', borderRadius: 16, maxWidth: '100%', minWidth: 0 }}>
-    <summary>Studio audio · {owner ? 'optional' : 'if prepared'}</summary>
-    <p>A prepared recording, separate from the free device voice. No autoplay and no automatic switch to device speech.</p>
+  const content = <>
+    {provider === 'google' ? <h2>Listen to this scene</h2> : null}
+    <p>{provider === 'google' ? 'AI-generated narration by Google WaveNet. Play the saved recording on iPhone or desktop; no device speech is used.' : 'A prepared recording, separate from the free device voice. No autoplay and no automatic switch to device speech.'}</p>
     {owner ? <>
-      <p>Optional ElevenLabs narration of this prepared scene and clue only, not the private answer or final reveal. Each uncached generation uses the operator&apos;s paid budget; replay reuses the recording. Live AI turns are not included.</p>
+      <p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this prepared scene and clue only, not the private answer or final reveal. Each uncached generation uses the operator&apos;s paid budget; replay reuses the recording. Live AI turns are not included.</p>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
       {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
       {status?.enabled && !status.ready && !status.blocked ? <>
-        <label style={{ display: 'block', margin: '1rem 0' }}><input type="checkbox" checked={consent} disabled={busy || disabled} onChange={event => setConsent(event.target.checked)} /> Send this scene and clue to ElevenLabs and use a paid generation attempt. <a href="/privacy">Privacy</a></label>
+        <label style={{ display: 'block', margin: '1rem 0' }}><input type="checkbox" checked={consent} disabled={busy || disabled} onChange={event => setConsent(event.target.checked)} /> Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></label>
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
-    </> : <p>Load an existing recording prepared by the sender. This never generates paid audio. If none is available, keep reading or choose device voice separately.</p>}
-    {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>Load Studio audio</button> : null}
+    </> : <p>Load the sender&apos;s saved recording. Listening never generates paid audio. If it was not prepared, ask the sender to add narration or keep reading.</p>}
+    {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
     {url ? <>
@@ -89,5 +91,10 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         beforeListen()
       }} onError={() => setError('This browser could not play Studio audio. Retry loading or read instead.')} style={{ display: 'block', width: '100%', maxWidth: '100%' }} />
     </> : null}
+  </>
+  if (provider === 'google') return <section aria-label="Studio narration" className="atelier-card" style={{ margin: '1rem 0' }}>{content}</section>
+  return <details aria-label="Studio narration" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d8cdd6', borderRadius: 16, maxWidth: '100%', minWidth: 0 }}>
+    <summary>Studio audio · {owner ? 'optional' : 'if prepared'}</summary>
+    {content}
   </details>
 }

@@ -1,5 +1,4 @@
 import Head from 'next/head'
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 
 type OpsStatus = {
@@ -50,10 +49,6 @@ export default function CreatorDashboard() {
     </Head>
     <main className="atelier-page">
       <div className="atelier-shell atelier-shell--narrow atelier-reading">
-        <header className="atelier-header">
-          <Link href="/" className="atelier-brand">Muse</Link>
-          <Link href="/support">Support</Link>
-        </header>
         <p className="atelier-eyebrow">Private creator dashboard</p>
         <h1 className="atelier-title">bonomistefano@outlook.it</h1>
         <div className="atelier-card">

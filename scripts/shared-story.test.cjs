@@ -281,18 +281,37 @@ async function main() {
   let stored
   let allowRequest = true
   let legacyRpc = false
+  let progressFailure = false
+  let runtimeProviderCalls = 0
+  const progressQueries = []
   let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
   delete process.env.VERCEL
   global.fetch = async (url, options) => {
     if (String(url).includes('api.anthropic.com')) {
+      runtimeProviderCalls++
       providerRequest = JSON.parse(options.body)
       return anthropicResponse(JSON.parse(providerRequest.messages[0].content).action === 'create' ? personalContent : content)
     }
     const location = new URL(String(url))
     assert.equal(location.hostname, 'muse-test.supabase.co')
     const body = options?.body ? JSON.parse(options.body) : null
+    if (location.pathname === '/rest/v1/shared_story_sessions') {
+      progressQueries.push(location)
+      assert.equal(location.searchParams.get('story_id'), `eq.${stored.id}`)
+      if (progressFailure) return json({ message: 'private database error' }, 503)
+      if (options.method === 'HEAD') {
+        assert.equal(location.searchParams.get('select'), 'story_id')
+        const count = location.searchParams.get('solved') === 'eq.true' ? 2
+          : location.searchParams.get('skipped') === 'eq.true' ? 3 : 1201
+        return new Response(null, { status: 200, headers: { 'Content-Range': `0-0/${count}` } })
+      }
+      assert.equal(location.searchParams.get('select'), 'current_scene')
+      assert.equal(location.searchParams.get('order'), 'current_scene.desc')
+      assert.equal(location.searchParams.get('limit'), '1')
+      return json([{ current_scene: 1 }])
+    }
     if (location.pathname.endsWith('/rpc/reserve_shared_story_request')) return json(allowRequest)
     if (location.pathname.endsWith('/rpc/advance_shared_story')) {
       assert.equal(body.expected_play_hash, stored.play_hash)
@@ -354,6 +373,22 @@ async function main() {
     assert.equal((await api({ action: 'manage', token: created.body.playToken })).status, 404)
     assert.equal((await api({ action: 'open', token: created.body.ownerToken })).status, 404)
     assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.brief.message, brief.message)
+  })
+  await check('hosted progress uses exact bounded counts beyond 1000 rows, is owner-only and surfaces errors', async () => {
+    const before = runtimeProviderCalls
+    assert.equal((await api({ action: 'progress', token: created.body.playToken })).status, 404)
+    assert.equal(progressQueries.length, 0, 'Recipient cannot trigger the progress query')
+    const result = await api({ action: 'progress', token: created.body.ownerToken })
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.body, { progress: { opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1 } })
+    assert.equal(progressQueries.length, 4)
+    progressFailure = true
+    const unavailable = await api({ action: 'progress', token: created.body.ownerToken })
+    assert.equal(unavailable.status, 503)
+    assert.ok(!JSON.stringify(unavailable.body).includes('private database error'))
+    assert.equal(unavailable.body.progress, undefined, 'Unavailable storage must not look like zero playthroughs')
+    progressFailure = false
+    assert.equal(runtimeProviderCalls, before, 'Progress never calls the AI provider')
   })
   await check('recipient open, clues and wrong guesses never receive private data', async () => {
     const opened = await api({ action: 'open', token: created.body.playToken })

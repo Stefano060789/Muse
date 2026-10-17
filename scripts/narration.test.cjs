@@ -193,7 +193,7 @@ async function main() {
     let useNarration
     try { Module._load = function (id, ...args) { return id === 'react' ? react : id === './storyAmbience' ? { StoryAmbience: FakeAmbience } : originalLoad.call(this, id, ...args) }; useNarration = require(modulePath).useNarration } finally { Module._load = originalLoad }
     let context = options.context || {}
-    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context, { browserOnly: options.browserOnly }); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
+    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context, { browserOnly: options.browserOnly, creatorCode: options.creatorCode }); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
     render(); render()
     return { render, spoken, listeners, synth, calls, ambientCalls, get cancels() { return cancels }, setContext(value) { context = value; render(); return render() }, setMetadata(value) { metadata = value; render(); return render() }, updateVoices(value) { voiceList = value; listeners.get('voiceschanged')?.() }, dispose() { slots.forEach(slot => { slot?.cleanup?.(); if (slot) slot.cleanup = undefined }) } }
   }
@@ -340,6 +340,52 @@ async function main() {
       hook.render().setCloudConsent(false)
       assert.equal(hook.render().busy, false)
     } finally { hook.dispose() }
+  })
+  await check('Google recordings use an explicit native Play tap without device voices or autoplay', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
+    let calls = 0
+    global.fetch = async (_url, options) => {
+      calls++
+      assert.equal(options.headers['x-muse-creator-code'], 'test-private-code')
+      return new Response(Buffer.from('ID3mock-audio'), { headers: { 'Content-Type': 'audio/mpeg' } })
+    }
+    global.Audio = class { constructor() { throw new Error('Google must not autoplay using new Audio') } }
+    URL.createObjectURL = () => 'blob:google-recording'
+    URL.revokeObjectURL = () => {}
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'ar-SA' }, [], false, { creatorCode: 'test-private-code' })
+    try {
+      assert.equal(hook.render().provider, 'google')
+      await hook.render().speak('An original scene.')
+      assert.equal(calls, 0)
+      hook.render().setCloudConsent(true)
+      await hook.render().speak('An original scene.')
+      assert.equal(calls, 1)
+      assert.equal(hook.render().cloudAudioUrl, 'blob:google-recording')
+      assert.equal(hook.render().busy, false)
+      assert.equal(hook.spoken.length, 0)
+      const player = { src: 'blob:google-recording', volume: 1, pause() {}, play() {} }
+      hook.render().onCloudPlay(player)
+      assert.equal(hook.render().speaking, true)
+      hook.render().onCloudPause(player)
+      assert.equal(hook.render().paused, true)
+      hook.render().stop()
+      assert.equal(hook.render().cloudAudioUrl, '')
+      hook.render().onCloudPlay(player)
+      hook.render().onCloudPause(player)
+      hook.render().onCloudError(player)
+      assert.equal(hook.render().status, 'idle', 'Late native events cannot revive stopped audio')
+      assert.equal(hook.render().error, '')
+      global.fetch = async () => new Response(JSON.stringify({ error: 'Google narration character budget exhausted.' }), { status: 429, headers: { 'Content-Type': 'application/json' } })
+      await hook.render().speak('A second scene.')
+      assert.match(hook.render().error, /budget exhausted/)
+      assert.equal(hook.spoken.length, 0)
+    } finally {
+      hook.dispose()
+      global.Audio = saved.audio
+      URL.createObjectURL = saved.createObjectURL
+      URL.revokeObjectURL = saved.revokeObjectURL
+      process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    }
   })
   const { NARRATION_PREFERENCES_KEY, parseNarrationPreferences, serializeNarrationPreferences } = narration
   function memoryStorage(initial = {}, { failRead = false, failWrite = false } = {}) {
@@ -674,7 +720,7 @@ async function main() {
     URL.createObjectURL = () => 'blob:test'
     let revoked = 0
     URL.revokeObjectURL = () => { revoked++ }
-    global.fetch = async () => new Response('audio-bytes', { status: 200 })
+    global.fetch = async () => new Response('audio-bytes', { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
     const clock = fakeClock()
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { storage: memoryStorage() })
     try {

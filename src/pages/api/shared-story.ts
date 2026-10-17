@@ -25,7 +25,7 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
-const OWNER_ACTIONS = ['manage', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+const OWNER_ACTIONS = ['manage', 'progress', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function matches(secretValue: string, storedHash: string): boolean {
   const actual = Buffer.from(hash(secretValue), 'hex')
@@ -215,6 +215,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.setHeader('X-Content-Type-Options', 'nosniff')
       res.setHeader('Content-Disposition', 'inline')
       return res.status(200).send(Buffer.from(audio))
+    }
+    if (action === 'progress') {
+      return res.status(200).json({ progress: await db.progress(id) })
     }
     if (action === 'manage') {
       if (story.brief.gift) await db.giftReady()

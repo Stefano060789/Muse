@@ -14,10 +14,11 @@ export default function SiteFooter() {
       <div>
         <span className="atelier-brand">Muse</span>
         <nav aria-label="Legal and support">
-          <Link href="/billing" style={linkStyle}>Plans</Link>
+          <Link href="/demo" style={linkStyle}>Try a sample</Link>
+          <Link href="/billing" style={linkStyle}>Plans (coming soon)</Link>
+          <Link href="/support" style={linkStyle}>Help &amp; support</Link>
           <Link href="/privacy" style={linkStyle}>Privacy</Link>
           <Link href="/terms" style={linkStyle}>Terms</Link>
-          <Link href="/support" style={linkStyle}>Support</Link>
         </nav>
         <div>
           <span>Operator: </span>

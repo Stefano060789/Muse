@@ -285,6 +285,35 @@ async function main() {
   }
   await assert.rejects(studio.readStudioAudio(db, revoked, 0, hash(sessionToken), revokedStore), /revoked/)
   console.log('PASS stale reservations, deletion/expiry revocation, post-read authorization and durable purge lifecycle')
+  Object.assign(process.env, {
+    NEXT_PUBLIC_NARRATION_PROVIDER: 'google', GOOGLE_TTS_API_KEY: 'fake-google-key-no-paid-calls',
+    MUSE_GOOGLE_TTS_BUDGET_CHARACTERS: '100000', MUSE_GOOGLE_TTS_SQLITE_PATH: path.join(output, 'google-tts.sqlite'),
+    MUSE_STUDIO_NARRATION_ENABLED: 'true'
+  })
+  let googleCalls = 0
+  const googleMp3 = Buffer.alloc(192)
+  googleMp3.set([0xff, 0xf3, 0x84, 0xc0])
+  global.fetch = async (url, options) => {
+    assert.ok(String(url).startsWith('https://texttospeech.googleapis.com/v1/text:synthesize'))
+    const body = JSON.parse(options.body)
+    assert.ok(!JSON.stringify(body).includes('PRIVATE_'), 'Google receives only prepared scene narration')
+    assert.match(body.voice.name, /Wavenet/)
+    assert.equal(body.audioConfig.audioEncoding, 'MP3')
+    googleCalls++
+    return new Response(JSON.stringify({ audioContent: googleMp3.toString('base64') }), { headers: { 'Content-Type': 'application/json' } })
+  }
+  const googleStory = await insert()
+  assert.equal((await status(googleStory)).body.studio.available, true)
+  assert.equal((await generate(googleStory)).status, 200)
+  assert.equal(googleCalls, 1)
+  await api({ action: 'open', token: googleStory.token, sessionToken })
+  const googleAudio = await audio(googleStory)
+  assert.equal(googleAudio.status, 200)
+  assert.deepEqual(Buffer.from(googleAudio.body), googleMp3)
+  assert.equal((await generate(googleStory)).status, 200)
+  assert.equal(googleCalls, 1, 'Saved Google gift recordings replay without provider charges')
+  assert.equal((await api({ action: 'studio-generate', token: googleStory.ownerToken, sceneIndex: 1, consentVersion: 'muse-ai-v1' })).status, 401, 'Recipients cannot authorize paid Google synthesis')
+  console.log('PASS Google prepared gift synthesis, private cached replay and creator-only generation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => {
   global.fetch = savedFetch
