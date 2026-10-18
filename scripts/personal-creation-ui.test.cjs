@@ -25,6 +25,13 @@ async function main() {
   let loadedStory = null
   let interactionRecordingTarget = ''
   let stopRecordingCalls = 0, dictateCalls = 0
+  let profile = null
+  let selectedDictationLanguage
+  let transcriptReceiver
+  let respondSuccessfully = false
+  let responseGate
+  const browserEvents = new Map()
+  let cloudProvider = 'browser', cloudConsent = false
   const react = {
     useState(initial) {
       const i = cursor++
@@ -45,25 +52,39 @@ async function main() {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link' || id.startsWith('../components/')) return { __esModule: true, default: id }
-    if (id.endsWith('/story')) return { loadPersonalStory: () => loadedStory }
-    if (id.endsWith('/profile')) return { loadMuseProfile: () => null }
+    if (id.endsWith('/story')) return { loadPersonalStory: () => loadedStory, savePersonalStory() {} }
+    if (id.endsWith('/profile')) return {
+      loadMuseProfile: () => profile,
+      saveMuseProfile: about => { profile = { about, keypoints: [about] }; return profile }
+    }
     if (id.endsWith('/storyLibrary')) return {}
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
-    if (id.endsWith('/useNarration')) return { useNarration: () => ({ stop() {} }), NarrationButton: 'narration' }
-    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({
+    if (id.endsWith('/useNarration')) return { useNarration: () => ({
+      stop() {}, provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
+    }), NarrationButton: 'narration' }
+    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => { selectedDictationLanguage = language; return ({
       recordingTarget: interactionRecordingTarget, ready: true, error: '',
-      stopRecording() { stopRecordingCalls++ }, dictate() { dictateCalls++ }
-    }) }
+      stopRecording() { stopRecordingCalls++ }, cancelRecording() { interactionRecordingTarget = '' },
+      dictate(_target, receive) { dictateCalls++; transcriptReceiver = receive }
+    }) } }
     throw new Error('Unexpected dependency: ' + id)
   }
-  const browser = { addEventListener() {}, removeEventListener() {}, localStorage: {
+  const browser = {
+    addEventListener(name, handler) { browserEvents.set(name, handler) },
+    removeEventListener(name, handler) { if (browserEvents.get(name) === handler) browserEvents.delete(name) },
+    localStorage: {
     getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)
   } }
   new Function('module', 'exports', 'require', 'window', 'fetch', 'requestAnimationFrame', compile('src/pages/story.tsx'))(
     module, module.exports, mockRequire, browser, async (_url, options) => {
-      requests.push(JSON.parse(options.body))
+      const body = JSON.parse(options.body)
+      requests.push(body)
+      if (body.action === 'respond' && responseGate) await responseGate
+      if (respondSuccessfully) return { ok: true, json: async () => ({
+        story: body.action === 'respond' ? { ...loadedStory, journey: { ...loadedStory.journey, revision: 1 } } : loadedStory
+      }) }
       return { ok: false, json: async () => ({ error: 'Synthetic generation failure; no paid call.' }) }
     }, callback => callback()
   )
@@ -88,13 +109,35 @@ async function main() {
   assert.equal(requests.length, 0)
   await click('Continue')
   assert.equal(visible().length, 1)
+  assert.ok(!nodes().some(node => node.props.href === '/myself'), 'Personal touches stay inside creation')
+  assert.ok(flatten(nodes().find(node => node.type === 'fieldset' && node.props.hidden && label(node).includes('How would you like to feel?')))
+    .some(node => node?.type === '../components/RomanceOptions'), 'Romance is in the mood step')
   const language = nodes().find(node => node.props['aria-label'] === 'Story language')
   language.props.onChange({ target: { value: 'ar-SA' } })
   nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
+  nodes().find(node => node.props['aria-label'] === 'Personal touches').props.onChange({ target: { value: 'I love gardens' } })
+  await flush()
+  const profileHold = nodes().find(node => node.type === '../components/HoldToSpeakButton')
+  profileHold.props.onStart()
+  transcriptReceiver('I love gardens')
+  profileHold.props.onStop()
+  await flush()
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Personal touches').props.value, 'I love gardens',
+    'Inline personal touches retain hold-to-speak')
+  await click('Save personal touches')
+  assert.equal(profile.about, 'I love gardens')
+  assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
   await flush()
   await click('Continue')
   assert.equal(visible().length, 1)
   assert.ok(flatten(visible()[0]).some(node => node === 'A fictional evening in a garden.'))
+  cloudProvider = 'google'
+  await flush()
+  const narrationConsent = nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).startsWith('Enable optional narration'))
+  assert.ok(narrationConsent, 'Optional Google permission is offered before creating the story')
+  assert.equal(narrationConsent.props.checked, false)
+  narrationConsent.props.onChange(true)
+  cloudProvider = 'browser'
   await click('Back')
   assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
@@ -113,7 +156,8 @@ async function main() {
   nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A changed fictional evening.' } })
   await flush()
   await click('Continue')
-  assert.equal(nodes().find(node => node.type === '../components/RomanceOptions').props.confirmed, false)
+  assert.equal(nodes().find(node => node.type === '../components/RomanceOptions').props.confirmed, true,
+    'Romance acknowledgment survives unrelated wizard details')
   nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
@@ -150,9 +194,57 @@ async function main() {
   const holdToSpeak = nodes().find(node => node.type === '../components/HoldToSpeakButton')
   assert.ok(holdToSpeak)
   const stopsBefore = stopRecordingCalls
+  const dictatesBefore = dictateCalls
   holdToSpeak.props.onStop()
   assert.equal(stopRecordingCalls, stopsBefore + 1, 'Releasing hold-to-speak explicitly ends the active recording')
-  assert.equal(dictateCalls, 0, 'Stop listening does not restart dictation')
+  assert.equal(dictateCalls, dictatesBefore, 'Stop listening does not restart dictation')
+  loadedStory = { ...loadedStory, language: 'ar-SA', journey: {
+    capability: 'test-capability', revision: 0, maxTurns: 3, duration: 5, status: 'active', choiceMode: 'free'
+  } }
+  respondSuccessfully = true
+  slots.length = 0
+  effects.length = 0
+  const beforeResume = requests.length
+  await flush()
+  assert.equal(requests[beforeResume].action, 'resume', 'Restored journeys automatically reconcile without a paid call')
+  assert.equal(selectedDictationLanguage, 'ar-SA', 'Dictation follows the saved story language')
+  const responseField = () => nodes().find(node => node.props['aria-label'] === 'Editable response')
+  assert.equal(responseField().props.disabled, false)
+  responseField().props.onFocus()
+  responseField().props.onChange({ target: { value: 'I follow the path.' } })
+  nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await flush()
+  assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
+  await click('Continue with my answer →')
+  assert.equal(requests.at(-1).action, 'respond')
+  assert.equal(requests.at(-1).text, 'I follow the path.')
+  assert.equal(responseField().props.value, '', 'Successful continuation clears the submitted response')
+  responseField().props.onChange({ target: { value: 'An answer while syncing.' } })
+  await flush()
+  const beforeFocus = requests.length
+  browserEvents.get('focus')()
+  await flush()
+  assert.equal(requests.length, beforeFocus + 1, 'Returning to the tab syncs once without an automatic generation')
+  assert.equal(requests.at(-1).action, 'resume')
+  assert.equal(find('button', 'Continue with my answer →').props.disabled, false, 'Returning to the tab does not strand the send button')
+  let releaseResponse
+  responseGate = new Promise(resolve => { releaseResponse = resolve })
+  find('button', 'Continue with my answer →').props.onClick()
+  await flush()
+  assert.equal(responseField().props.disabled, false, 'The draft remains editable during a request')
+  responseField().props.onChange({ target: { value: 'A newer draft typed while waiting.' } })
+  await flush()
+  releaseResponse()
+  await flush()
+  responseGate = undefined
+  assert.equal(responseField().props.value, 'A newer draft typed while waiting.', 'A completed response must not erase newer typing')
+  respondSuccessfully = false
+  browserEvents.get('storage')()
+  await flush()
+  assert.equal(requests.at(-1).action, 'resume', 'Cross-tab changes trigger a safe progress check')
+  assert.equal(responseField().props.disabled, false, 'A failed sync must not lock the editor')
+  assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')))
   console.log('PASS personal wizard preserves fields, presents one story-wide consent prompt, and explicitly stops dictation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

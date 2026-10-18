@@ -37,7 +37,7 @@ export function assertStoryNarrationLanguage(value: unknown, code?: StoryLanguag
 }
 
 const english = {
-  gift: 'A story for you', openGift: 'Open your gift', openingGift: 'Opening your gift…',
+  gift: 'A gift story for you', openGift: 'Open your gift story', openingGift: 'Opening your gift story…',
   from: 'From', for: 'For', read: 'Read', listen: 'Listen', pause: 'Pause', resume: 'Resume',
   stop: 'Stop', guess: 'Your answer', submitGuess: 'Try answer', next: 'Next',
   hints: 'Hints', hint: 'Get a hint', skip: 'Reveal message', reply: 'Reply',

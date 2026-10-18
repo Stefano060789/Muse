@@ -270,7 +270,7 @@ export default function SharedStoryPage() {
           setBrief(source.story.brief)
           setAssistanceHintsText((source.story.brief.assistanceHints ?? []).join('\n'))
           setAlternativeAnswersText((source.story.brief.alternativeAnswers ?? []).join('\n'))
-          setNotice('Brief copied from Saved stories. Review it before preparing a new story gift. Previous links and progress are unchanged; attach any media again.')
+          setNotice('Brief copied from Saved stories. Review it before preparing a new gift story. Previous links and progress are unchanged; attach any media again.')
           try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
           setDraftReady(true)
           setCreatorStep(0)
@@ -402,7 +402,7 @@ export default function SharedStoryPage() {
     setUpload(idleUpload)
     setAiConsent(false)
     setError('')
-    setNotice('Your previous story gift is in Saved stories. Its recipient link and progress are unchanged.')
+    setNotice('Your previous gift story is in Saved stories. Its recipient link and progress are unchanged.')
     objectUrls.current.forEach(url => URL.revokeObjectURL(url))
     objectUrls.current = []
     window.history.replaceState(null, '', '/shared#new')
@@ -810,7 +810,7 @@ export default function SharedStoryPage() {
   return (
     <main className="atelier-page">
       <Head>
-        <title>{playToken ? 'Muse - A story gift for you' : creator ? 'Muse - Manage your gift' : 'Muse - Create a gift'}</title>
+        <title>{playToken ? 'Muse - A gift story for you' : creator ? 'Muse - Manage your gift story' : 'Muse - Create a gift story'}</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
@@ -865,7 +865,7 @@ export default function SharedStoryPage() {
         ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
           <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             <p lang="en" dir="ltr">The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. <Link href="/privacy">Privacy</Link></p>
-            {showGiftCover ? <article aria-label="Your gift" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
+            {showGiftCover ? <article aria-label="Your gift story" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
               <p className="atelier-eyebrow">{recipientText.madeForYou}</p>
               <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
               <p>{recipientText.from(player.creatorName)}</p>
@@ -1021,7 +1021,7 @@ export default function SharedStoryPage() {
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory()} style={primaryStyle}>Create new story</button>
               <button disabled={busy || voiceRecording || voiceUploading} onClick={() => startNewStory(true)} style={buttonStyle}>Reuse this brief</button>
             </div>
-            <p>Sent story gifts stay active. Reopen them from <Link href="/library">Saved stories</Link>.</p>
+            <p>Sent gift stories stay active. Reopen them from <Link href="/library">Saved stories</Link>.</p>
             <h1>{creator.content.title}</h1>
             <p>{creator.content.description}</p>
             <StoryKeepsake story={{ title: creator.content.title, creatorName: creator.brief.creatorName, recipientName: creator.brief.recipientName, dedication: creator.brief.gift?.dedication, scenes: creator.content.scenes.map(scene => ({ title: scene.title, body: scene.body })), message: creator.brief.message }} />
@@ -1187,7 +1187,7 @@ export default function SharedStoryPage() {
         ) : (
           <section>
             <p className="atelier-eyebrow">A story to give</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift</h1>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift story</h1>
             <p className="atelier-subtitle">Make a story for someone else. They follow the clues to discover your personal surprise.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
@@ -1285,7 +1285,7 @@ export default function SharedStoryPage() {
               </fieldset>
               <fieldset hidden={creatorStep !== 2} disabled={busy || creatorStep !== 2} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <details style={cardStyle}>
-                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Make it a gift (optional)</summary>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Personalize the gift story (optional)</summary>
                 {!brief.gift ? <p>Choose an occasion above to add a personal opening and optional replies.</p> : <>
                   <label htmlFor="gift-dedication" style={{ display: 'block', marginTop: '1rem', fontWeight: 700 }}>A note on the cover
                     <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={2} style={fieldStyle} placeholder="A little adventure, just for you." disabled={busy} onChange={event => { setBrief({ ...brief, gift: { ...brief.gift!, dedication: event.target.value } }); setAiConsent(false) }} />

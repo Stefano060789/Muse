@@ -3,7 +3,7 @@ import Link from 'next/link'
 const destinations = [
   { href: '/', label: 'Home', routes: ['/'] },
   { href: '/story', label: 'Create a story', routes: ['/story', '/myself'] },
-  { href: '/shared#new', label: 'Create a gift', routes: ['/shared', '/couples'] },
+  { href: '/shared#new', label: 'Create a gift story', routes: ['/shared', '/couples'] },
   { href: '/library', label: 'Saved stories', routes: ['/library'] }
 ]
 

@@ -24,32 +24,50 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   const [ready, setReady] = useState(false)
   const recognitionRef = useRef<Recognition | null>(null)
   const stopRequestedRef = useRef<Recognition | null>(null)
+  const targetRef = useRef('')
+  const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const stopRecording = (target?: string) => {
-    if (target && recordingTarget !== target) return
+  const cancelRecording = () => {
     const recognition = recognitionRef.current
-    if (!recognition) return
-    stopRequestedRef.current = recognition
-    try { recognition.stop() } catch {
-      recognitionRef.current = null
-      stopRequestedRef.current = null
-      setError('Could not stop voice recording. Close this page or disable microphone access to end dictation.')
-    }
+    recognitionRef.current = null
+    stopRequestedRef.current = null
+    targetRef.current = ''
+    if (finishTimer.current) clearTimeout(finishTimer.current)
+    finishTimer.current = null
     setRecordingTarget('')
     setReady(false)
+    if (recognition) {
+      try { recognition.abort() } catch {
+        setError('Could not close microphone input. Disable microphone access for this page before continuing.')
+      }
+    }
+  }
+
+  const stopRecording = (target?: string) => {
+    if (target && targetRef.current !== target) return
+    const recognition = recognitionRef.current
+    if (!recognition || stopRequestedRef.current === recognition) return
+    stopRequestedRef.current = recognition
+    setRecordingTarget('')
+    setReady(false)
+    finishTimer.current = setTimeout(() => {
+      if (recognitionRef.current === recognition) cancelRecording()
+    }, 1500)
+    try { recognition.stop() } catch {
+      cancelRecording()
+    }
   }
 
   useEffect(() => () => {
     const recognition = recognitionRef.current
     recognitionRef.current = null
     stopRequestedRef.current = null
-    recognition?.stop()
+    if (finishTimer.current) clearTimeout(finishTimer.current)
+    recognition?.abort()
   }, [])
 
   const dictate = (target: string, onTranscript: (value: string) => void, singlePhrase = false) => {
-    const wasRecording = recognitionRef.current !== null && recordingTarget === target
-    stopRecording()
-    if (wasRecording) return
+    cancelRecording()
     beforeDictate?.()
     const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition
     if (!Constructor) {
@@ -62,7 +80,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     recognition.interimResults = true
     recognition.lang = language
     recognition.onaudiostart = () => {
-      if (recognitionRef.current === recognition) setReady(true)
+      if (recognitionRef.current === recognition && stopRequestedRef.current !== recognition) setReady(true)
     }
     let receivedText = false
     recognition.onresult = (event) => {
@@ -79,6 +97,9 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
       recognitionRef.current = null
       const stoppedIntentionally = stopRequestedRef.current === recognition
       stopRequestedRef.current = null
+      targetRef.current = ''
+      if (finishTimer.current) clearTimeout(finishTimer.current)
+      finishTimer.current = null
       setRecordingTarget('')
       setReady(false)
       if (stoppedIntentionally && event.error === 'aborted') return
@@ -98,20 +119,25 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
       recognitionRef.current = null
       const stoppedIntentionally = stopRequestedRef.current === recognition
       stopRequestedRef.current = null
+      targetRef.current = ''
+      if (finishTimer.current) clearTimeout(finishTimer.current)
+      finishTimer.current = null
       setRecordingTarget('')
       setReady(false)
       if (!receivedText && !stoppedIntentionally) setError('No words were received. Try again, check your microphone, or type instead.')
     }
     recognitionRef.current = recognition
+    targetRef.current = target
     stopRequestedRef.current = null
     try {
       recognition.start()
       setRecordingTarget(target)
     } catch {
       recognitionRef.current = null
+      targetRef.current = ''
       setError('Could not start voice recording. Please type your text or try again.')
     }
   }
 
-  return { recordingTarget, ready, error, dictate, stopRecording }
+  return { recordingTarget, ready, error, dictate, stopRecording, cancelRecording }
 }

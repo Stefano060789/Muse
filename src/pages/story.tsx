@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
 import { removeLibraryEntry } from '../lib/storyLibrary'
-import { loadMuseProfile } from '../lib/profile'
+import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import ReadAlongText from '../components/ReadAlongText'
@@ -30,6 +30,7 @@ export default function StoryPage() {
   const [need, setNeed] = useState('')
   const [selectedMood, setSelectedMood] = useState<PersonalStoryMood>('curious')
   const [profileReady, setProfileReady] = useState(false)
+  const [profileDraft, setProfileDraft] = useState('')
   const [responseDraft, setResponseDraft] = useState('')
   const [duration, setDuration] = useState(10)
   const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
@@ -37,7 +38,6 @@ export default function StoryPage() {
   const [romance, setRomance] = useState<StoryRomance | undefined>()
   const [romanceConfirmed, setRomanceConfirmed] = useState(false)
   const [creatorCode, setCreatorCode] = useState('')
-  const [dictationLanguage, setDictationLanguage] = useState('en-US')
   const [reconciled, setReconciled] = useState(false)
   const [preparation, setPreparation] = useState<Preparation | null>(null)
   const [storyError, setStoryError] = useState('')
@@ -55,10 +55,11 @@ export default function StoryPage() {
     sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
   }, { creatorCode })
   const stopSpeaking = narrator.stop
-  const interaction = useStoryInteraction(stopSpeaking, dictationLanguage)
+  const interaction = useStoryInteraction(stopSpeaking, story?.language || language)
   const stopRecording = interaction.stopRecording
   const isRecording = Boolean(interaction.recordingTarget)
   const moveCreationStep = (step: number) => {
+    interaction.cancelRecording()
     setCreationStep(step)
     setStoryError('')
     requestAnimationFrame(() => {
@@ -66,12 +67,14 @@ export default function StoryPage() {
       creationSection.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
     })
   }
-  useEffect(() => { setRomanceConfirmed(false) }, [romance, need, selectedMood, duration, choiceMode, language, useProfile])
+  useEffect(() => { setRomanceConfirmed(false) }, [romance])
 
   useEffect(() => {
     try {
       setStory(loadPersonalStory())
-      setProfileReady(Boolean(loadMuseProfile()))
+      const profile = loadMuseProfile()
+      setProfileReady(Boolean(profile))
+      setProfileDraft(profile?.about || '')
       const raw = window.localStorage.getItem(PREPARATION_KEY)
       if (raw) {
         const saved = JSON.parse(raw)
@@ -81,10 +84,6 @@ export default function StoryPage() {
     } catch (error) {
       setStoryNotice(error instanceof Error ? error.message : 'This browser could not restore your story or memories.')
     }
-    const invalidate = () => setReconciled(false)
-    window.addEventListener('focus', invalidate)
-    window.addEventListener('storage', invalidate)
-    return () => { window.removeEventListener('focus', invalidate); window.removeEventListener('storage', invalidate) }
   }, [])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
@@ -126,12 +125,35 @@ export default function StoryPage() {
     if (!saved || requestLock.current) return
     requestLock.current = true
     setIsGenerating(true); setStoryError(''); setReconciled(false)
-    stopSpeaking(); stopRecording()
+    stopSpeaking(); interaction.cancelRecording()
     try {
       const data = await requestJourney({ action: 'resume', ...saved })
       if (!data.story) setStoryNotice('Preparation is still pending. Reconcile later; this does not trigger another AI request.')
     } catch (error) { setStoryError(error instanceof Error ? error.message : 'Could not reconcile your story.') }
     finally { requestLock.current = false; setIsGenerating(false) }
+  }
+
+  const reconcileRef = useRef(reconcile)
+  reconcileRef.current = reconcile
+  useEffect(() => {
+    if (!story?.journey && !preparation) return
+    void reconcileRef.current()
+    const refresh = () => { void reconcileRef.current() }
+    window.addEventListener('focus', refresh)
+    window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
+  }, [story?.id, Boolean(story?.journey), preparation?.id, creatorCode])
+
+  const savePersonalTouches = () => {
+    interaction.cancelRecording()
+    try {
+      saveMuseProfile(profileDraft)
+      setProfileReady(true)
+      setStoryNotice('Personal touches saved in this browser. Choose below whether to include them in this story.')
+      setAiConsent(false)
+    } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Could not save your personal touches.')
+    }
   }
 
   const abandonPreparation = () => {
@@ -195,7 +217,11 @@ export default function StoryPage() {
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status) : story.responses.length >= story.scenes.length))
 
   const choose = async (choice: string) => {
-    if (!story || requestLock.current || finished || (story.journey && (!reconciled || story.journey.pending))) return
+    if (!story || requestLock.current || finished) return
+    if (story.journey && (!reconciled || story.journey.pending)) {
+      setStoryError('Your saved progress needs checking before sending. Use Sync saved progress above; your answer is kept.')
+      return
+    }
     const sendsToAi = Boolean(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1))
     if (sendsToAi && !hasExplicitConsent(aiConsent)) {
       setStoryError('Review the AI disclosure and check the consent box before sending your response.')
@@ -206,19 +232,19 @@ export default function StoryPage() {
     setStoryError('')
     setIsGenerating(true)
     stopSpeaking()
-    stopRecording()
+    interaction.cancelRecording()
     try {
       if (story.journey) {
         setReconciled(false)
         await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice, consentVersion })
-        setResponseDraft('')
+        setResponseDraft(current => current === choice ? '' : current)
         return
       }
       const nextStory = story.generation === 'ai' && story.currentStep < story.scenes.length - 1
         ? await requestStory({ action: 'continue', story, answer: choice, consentVersion })
         : answerPersonalStory(story, choice)
       persistStory(nextStory)
-      setResponseDraft('')
+      setResponseDraft(current => current === choice ? '' : current)
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not continue your story.')
     } finally {
@@ -294,11 +320,11 @@ export default function StoryPage() {
           </details>
           {story ? <details style={{ marginBottom: '1rem' }}>
             <summary>Audio settings</summary>
-            <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
+            <NarrationControls narrator={narrator} beforeSpeak={stopRecording} showCloudConsent={false} />
           </details> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
             <button onClick={reconcile} disabled={isGenerating}>Sync saved progress (no AI call)</button>
-            {!reconciled || story?.journey?.pending ? <p>Sync before responding. Pending attempts expire after 90 seconds without a refund; they are not automatically retried.</p> : null}
+            {!reconciled || story?.journey?.pending ? <p>{isGenerating ? 'Checking your saved progress...' : 'Progress could not be confirmed yet. Sync again before sending; you can keep writing your answer.'}</p> : null}
             {preparation ? <p>Unfinished preparation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon (no refund)</button></p> : null}
           </div> : null}
           {!story ? (
@@ -314,6 +340,7 @@ export default function StoryPage() {
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
                 {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
+              <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} />
               </fieldset>
               <fieldset hidden={creationStep !== 1} disabled={creationStep !== 1 || isGenerating || Boolean(preparation)} className="atelier-card" style={{ margin: 0 }}>
               <legend>Your story, your pace</legend>
@@ -329,7 +356,7 @@ export default function StoryPage() {
                 </select>
               </label>
               </div>
-              <p className="atelier-note">The story and its actions stay in your chosen language. Listening depends on available device voices.</p>
+              <p className="atelier-note">Your story, actions and voice input use this language.</p>
               <label style={{ display: 'block', marginTop: '1rem' }}>How do you want to interact?
                 <select aria-label="Story interaction" value={choiceMode} disabled={isGenerating || Boolean(preparation)} onChange={event => { setChoiceMode(event.target.value as StoryChoiceMode); setAiConsent(false) }}>
                   <option value="free">Write or speak freely</option>
@@ -339,19 +366,33 @@ export default function StoryPage() {
               <label style={{ display: 'block', maxWidth: 700, marginTop: '1.5rem', fontWeight: 700 }}>What do you need? (optional)
                 <textarea value={need} onChange={(event) => { setNeed(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={4} placeholder="I feel restless and want to feel brave about what comes next…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.6rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
               </label>
-              {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Send my latest five memories to AI</label> : null}
-              {!profileReady ? <p className="atelier-note"><Link href="/myself">Add personal touches</Link> (optional). You can create a story without them.</p> : null}
+              <details style={{ marginTop: '1rem' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Personal touches (optional)</summary>
+                <p>Keep a few memories in this browser without leaving story creation. They are sent to AI only if you choose to include them.</p>
+                <label>What should Muse remember?
+                  <textarea aria-label="Personal touches" value={profileDraft} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setProfileDraft(event.target.value) }} maxLength={4000} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit' }} />
+                </label>
+                <HoldToSpeakButton label="Hold to speak personal touches" recording={interaction.recordingTarget === 'profile'}
+                  onStart={() => interaction.dictate('profile', value => setProfileDraft(value.slice(0, 4000)))}
+                  onStop={() => stopRecording('profile')} disabled={creationStep !== 1 || isGenerating || Boolean(preparation)} />
+                <p className="atelier-note">Voice input may use an online speech service. Release to finish, then edit before saving.</p>
+                <button type="button" disabled={!profileDraft.trim() || isGenerating} onClick={savePersonalTouches}>Save personal touches</button>
+                {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Include my latest five saved memories in this story</label> : null}
+              </details>
               </fieldset>
               <fieldset hidden={creationStep !== 2} disabled={creationStep !== 2 || isGenerating || Boolean(preparation)} className="atelier-card" style={{ margin: 0 }}>
               <legend>One last look</legend>
               <p><strong>{moods.find(mood => mood.key === selectedMood)?.title}</strong> · About {duration} minutes · {storyLanguage(language).label}</p>
               <p>{choiceMode === 'suggested' ? 'Choose from suggested actions.' : 'Write or speak your own responses.'}{useProfile && profileReady ? ' Your latest five memories will be included.' : ' No profile memories included.'}</p>
               {need ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{need}</p> : null}
-              <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} />
+              {romance ? <p>{romanceCopy(language).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>Change theme</button></p> : null}
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                 I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
               </ExplicitConsent>
+              {narrator.provider !== 'browser' ? <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
+                Enable optional narration: send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
+              </ExplicitConsent> : null}
               <details style={{ marginTop: '1rem' }}>
                 <summary>Privacy and limits</summary>
                 <p>Your need and selected memories go to the configured AI provider. Duration is approximate, not a timer. The last successful response concludes the story; failed final attempts cannot be retried or refunded.</p>
@@ -376,11 +417,17 @@ export default function StoryPage() {
                   I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
                 </ExplicitConsent>
               ) : null}
+              {narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>
+                <summary>Enable optional narration</summary>
+                <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
+                  Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
+                </ExplicitConsent>
+              </details> : null}
               <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
                 <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
                 <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></h2>
                 <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></p>
-                <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} />
+                <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} showCloudConsent={false} />
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} />}</h3>
@@ -392,16 +439,14 @@ export default function StoryPage() {
                   {!story.journey.choices?.length ? <p>Sync progress to load actions.</p> : null}
                 </> : <>
                 <label>Editable response
-                <textarea aria-label="Editable response" value={responseDraft} onChange={(event) => setResponseDraft(event.target.value)} maxLength={story.journey ? 800 : 600} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                <textarea aria-label="Editable response" value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
-                <label>Dictation language <select value={dictationLanguage} disabled={isGenerating || isRecording} onChange={event => setDictationLanguage(event.target.value)}>
-                  {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}<option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="fr-FR">Français</option>
-                </select></label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>
                   <HoldToSpeakButton label="Hold to speak your answer" releaseLabel="Release to stop" recording={isRecording} onStart={startDictation} onStop={() => stopRecording('response')} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
                 </div>
                 {isRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
+                {isRecording ? <button type="button" onClick={() => interaction.cancelRecording()}>Stop microphone and type</button> : null}
                 </>}
                 {!story.journey ? <>
                 <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction (legacy story):</p>

@@ -42,13 +42,21 @@ The full product definition lives in four documents:
 ### Simple start and app installation
 
 The same primary menu appears across Muse: **Home**, **Create a story**
-(`/story`), **Create a gift** (`/shared#new`), and **Saved stories** (`/library`).
+(`/story`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
-Saved stories groups **Stories for me** and **Gifts for others**, including
+Saved stories groups **Stories for me** and **Gift stories for others**, including
 private gift-management links. Personal touches (`/myself`) remains optional
 inside story creation, not a separate primary destination. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
+Personal creation keeps optional personal touches in a collapsed inline editor
+in step two; the romance theme is selected with mood in step one. Step three
+includes optional cloud-narration permission, separate from story AI processing.
+Restored journeys check saved progress automatically on opening or returning to
+the tab, without generating story text. The response draft stays editable while
+progress is checked. Hold-to-speak uses the story language; releasing finishes
+dictation, and focusing the response field cancels late transcripts so typing
+is not overwritten.
 **Try a 2-minute sample** opens an original, fictional
 two-scene gift at `/demo`: no runtime AI generation, paid TTS, story storage, or account.
 Sample narration uses three public, prerecorded Google WaveNet MP3s (two scenes

@@ -25,10 +25,10 @@ function load(relative) {
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Create a story', 'Create a gift', 'Saved stories']
+const expected = ['Home', 'Create a story', 'Create a gift story', 'Saved stories']
 for (const [pathname, selected] of [
   ['/', 'Home'], ['/story', 'Create a story'], ['/myself', 'Create a story'],
-  ['/shared', 'Create a gift'], ['/couples', 'Create a gift'], ['/library', 'Saved stories'],
+  ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Saved stories'],
   ['/demo', null], ['/billing', null], ['/privacy', null], ['/creator', null]
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
