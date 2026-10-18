@@ -18,7 +18,7 @@ const checks = [
   }],
   ['explicit checked consent authorizes transmission', () => {
     assert.equal(legal.hasExplicitConsent(true), true)
-    assert.equal(legal.MUSE_AI_CONSENT_VERSION, '2026-10-14')
+    assert.equal(legal.MUSE_AI_CONSENT_VERSION, '2026-10-18')
   }],
   ['missing public contact settings remain explicitly unconfigured', () => {
     assert.deepEqual(legal.getPublicContactConfig(undefined, ''), {

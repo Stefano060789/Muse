@@ -106,7 +106,7 @@ export default function GiftVoiceRecorder({ file, onChange, disabled, beforeReco
   }
   return <section aria-label="Personal voice message">
     <p>Add your own voice to the final reveal. Up to 60 seconds, 5 MB. No cloning, transcription or AI processing.</p>
-    <label style={{ display: 'block', marginBottom: 12 }}><input type="checkbox" checked={consent} disabled={recording || starting || disabled} onChange={event => { setConsent(event.target.checked); if (!event.target.checked) onChange(null) }} /> I choose to record or upload my voice for the recipient. It will be stored privately with this story for up to 30 days.</label>
+    <label style={{ display: 'block', marginBottom: 12 }}><input type="checkbox" checked={consent} disabled={recording || starting || disabled} onChange={event => { setConsent(event.target.checked); if (!event.target.checked) onChange(null) }} /> I choose to record or upload my voice for the recipient. It will be stored privately with this story until removed or the story is deleted, with no automatic expiry.</label>
     {error ? <p role="alert">{error}</p> : null}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       {recording ? <button type="button" onClick={() => stopRef.current?.()} style={{ minHeight: 44, padding: '0.8rem' }}>Stop recording ({seconds}s / 60s)</button> : <button type="button" disabled={!consent || disabled || starting} onClick={() => void start()} style={{ minHeight: 44, padding: '0.8rem' }}>{starting ? 'Opening microphone...' : 'Record a message'}</button>}

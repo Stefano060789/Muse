@@ -40,7 +40,7 @@ export default function BillingPage() {
         </section>
         <section aria-labelledby="access-title" style={{ lineHeight: 1.75 }}>
           <h2 id="access-title">Your stories and access</h2>
-          <p>Current server story access lasts up to 30 days. A subscription is not permanent story storage. Planned cancellation stops future renewal, not access to already purchased gifts before their disclosed expiry.</p>
+          <p>Server stories have no automatic expiry and remain until deleted. Continued hosting and backups are not guaranteed forever. Planned subscription cancellation stops future renewal, not access to existing stories.</p>
           <p>Muse currently has no billing account or cross-device library sync. Paid checkout, secure customer sign-in and server-side allowances must be in place before these plans can launch.</p>
         </section>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '1rem 0' }}>

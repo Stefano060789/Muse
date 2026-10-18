@@ -82,7 +82,7 @@ async function main() {
   const nextAddress = () => `10.0.0.${address++}`
   async function api(body, { code = CODE, ip = '127.0.0.1' } = {}) {
     const res = mockRes()
-    await handler({ method: 'POST', headers: { host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}) }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-10-14', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}) }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-10-18', ...body } }, res)
     assert.equal(res.headers['cache-control'], 'no-store')
     return { status: res.statusCode, body: res.body, bytes: res.bytes(), headers: res.headers }
   }
@@ -340,14 +340,18 @@ async function main() {
     assert.equal(storyFiles(both).length, 0, 'Deleting the story deletes its media')
   })
 
-  await check('expired stories lose media access and their objects are purged', async () => {
-    const story = (await create({ ...baseBrief, message: 'Soon gone' }, { mime: 'video/mp4', size: 900 })).body
+  await check('permanent stories keep media after 31 days and manual deletion still purges objects', async () => {
+    const story = (await create({ ...baseBrief, message: 'A lasting gift' }, { mime: 'video/mp4', size: 900 })).body
     assert.equal((await attach(story, mp4(900), 'video/mp4')).status, 200)
     assert.equal(storyFiles(story).length, 1)
     now += 31 * 24 * 60 * 60 * 1000
-    assert.equal((await api({ action: 'media-preview', token: story.ownerToken })).status, 404)
+    assert.equal(story.expiresAt, null)
+    assert.equal((await api({ action: 'media-preview', token: story.ownerToken })).status, 200)
     await create({ ...baseBrief, message: 'A new day' })
-    assert.equal(storyFiles(story).length, 0, 'Expired story media is deleted')
+    assert.equal(storyFiles(story).length, 1, 'Cleanup must not remove permanent story media')
+    assert.equal((await api({ action: 'delete', token: story.ownerToken })).status, 200)
+    assert.equal((await api({ action: 'media-preview', token: story.ownerToken })).status, 404)
+    assert.equal(storyFiles(story).length, 0, 'Manual deletion still removes story media')
   })
 
   await check('Supabase store uses only signed URLs on the configured project and never exposes the service key', async () => {

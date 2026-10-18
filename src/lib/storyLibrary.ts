@@ -9,7 +9,7 @@ import { parseStoryRomance } from './storyRomance'
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
 const SHARED_KEY = 'muse-shared-creator'
-export type CreatorStory = { ownerToken: string; playToken?: string; brief: SharedStoryBrief; content: SharedStoryContent; expiresAt: string }
+export type CreatorStory = { ownerToken: string; playToken?: string; brief: SharedStoryBrief; content: SharedStoryContent; expiresAt: string | null }
 export type LibraryEntry =
   | { kind: 'personal'; id: string; updatedAt: string; story: PersonalStory }
   | { kind: 'shared'; id: string; updatedAt: string; story: CreatorStory }
@@ -112,7 +112,7 @@ export function validateCreatorStory(value: unknown): CreatorStory {
   return {
     ownerToken: identifier(input.ownerToken),
     ...(input.playToken !== undefined ? { playToken: identifier(input.playToken) } : {}),
-    expiresAt: date(input.expiresAt), brief,
+    expiresAt: input.expiresAt === null ? null : date(input.expiresAt), brief,
     content: { title: text(content.title), description: text(content.description), scenes, ...narration(content) }
   }
 }

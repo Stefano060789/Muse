@@ -6,8 +6,12 @@ create table if not exists public.muse_personal_journeys (
   id uuid primary key,
   capability_hash text not null check (capability_hash ~ '^[0-9a-f]{64}$'),
   record jsonb not null,
-  expires_at timestamptz not null
+  expires_at timestamptz not null default 'infinity'::timestamptz
 );
+alter table public.muse_personal_journeys alter column expires_at set default 'infinity'::timestamptz;
+update public.muse_personal_journeys
+  set expires_at = 'infinity'::timestamptz,
+      record = jsonb_set(record, '{expiresAt}', 'null'::jsonb, true);
 create table if not exists public.muse_personal_journey_requests (
   journey_id uuid not null references public.muse_personal_journeys on delete cascade,
   request_id text not null,
@@ -46,7 +50,6 @@ declare
   result_status text;
   day_bucket text := 'day:' || to_char(now() at time zone 'UTC', 'YYYY-MM-DD');
   stamp text := to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
-  expiry timestamptz := now() + interval '30 days';
 begin
   if cap is null or cap not between 1 and 10000 then raise exception 'Journey: invalid daily cap'; end if;
   if op is null or op not in ('create', 'view', 'reserve', 'finish') then raise exception 'Journey: invalid operation'; end if;
@@ -54,7 +57,6 @@ begin
   -- This serializes first creation as well as existing-session operations.
   -- Lock order is always session then UTC budget, as in Shared Adventure.
   perform pg_advisory_xact_lock(hashtextextended('muse-personal:' || sid::text, 0));
-  delete from public.muse_personal_journeys where id = sid and expires_at <= now();
   select record into r from public.muse_personal_journeys where id = sid and capability_hash = ch for update;
   if r is null and op = 'create' then
     if exists(select 1 from public.muse_personal_journeys where id = sid) then raise exception 'Journey: session unavailable'; end if;
@@ -62,16 +64,16 @@ begin
     if duration is null or duration not in (5, 10, 15, 20) or rid is distinct from sid::text then raise exception 'Journey: invalid creation'; end if;
     if fp is null or fp !~ '^[0-9a-f]{64}$' then raise exception 'Journey: invalid request'; end if;
     r := jsonb_build_object('id', sid, 'capabilityHash', ch, 'input', input->'input',
-      'createdAt', stamp, 'expiresAt', to_char(expiry at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'createdAt', stamp, 'expiresAt', null,
       'opening', null, 'used', 0, 'turn', null, 'lastAction', '', 'scenes', '[]'::jsonb,
       'responses', '[]'::jsonb, 'creationStatus', 'pending');
-    insert into public.muse_personal_journeys values (sid, ch, r, expiry);
+    insert into public.muse_personal_journeys values (sid, ch, r, 'infinity'::timestamptz);
     insert into public.muse_personal_journey_requests(journey_id, request_id, fingerprint, kind, status, revision)
       values (sid, rid, fp, 'create', 'pending', 0);
     reserved := true;
     result_status := 'reserved';
   elsif r is null then
-    -- Returning a sentinel commits expiry cleanup; an exception would undo it.
+    -- Returning a sentinel keeps unavailable sessions from being distinguished.
     return jsonb_build_object('unavailable', true);
   end if;
 

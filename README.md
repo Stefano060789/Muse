@@ -169,19 +169,22 @@ Run `npm run test:gift-experience` for drafts, occasions, safe printable output,
 recording and creator/recipient UI checks; `npm run test:gifting` covers
 private voice/reply authorization and persistence without paid provider calls.
 
-### Printable gift cards and expiry
+### Printable QR codes and gift cards
 
-After reviewing a publicly shareable gift, choose **Print a gift card**.
+Under **Share and sender tools**, finish the pre-send checks for a publicly
+shareable gift story, then choose **Create printable QR code**.
+Saved gift-story cards also offer **Create printable QR code** beside the
+recipient-link and completion actions, without opening management or the story.
 Muse generates the QR locally with `qrcode`; no external QR service receives
 the recipient capability. The card includes a generic editable greeting, the
-recipient address and the story's expiry, never an automatic copy of private
+recipient address and no-automatic-expiry notice, never an automatic copy of private
 answers, the reveal or media. The greeting is visible before online content
 notices, so keep it appropriate for the printed card.
 
 Anyone with the card can use its recipient link. Replacing that link, deleting
-the story or reaching expiry invalidates printed copies. Printing does not
+the story invalidates printed copies. Printing does not
 extend retention or make an offline interactive story. A separate text keepsake
-can survive expiry, but excludes attachments and is not a full live transcript.
+can be kept offline, but excludes attachments and is not a full live transcript.
 iPhone print/PDF steps vary by iOS; physical-device printing and QR scanning
 remain release checks. Run `npm run test:gift-card` for local PNG QR generation,
 recipient-link validation and escaped printable HTML.
@@ -265,7 +268,7 @@ are still required at creation. Values survive Back/Continue within the open
 page, but unfinished personal form values are not a persisted draft.
 
 The same visual foundation covers gifts, the browser-local library, personal
-touches, billing and legal/support pages. Existing storage, expiry, pricing,
+touches, billing and legal/support pages. Existing storage, pricing,
 access and consent rules are unchanged. Run `npm run test:design` for focused
 interface regressions. Validate responsive layouts at 320, 390 and 1280 pixels,
 including Arabic recipient views and keyboard/reduced-motion behavior.
@@ -521,7 +524,7 @@ and private shared-story management entries in this browser. Reopening a
 legacy personal story is local. New personal journeys reconcile authoritative
 server progress through `/api/personal-story` after entering the creator code;
 reconciliation is free and never generates text. Opening a shared management link checks the server,
-where the story may already have expired or been deleted. Library cards do
+where the story may already have been deleted. Library cards do
 not display private answers, messages or access tokens.
 
 The versioned `muse-story-library` key migrates valid existing
@@ -583,11 +586,20 @@ dictation can use the browser vendor's speech service. Do not include
 sensitive third-party personal data. Shared Story does not read or forward
 the creator's local Myself profile automatically.
 
-Story links expire after 30 days. Expired rows are cleaned up on subsequent
-rate-limited generation/guess requests, not by a guaranteed scheduled job.
-An active creator can delete their story immediately. Before public launch,
-add scheduled retention cleanup, abuse protection, provider budget alerts
-and a privacy review.
+Story links have no automatic expiry. Stories, progress and attached media stay
+until deletion; owner deletion and recipient-link rotation still revoke access.
+Storage uses an explicit `infinity` expiry sentinel, exposed as `expiresAt: null`
+in API/browser snapshots, not an arbitrary distant date. Upload windows, signed
+delivery URLs, rate limits and interrupted AI reservations still expire normally.
+Before public launch, add abuse protection, provider budget alerts and a privacy
+review. Indefinite retention is not a guarantee of perpetual hosting or backups.
+
+For existing hosted databases, reapply `supabase/personal-journeys.sql`, then apply
+`supabase/personal-journey-retention.sql` and
+`supabase/permanent-shared-stories.sql` before deploying this release. They
+upgrade surviving records only; already purged stories cannot be recovered.
+Existing browser entries keep working even if they contain a legacy expiry date.
+New databases use the permanent defaults in the setup scripts.
 
 Generation is atomically limited in the selected database to 5 requests/hour per
 connection and 100/day across both story areas, including failed AI calls.
@@ -600,7 +612,7 @@ return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 
 Created shared stories stay in this browser's Story Library independently of
 recipient progress. The Gift stories for others section offers recipient-link
-copying, browser-local removal, expiry dates and manual completion checks.
+copying, browser-local removal, printable QR cards and manual completion checks.
 In private gift management, **Recipient
 progress** offers manual Load/Refresh: opened browser playthroughs, still in
 progress, completed by solving, revealed without solving, and the furthest
@@ -614,7 +626,7 @@ The owner-only API requires the private management capability and creator access
 it never exposes identifiers, answers or private messages in the summary.
 It uses existing session data, no extra AI calls, no polling and no new migration
 (the existing puzzle-help migration supplying `skipped` is required on Supabase).
-Browser entries are not account sync or backups; server expiry still applies.
+Browser entries are not account sync or backups; server deletion still applies.
 Validate with `npm run test:progress`, `npm run test:sqlite`, `npm run test:shared`
 and `npm run test:gift-experience`.
 
@@ -731,8 +743,7 @@ uncertain requests disable sending until explicit reconciliation. An
 interrupted opening retains its ID/capability under
 `muse-personal-journey-preparation` so it can be reconciled after reload.
 Browser entries remain local plaintext, not accounts or cloud backup.
-Server sessions expire after 30 days; local SQLite cleans expired sessions
-on use. Hosted operators should schedule expiry cleanup. Removing browser
+Server sessions have no automatic expiry. Removing browser
 entries does not reset or delete server allowance.
 
 Choose **Free choice** (typed or reviewed dictated actions) or **Suggested
@@ -940,8 +951,7 @@ Choose the contact and confirm sending in
 that app; Muse does not automatically send messages. Share payloads include
 only a generic invitation and the recipient capability link, not the
 management link, secret answer, or final message. Anyone with the link,
-including someone it is forwarded to, can play until it expires or is
-replaced/deleted.
+including someone it is forwarded to, can play until it is replaced/deleted.
 
 The current `127.0.0.1` local testing address only works on this computer.
 Outbound app-sharing controls are hidden for loopback addresses; copying

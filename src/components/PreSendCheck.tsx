@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CreatorStory } from '../lib/storyLibrary'
 import { romanceCopy } from '../lib/storyRomance'
+import { storyHasAccess } from '../lib/storyRetention'
 
 export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending, onReady }: {
   story: CreatorStory
@@ -17,7 +18,7 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
   useEffect(() => {
     setPreviewed(false); setAnswerChecked(false); setAttachmentsChecked(false); setIndex(0); setPreview(false)
   }, [story.ownerToken, hasMedia, hasVoice, uploadPending])
-  const ready = previewed && answerChecked && attachmentsChecked && !uploadPending && Boolean(story.brief.message || hasMedia) && Date.parse(story.expiresAt) > Date.now()
+  const ready = previewed && answerChecked && attachmentsChecked && !uploadPending && Boolean(story.brief.message || hasMedia) && storyHasAccess(story.expiresAt)
   useEffect(() => { onReady(ready) }, [ready, onReady])
   const scene = story.content.scenes[index]
   return <section aria-label="Before you send">
@@ -48,7 +49,7 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
     <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={answerChecked} onChange={event => setAnswerChecked(event.target.checked)} /> The clues lead to my intended answer, and I checked its wording and accepted alternatives.</label>
     <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={attachmentsChecked} onChange={event => setAttachmentsChecked(event.target.checked)} /> I checked the final message{hasMedia ? ', attached photo/video' : ''}{hasVoice ? ', and voice recording' : ''}. Nothing I want to send is still waiting to upload.</label>
     {uploadPending ? <p role="status">Finish or remove the selected upload before sharing.</p> : null}
-    {Date.parse(story.expiresAt) <= Date.now() ? <p role="alert">This story has expired. Create a new story before sending.</p> : null}
+    {!storyHasAccess(story.expiresAt) ? <p role="alert">This story link is unavailable. Reopen the story before sending.</p> : null}
     {!story.brief.message && !hasMedia ? <p role="alert">Add the required surprise photo/video before sending this story.</p> : null}
     {!ready ? <p>Recipient sharing appears here after these checks. Your story is prepared; copy the private management link below to keep access.</p> : <p role="status">Ready to send. Keep your management link private.</p>}
   </section>

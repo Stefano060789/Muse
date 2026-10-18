@@ -44,7 +44,7 @@ async function main() {
   })
   const url = `http://127.0.0.1:${port}/api/shared-story`
   const api = async body => {
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consentVersion: '2026-10-14', ...body }) })
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consentVersion: '2026-10-18', ...body }) })
     return { status: response.status, body: await response.json() }
   }
   const id = '00000000-0000-0000-0000-000000000000'

@@ -17,6 +17,7 @@ import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
 import GiftCard from '../components/GiftCard'
+import { storyHasAccess } from '../lib/storyRetention'
 import GiftProgress from '../components/GiftProgress'
 import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 import StudioNarration, { type StudioSceneStatus } from '../components/StudioNarration'
@@ -206,8 +207,8 @@ export default function SharedStoryPage() {
   const beforeStudio = () => { narrator.stop(); interaction.stopRecording(); storedVoiceAudio.current?.pause() }
   const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
   const confirmShareReady = () => {
-    if (creator && sendReady === creator.ownerToken && Date.parse(creator.expiresAt) > Date.now() && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
-    setError('Review the pre-send checks and finish uploads before sharing an unexpired story.')
+    if (creator && sendReady === creator.ownerToken && storyHasAccess(creator.expiresAt) && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
+    setError('Review the pre-send checks and finish uploads before sharing this story.')
     return false
   }
   const recipientText = recipientCopy(player?.language)
@@ -1035,7 +1036,7 @@ export default function SharedStoryPage() {
             </details>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
             <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
-            <p>Recipient access expires {new Date(creator.expiresAt).toLocaleString()}. The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
+            <p>{creator.expiresAt === null ? 'Recipient access has no automatic expiry.' : `Recipient access expires ${new Date(creator.expiresAt).toLocaleString()}.`} The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
             {creator.brief.adventure ? <p>{creator.brief.adventure.choiceMode === 'suggested' ? '3-5 suggested actions per turn' : 'Free written or spoken actions'}. Up to 12 per playthrough; {creator.brief.adventure.actionBudget} total AI attempts, including failures.</p> : null}
             <article style={cardStyle}>
               <h2>Listen before sending</h2>
@@ -1132,8 +1133,8 @@ export default function SharedStoryPage() {
             </article> : <article style={cardStyle}>
               <h2>Share story</h2>
               <PreSendCheck key={creator.ownerToken} story={creator} hasMedia={Boolean(ownerMedia)} hasVoice={Boolean(ownerVoice)} uploadPending={Boolean(mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading')} onReady={markSendReady} />
-              {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && Date.parse(creator.expiresAt) > Date.now() ? <>
-              <p>Anyone with the recipient link can play. Keep the management link to yourself. Links expire on {new Date(creator.expiresAt).toLocaleDateString()}.</p>
+              {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && storyHasAccess(creator.expiresAt) ? <>
+              <p>Anyone with the recipient link can play. Keep the management link to yourself. {creator.expiresAt === null ? 'No automatic expiry; deleting the story or replacing its recipient link disables old links and printed QR codes.' : `Links expire on ${new Date(creator.expiresAt).toLocaleDateString()}.`}</p>
               <details style={{ marginBottom: '1rem' }}>
                 <summary>Local testing: HTTPS tunnel</summary>
                 <p>Start the recipient gateway and Cloudflare Quick Tunnel, then paste its HTTPS address. Keep Muse running and this computer awake. Restarting changes the address; it is not saved. Use non-sensitive stories: traffic passes through Cloudflare.</p>
@@ -1336,7 +1337,7 @@ export default function SharedStoryPage() {
               </details>
               <details style={{ marginBottom: '1rem' }}>
                 <summary>Privacy and limits</summary>
-                <p>Your written brief, including answers, hints and message, goes to the configured AI provider and stays on the server for up to 30 days. Media goes only to private storage and is deleted with the story. Hints need no AI calls. Avoid confidential or sensitive details about others.</p>
+                <p>Your written brief, including answers, hints and message, goes to the configured AI provider and stays on the server until the story is deleted, with no automatic expiry. Media goes only to private storage and is deleted with the story. Hints need no AI calls. Avoid confidential or sensitive details about others.</p>
                 <p>Expired records may be physically cleaned only when later requests trigger cleanup. Backups are retained separately.</p>
                 <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype. Each story allows {SHARED_MEDIA_ATTEMPTS_PER_STORY} photo/video upload attempts.</p>
               </details>
@@ -1344,7 +1345,7 @@ export default function SharedStoryPage() {
                 <input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy().creatorConfirmation}
               </label> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server for up to 30 days. Any photo, video or voice recording is stored privately and is not sent to AI.
+                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server until deleted, with no automatic expiry. Any photo, video or voice recording is stored privately and is not sent to AI.
               </ExplicitConsent>
               <button disabled={busy || voiceRecording || Boolean(pendingDraft) || draftUnreadable} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading your ${mediaFile?.type.startsWith('video/') ? 'video' : 'photo'}… ${upload.progress}%` : 'Muse is preparing the mystery...' : 'Prepare story with AI'}</button>
               </fieldset>

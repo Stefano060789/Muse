@@ -350,7 +350,7 @@ async function main() {
       status: (value) => { status = value; return res },
       json: (value) => { result = value; return res }
     }
-    await selectedHandler({ method, body: { consentVersion: '2026-10-14', ...body }, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
+    await selectedHandler({ method, body: { consentVersion: '2026-10-18', ...body }, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
     assert.equal(responseHeaders['Cache-Control'], 'no-store')
     return { status, body: result }
   }
@@ -368,11 +368,15 @@ async function main() {
     assert.ok(!JSON.stringify(stored).includes(created.body.ownerToken.split('.')[1]))
     assert.ok(!JSON.stringify(stored).includes(created.body.playToken.split('.')[1]))
     assert.deepEqual(created.body.content, content)
+    assert.equal(created.body.expiresAt, null, 'Permanent stories expose an explicit null expiry')
+    assert.equal(stored.expires_at, 'infinity', 'Hosted storage uses PostgreSQL infinity, never a distant date')
   })
   await check('recipient cannot access management and owner cannot play with the owner token', async () => {
     assert.equal((await api({ action: 'manage', token: created.body.playToken })).status, 404)
     assert.equal((await api({ action: 'open', token: created.body.ownerToken })).status, 404)
-    assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.brief.message, brief.message)
+    const managed = await api({ action: 'manage', token: created.body.ownerToken })
+    assert.equal(managed.body.brief.message, brief.message)
+    assert.equal(managed.body.expiresAt, null, 'Management never leaks the internal infinity sentinel')
   })
   await check('hosted progress uses exact bounded counts beyond 1000 rows, is owner-only and surfaces errors', async () => {
     const before = runtimeProviderCalls

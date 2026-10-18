@@ -7,6 +7,7 @@ import type { StudioRecord, StudioRequest, StudioResult } from './studioNarratio
 import type { SharedStoryProgress } from './sharedStoryProgress'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
+import { PERMANENT_STORY_EXPIRY } from './storyRetention'
 import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
 import {
   SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
@@ -14,6 +15,9 @@ import {
 } from './sharedStoryMedia'
 
 const schema = `
+CREATE TABLE IF NOT EXISTS muse_retention_migrations (
+  name TEXT PRIMARY KEY, applied_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS muse_studio_audio (
   story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
   scene_index INTEGER NOT NULL CHECK (scene_index BETWEEN 0 AND 11),
@@ -35,7 +39,7 @@ CREATE TABLE IF NOT EXISTS shared_stories (
   id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
   brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL,
   alternative_answers_normalized TEXT NOT NULL DEFAULT '[]',
-  expires_at TEXT NOT NULL, media_attempts INTEGER NOT NULL DEFAULT 0, voice_attempts INTEGER NOT NULL DEFAULT 0
+  expires_at TEXT NOT NULL DEFAULT '${PERMANENT_STORY_EXPIRY}', media_attempts INTEGER NOT NULL DEFAULT 0, voice_attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS story_expiry ON shared_stories(expires_at);
 CREATE TABLE IF NOT EXISTS shared_story_sessions (
@@ -71,7 +75,7 @@ CREATE TABLE IF NOT EXISTS muse_adventure_budgets (
 );
 CREATE TABLE IF NOT EXISTS muse_personal_journeys (
   id TEXT PRIMARY KEY, capability_hash TEXT NOT NULL, record TEXT NOT NULL,
-  expires_at TEXT NOT NULL
+  expires_at TEXT NOT NULL DEFAULT '${PERMANENT_STORY_EXPIRY}'
 );
 CREATE TABLE IF NOT EXISTS muse_personal_journey_requests (
   journey_id TEXT NOT NULL REFERENCES muse_personal_journeys(id) ON DELETE CASCADE,
@@ -139,7 +143,7 @@ export class SqliteStoryRepository implements StoryRepository {
       } else if (request.operation === 'purged') {
         for (const key of request.keys) db.prepare('DELETE FROM muse_studio_purge WHERE object_key = ?').run(key)
       } else if (request.operation === 'status') {
-        result.records = db.prepare('SELECT a.* FROM muse_studio_audio a JOIN shared_stories s ON s.id = a.story_id WHERE a.story_id = ? AND s.expires_at > ? ORDER BY a.scene_index')
+        result.records = db.prepare('SELECT a.* FROM muse_studio_audio a JOIN shared_stories s ON s.id = a.story_id WHERE a.story_id = ? AND (s.expires_at IS NULL OR s.expires_at > ?) ORDER BY a.scene_index')
           .all(request.storyId, new Date(now).toISOString()) as StudioRecord[]
       } else if (request.operation === 'audio') {
         const args = [request.storyId, request.sceneIndex, new Date(now).toISOString()]
@@ -149,10 +153,10 @@ export class SqliteStoryRepository implements StoryRepository {
           args.push(request.playHash ?? '', request.sessionHash)
         }
         result.records = db.prepare(`SELECT a.* FROM muse_studio_audio a JOIN shared_stories s ON s.id = a.story_id
-          WHERE a.story_id = ? AND a.scene_index = ? AND a.status = 'ready' AND s.expires_at > ?${access}`).all(...args) as StudioRecord[]
+          WHERE a.story_id = ? AND a.scene_index = ? AND a.status = 'ready' AND (s.expires_at IS NULL OR s.expires_at > ?)${access}`).all(...args) as StudioRecord[]
       } else if (request.operation === 'reserve') {
         const row = request.record
-        if (!db.prepare('SELECT 1 FROM shared_stories WHERE id = ? AND expires_at > ?').get(row.story_id, new Date(now).toISOString())) {
+        if (!db.prepare('SELECT 1 FROM shared_stories WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)').get(row.story_id, new Date(now).toISOString())) {
           throw new SharedStoryError('Story unavailable.', 404)
         }
         if (db.prepare('SELECT 1 FROM muse_studio_audio WHERE story_id = ? AND scene_index = ?').get(row.story_id, row.scene_index)) return result
@@ -188,7 +192,8 @@ export class SqliteStoryRepository implements StoryRepository {
       db.exec('BEGIN IMMEDIATE')
       active = true
       db.exec(schema)
-      const columns = (table: string) => db!.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name)
+      const tableInfo = (table: string) => db!.prepare(`PRAGMA table_info(${table})`).all()
+      const columns = (table: string) => tableInfo(table).map(column => column.name)
       if (!columns('shared_stories').includes('alternative_answers_normalized')) {
         db.exec("ALTER TABLE shared_stories ADD COLUMN alternative_answers_normalized TEXT NOT NULL DEFAULT '[]'")
       }
@@ -204,9 +209,22 @@ export class SqliteStoryRepository implements StoryRepository {
       if (!columns('shared_story_sessions').includes('skipped')) {
         db.exec('ALTER TABLE shared_story_sessions ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1))')
       }
+      if (!db.prepare("SELECT 1 FROM muse_retention_migrations WHERE name = 'indefinite-story-retention'").get()) {
+        db.prepare('UPDATE shared_stories SET expires_at = ?').run(PERMANENT_STORY_EXPIRY)
+        const journeyRows = db.prepare('SELECT id, record FROM muse_personal_journeys').all()
+        const updateJourney = db.prepare('UPDATE muse_personal_journeys SET record = ?, expires_at = ? WHERE id = ?')
+        for (const row of journeyRows) {
+          const record = JSON.parse(String(row.record)) as JourneyRecord
+          record.expiresAt = null
+          updateJourney.run(JSON.stringify(record), PERMANENT_STORY_EXPIRY, row.id)
+        }
+        db.prepare("INSERT INTO muse_retention_migrations(name, applied_at) VALUES ('indefinite-story-retention', ?)").run(new Date(Date.now()).toISOString())
+      }
+      if (db.prepare('PRAGMA foreign_key_check').all().length) {
+        throw new Error('SQLite story storage migration produced invalid foreign-key references.')
+      }
       const now = Date.now()
       db.prepare('DELETE FROM shared_stories WHERE expires_at <= ?').run(new Date(now).toISOString())
-      db.prepare('DELETE FROM muse_personal_journeys WHERE expires_at <= ?').run(new Date(now).toISOString())
       const result = run(db, now)
       db.exec('COMMIT')
       active = false
@@ -250,7 +268,7 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async mediaBegin(record: SharedMediaRecord, maxAttempts: number) {
     return this.transaction((db, now) => {
-      const story = db.prepare('SELECT media_attempts FROM shared_stories WHERE id = ? AND expires_at > ?').get(record.story_id, new Date(now).toISOString())
+      const story = db.prepare('SELECT media_attempts FROM shared_stories WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)').get(record.story_id, new Date(now).toISOString())
       if (!story) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
       if (Number(story.media_attempts) >= maxAttempts) return false
       db.prepare('UPDATE shared_stories SET media_attempts = media_attempts + 1 WHERE id = ?').run(record.story_id)
@@ -321,7 +339,7 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async giftReply(storyId: string, sessionHash: string, message: string): Promise<SharedGiftReply> {
     return this.transaction((db, now) => {
-      const story = db.prepare('SELECT brief FROM shared_stories WHERE id = ? AND expires_at > ?').get(storyId, new Date(now).toISOString())
+      const story = db.prepare('SELECT brief FROM shared_stories WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)').get(storyId, new Date(now).toISOString())
       const state = db.prepare('SELECT solved, skipped FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(storyId, sessionHash)
       if (!story || !state) throw new SharedStoryError('Replies are unavailable for this story or player session.', 403)
       const gift = JSON.parse(String(story.brief)).gift
@@ -349,7 +367,7 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async voiceBegin(record: SharedVoiceRecord, maxAttempts: number) {
     return this.transaction((db, now) => {
-      const story = db.prepare('SELECT voice_attempts FROM shared_stories WHERE id = ? AND expires_at > ?').get(record.story_id, new Date(now).toISOString())
+      const story = db.prepare('SELECT voice_attempts FROM shared_stories WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)').get(record.story_id, new Date(now).toISOString())
       if (!story) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
       if (Number(story.voice_attempts) >= maxAttempts) return false
       db.prepare('UPDATE shared_stories SET voice_attempts = voice_attempts + 1 WHERE id = ?').run(record.story_id)
@@ -417,10 +435,10 @@ export class SqliteStoryRepository implements StoryRepository {
         const createdAt = new Date(now).toISOString()
         const record: JourneyRecord = {
           id: input.id, capabilityHash: input.capabilityHash, input: input.input, createdAt,
-          expiresAt: new Date(now + 30 * 86400000).toISOString(), opening: null, used: 0, turn: null,
+          expiresAt: null, opening: null, used: 0, turn: null,
           lastAction: '', scenes: [], responses: [], creationStatus: 'pending'
         }
-        db.prepare('INSERT INTO muse_personal_journeys VALUES (?, ?, ?, ?)').run(input.id, input.capabilityHash, JSON.stringify(record), record.expiresAt)
+        db.prepare('INSERT INTO muse_personal_journeys VALUES (?, ?, ?, ?)').run(input.id, input.capabilityHash, JSON.stringify(record), PERMANENT_STORY_EXPIRY)
         db.prepare("INSERT INTO muse_personal_journey_requests VALUES (?, ?, ?, 'create', 'pending', ?, 0)")
           .run(input.id, input.requestId, input.fingerprint, now)
         return { record, snapshot: journeySnapshot(record, true), status: 'reserved' }

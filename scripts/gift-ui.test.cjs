@@ -71,6 +71,7 @@ async function mount(hash, player = null, owner = null, failures = {}) {
     if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
     if (id.endsWith('/storyLanguage')) return plainModule('src/lib/storyLanguage.ts')
     if (id.endsWith('/storyRomance')) return romance
+    if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory() {} }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => {
@@ -274,7 +275,7 @@ async function main() {
   console.log('PASS recipient Studio is gated behind fresh romance acceptance and cover, loads bytes with session, never exposes generation')
   const owner = await mount('#manage=fixture', null, {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
-    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2099-11-15T00:00:00.000Z'
+    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: null
   })
   assert.ok(owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'Management access is independent of pre-send checks')
   const tools = owner.nodes().find(node => node.props['aria-label'] === 'Sender tools')

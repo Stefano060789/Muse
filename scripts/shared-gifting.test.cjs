@@ -107,7 +107,7 @@ async function main() {
       method: 'POST',
       headers: { host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}) },
       socket: { remoteAddress: `10.22.0.${address++}` },
-      body: { consentVersion: '2026-10-14', ...body }
+      body: { consentVersion: '2026-10-18', ...body }
     }, res)
     return { status: res.statusCode, body: res.body, bytes: res.bytes(), headers: res.headers }
   }

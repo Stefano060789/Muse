@@ -25,7 +25,7 @@ assert.deepEqual(BILLING_PLANS.map(plan => plan.price), ['€0', '€3.99', '€
 assert.equal((8.99 * 12 - 89.99).toFixed(2), '17.89')
 assert.ok(BILLING_PLANS.find(plan => plan.id === 'monthly').features.includes('120 AI interactions per billing month, shared across stories'))
 const html = renderToStaticMarkup(React.createElement(load('src/pages/billing.tsx').default))
-for (const text of ['Coming soon - no payments or subscriptions yet.', 'Your current prototype access is unchanged', '10 new stories', '120 AI interactions', '12 AI actions total across recipients', 'Allowances refresh monthly', 'Premium cloud AI narration is not included', 'up to 30 days', 'applicable tax presentation', 'Receiving a gift never requires a paid plan']) {
+for (const text of ['Coming soon - no payments or subscriptions yet.', 'Your current prototype access is unchanged', '10 new stories', '120 AI interactions', '12 AI actions total across recipients', 'Allowances refresh monthly', 'Premium cloud AI narration is not included', 'no automatic expiry', 'applicable tax presentation', 'Receiving a gift never requires a paid plan']) {
   assert.ok(html.includes(text), 'Missing disclosure: ' + text)
 }
 assert.equal((html.match(/Not available to purchase/g) || []).length, 4)

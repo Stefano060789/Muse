@@ -10,6 +10,7 @@ const original = { env: { ...process.env }, fetch: global.fetch, now: Date.now, 
 const filename = path.join(output, 'journeys.sqlite')
 let now = Math.floor(Date.now() / 3600000) * 3600000 + 60000
 let passed = 0, calls = 0, childCalls = 0, providerMode = 'ok', hold, received
+let consentVersion
 const requests = []
 const state = { inventory: ['a lantern'], discoveries: ['a sheltered garden'], relationships: ['a welcoming gardener'], progress: 'You found a quiet place to explore.' }
 const narration = 'You settle beside the sheltered garden and listen to the leaves move above you. The gardener notices your lantern and sets a small cup of tea on the wall. Nothing needs to be hurried here. You take a sip and remember the path you chose, noticing how its turns have brought you somewhere different without asking you to become someone else. The gate remains open, but for now this place is enough. The conversation feels easy, and the light gathers softly along the stone. You carry that warmth with you as the evening settles, glad for the little discoveries you made together.'
@@ -43,6 +44,7 @@ async function main() {
   const handler = require(handlerPath).default
   const { storyRepository } = require(path.join(output, 'lib', 'storyRepository.js'))
   const journey = require(path.join(output, 'lib', 'personalJourney.js'))
+  consentVersion = require(path.join(output, 'lib', 'legalContact.js')).MUSE_AI_CONSENT_VERSION
   const library = require(path.join(output, 'lib', 'storyLibrary.js'))
   global.fetch = async (url, options) => {
     assert.equal(String(url), 'https://api.groq.com/openai/v1/chat/completions', 'No real network endpoint allowed')
@@ -70,7 +72,7 @@ async function main() {
       status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this }
     }
     const code = Object.hasOwn(options, 'code') ? options.code : process.env.MUSE_CREATOR_ACCESS_CODE
-    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': code, ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body: { consentVersion: '2026-10-14', ...body } }, res)
+    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': code, ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body: { consentVersion, ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status: res.statusCode, body: res.body }
   }
@@ -115,8 +117,10 @@ async function main() {
       assert.equal(initial.snapshot.maxTurns, duration * 3 / 5)
       assert.equal(initial.story.journey.capability, creation.capability)
       assert.equal(initial.story.scenes[0].choices.length, 0)
-      const row = inspect(db => db.prepare('SELECT record FROM muse_personal_journeys WHERE id = ?').get(creation.id))
+      const row = inspect(db => db.prepare('SELECT record, expires_at FROM muse_personal_journeys WHERE id = ?').get(creation.id))
       assert.ok(!row.record.includes(creation.capability), 'Database stores capability hash only')
+      assert.equal(row.expires_at, 'infinity')
+      assert.equal(JSON.parse(row.record).expiresAt, null)
       for (const sensitive of ['capabilityHash', '"plan"', '"opening"', 'mock-journey-key', 'owner_hash', 'answer_normalized']) assert.ok(!JSON.stringify(initial).includes(sensitive))
       for (let revision = 0; revision < duration * 3 / 5; revision++) {
         result = await api({ ...responseBody(result.body), duration: 20, mood: 'adventure', maxTurns: 999, profileKeypoints: ['INJECTED_PROFILE'], plan: ['INJECTED_PLAN'], state: { progress: 'INJECTED_STATE' } })
@@ -374,7 +378,7 @@ async function main() {
     `
     function child(body) {
       return new Promise((resolve, reject) => {
-        const processChild = spawn(process.execPath, ['-e', script, JSON.stringify({ consentVersion: '2026-10-14', ...body })], { cwd: root, env: process.env })
+        const processChild = spawn(process.execPath, ['-e', script, JSON.stringify({ consentVersion, ...body })], { cwd: root, env: process.env })
         let text = '', errors = ''
         processChild.stdout.on('data', value => { text += value })
         processChild.stderr.on('data', value => { errors += value })
@@ -409,7 +413,8 @@ async function main() {
     error = null; rpcData = { unavailable: true }
     await assert.rejects(exports.storyRepository().personalJourney(request), err => err.status === 404)
     const sql = fs.readFileSync(path.join(root, 'supabase', 'personal-journeys.sql'), 'utf8')
-    for (const clause of ['security definer set search_path = public, pg_temp', 'enable row level security', 'from public, anon, authenticated', 'to service_role', 'pg_advisory_xact_lock', 'for update', "at time zone 'UTC'", 'public.muse_adventure_budgets', "interval '90 seconds'", "when 5 then 3 when 10 then 6 when 15 then 9 when 20 then 12"]) assert.ok(sql.includes(clause))
+    for (const clause of ['security definer set search_path = public, pg_temp', 'enable row level security', 'from public, anon, authenticated', 'to service_role', 'pg_advisory_xact_lock', 'for update', "at time zone 'UTC'", 'public.muse_adventure_budgets', "interval '90 seconds'", "when 5 then 3 when 10 then 6 when 15 then 9 when 20 then 12", "'expiresAt', null", "'infinity'::timestamptz"]) assert.ok(sql.includes(clause))
+    assert.ok(fs.existsSync(path.join(root, 'supabase', 'personal-journey-retention.sql')))
   })
   await check('My Story UI uses authoritative mood, memory-only code, shared dictation and automatic resume checks', () => {
     const ui = fs.readFileSync(path.join(root, 'src', 'pages', 'story.tsx'), 'utf8')
@@ -440,13 +445,17 @@ async function main() {
     assert.equal(dayUsed(), used)
     assert.equal(inspect(db => db.prepare('SELECT count(*) total FROM muse_personal_journey_requests WHERE journey_id = ?').get(body.id).total), 0)
   })
-  await check('expired personal sessions are unavailable without provider calls or resetting old capabilities', async () => {
+  await check('surviving legacy personal journeys become permanent and remain available until deletion', async () => {
     const { creation } = savedCreations[0], before = calls
     now += 31 * 86400000
-    assert.equal((await api({ mode: 'journey', action: 'resume', id: creation.id, capability: creation.capability })).status, 404)
-    assert.equal((await api({ ...responseBody(savedCreations[0].initial), revision: 0 })).status, 404)
+    const resumed = await api({ mode: 'journey', action: 'resume', id: creation.id, capability: creation.capability })
+    assert.equal(resumed.status, 200)
+    assert.equal(resumed.body.story.id, creation.id)
+    const row = inspect(db => db.prepare('SELECT record, expires_at FROM muse_personal_journeys WHERE id = ?').get(creation.id))
+    assert.equal(row.expires_at, 'infinity')
+    assert.equal(JSON.parse(row.record).expiresAt, null)
+    assert.ok(inspect(db => db.prepare('SELECT count(*) total FROM muse_personal_journey_requests WHERE journey_id = ?').get(creation.id).total) > 0)
     assert.equal(calls, before)
-    assert.equal(inspect(db => db.prepare('SELECT count(*) total FROM muse_personal_journey_requests WHERE journey_id = ?').get(creation.id).total), 0)
   })
   console.log(`\n${passed} personal journey checks passed; ${calls + childCalls} mocked provider calls, zero real AI/hosted database requests.`)
 }

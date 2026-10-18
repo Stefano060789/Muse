@@ -10,7 +10,7 @@ create table if not exists public.shared_stories (
   content jsonb not null,
   answer_normalized text not null,
   created_at timestamptz not null default now(),
-  expires_at timestamptz not null default now() + interval '30 days'
+  expires_at timestamptz not null default 'infinity'::timestamptz
 );
 
 create table if not exists public.shared_story_sessions (

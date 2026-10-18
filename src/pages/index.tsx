@@ -34,7 +34,7 @@ export default function Home() {
           <p className="atelier-note">Already started? <Link href="/library">Find your saved stories and gift stories</Link>.</p>
           <details>
             <summary>A little more about Muse</summary>
-            <p className="atelier-note">Gift story recipients open a private link without an account. AI stories can be imperfect; preview gift stories before sending. Server stories last up to 30 days.</p>
+            <p className="atelier-note">Gift story recipients open a private link without an account. AI stories can be imperfect; preview gift stories before sending. Stories have no automatic expiry.</p>
             <InstallApp />
           </details>
         </aside>

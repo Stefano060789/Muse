@@ -18,6 +18,7 @@ import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
 import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRomance'
 import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } from '../../lib/studioNarration'
+import { PERMANENT_STORY_EXPIRY, publicStoryExpiry } from '../../lib/storyRetention'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -167,7 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = randomUUID()
       const ownerKey = secret()
       const playKey = secret()
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      const expiresAt = PERMANENT_STORY_EXPIRY
       await db.insert({
         id, owner_hash: hash(ownerKey), play_hash: hash(playKey),
         brief, content, answer_normalized: normalizeSharedAnswer(brief.solution),
@@ -175,7 +176,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
       await reportOperation('story-created')
       return res.status(201).json({
-        ownerToken: `${id}.${ownerKey}`, playToken: `${id}.${playKey}`, brief, content, expiresAt,
+        ownerToken: `${id}.${ownerKey}`, playToken: `${id}.${playKey}`, brief, content, expiresAt: null,
         media: null, voice: null, mediaRequired: !brief.message
       })
     }
@@ -223,7 +224,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (story.brief.gift) await db.giftReady()
       const voice = story.brief.gift ? await db.voiceReady(id) : null
       return res.status(200).json({
-        brief: story.brief, content: story.content, expiresAt: story.expires_at,
+        brief: story.brief, content: story.content, expiresAt: publicStoryExpiry(story.expires_at),
         media: mediaSummary(await db.mediaReady(id)), voice: voiceSummary(voice),
         replies: story.brief.gift ? await db.giftReplies(id) : [],
         mediaRequired: !story.brief.message

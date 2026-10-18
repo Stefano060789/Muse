@@ -250,7 +250,7 @@ async function main() {
   let address = 0
   async function api(body) {
     const res = { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this } }
-    await handler({ method: 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion: '2026-10-14', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
     return res
   }
   await check('invalid explicit journey language is rejected before provider use or reservation', async () => {

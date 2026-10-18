@@ -860,7 +860,7 @@ async function main() {
     const run = async body => {
       let status = 200, result
       const res = { setHeader() {}, status(value) { status = value; return this }, json(value) { result = value; return this }, send(value) { result = value; return this } }
-      await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: 'tts-fixture' }, body: { consentVersion: '2026-10-14', ...body } }, res)
+      await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: 'tts-fixture' }, body: { consentVersion: '2026-10-18', ...body } }, res)
       return { status, result }
     }
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'

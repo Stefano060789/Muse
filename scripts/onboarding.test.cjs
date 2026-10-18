@@ -17,6 +17,7 @@ function load(relative, mocks = {}) {
   new Function('module', 'exports', 'require', compile(relative))(result, result.exports, name => {
     if (name in mocks) return mocks[name]
     if (name === '../lib/storyRomance') return load('src/lib/storyRomance.ts', mocks)
+    if (name === '../lib/storyRetention') return load('src/lib/storyRetention.ts', mocks)
     throw new Error('Unexpected dependency: ' + name)
   })
   return result.exports
@@ -152,7 +153,7 @@ check('pre-send requires complete preview, answer and attachment checks and rese
   let ready
   const preview = component('src/components/PreSendCheck.tsx')
   const props = {
-    story: { ownerToken: 'owner', expiresAt: '2099-01-01', brief: { message: 'Private reveal', solution: 'Secret answer', gift: { dedication: 'Public dedication' } }, content: { scenes: [{ title: 'First', body: 'Public body', clue: 'Public clue' }, { title: 'Last', body: 'Last body', clue: 'Last clue' }] } },
+    story: { ownerToken: 'owner', expiresAt: null, brief: { message: 'Private reveal', solution: 'Secret answer', gift: { dedication: 'Public dedication' } }, content: { scenes: [{ title: 'First', body: 'Public body', clue: 'Public clue' }, { title: 'Last', body: 'Last body', clue: 'Last clue' }] } },
     hasMedia: true, hasVoice: true, uploadPending: false, onReady: value => { ready = value }
   }
   preview.render(props)

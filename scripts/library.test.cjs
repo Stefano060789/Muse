@@ -84,6 +84,7 @@ try {
         if (name === 'next/head' || name === 'next/link') return { __esModule: true, default: name === 'next/link' ? 'a' : 'head' }
         if (name === '../lib/sharedStorySharing') return sharing
         if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
+        if (name === '../components/GiftCard') return { __esModule: true, default: 'gift-card' }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
           removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
@@ -99,7 +100,7 @@ try {
     return {
       render, copied, clipboard, store, requests,
       setProgressResponse(value) { progressResponse = value },
-      advance(value, update = true) { clock = Date.parse(value); if (update) tick() },
+      advance(value, update = true) { clock = Date.parse(value); if (update) tick?.() },
       cleanup() { cleanups.forEach(cleanup => cleanup?.()) }
     }
   }
@@ -283,9 +284,13 @@ try {
       assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Copy recipient link', 'Remove story'])
       assert.equal(nodes(card).filter(node => node.type === 'gift-progress').length, 1)
       assert.equal(nodes(card).find(node => node.type === 'gift-progress').props.compact, true)
-      assert.ok(all.some(node => node.type === 'time' && node.props.dateTime === story.expiresAt))
+      const qr = nodes(card).find(node => node.type === 'gift-card')
+      assert.equal(qr.props.recipientUrl, sharing.recipientShareDetails('https://muse.example', story.playToken).url)
+      assert.equal(qr.props.expiresAt, null)
+      assert.ok(!JSON.stringify(qr.props).includes(story.ownerToken), 'Printing receives only the recipient link, never owner access')
+      assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
       assert.ok(text.includes('not backed up or synced across devices'))
-      assert.ok(text.includes('independently of recipient completion and server expiry'))
+      assert.ok(text.includes('independently of recipient completion'))
       assert.ok(text.includes('Check completion'))
       assert.ok(text.includes('private owner access; do not share them'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
@@ -297,19 +302,20 @@ try {
       assert.ok(textOf(ui.render()).includes('Recipient link copied'))
     } finally { ui.cleanup() }
   })
-  await checkAsync('expired and missing recipient links disable copy without removing saved stories', async () => {
-    for (const variant of ['expired', 'missing']) {
+  await checkAsync('legacy expiry does not block migrated links, while missing links remain disabled', async () => {
+    for (const variant of ['expired', 'missing', 'permanent']) {
       const story = shared(variant)
       if (variant === 'expired') story.expiresAt = '2000-01-01T00:00:00.000Z'
-      else delete story.playToken
+      else if (variant === 'missing') delete story.playToken
+      else story.expiresAt = null
       const ui = mountLibrary([story])
       try {
         const tree = ui.render(), copy = button(tree, 'Copy recipient link')
-        assert.equal(copy.props.disabled, true)
+        assert.equal(copy.props.disabled, variant === 'missing')
         await copy.props.onClick()
-        assert.deepEqual(ui.copied, [])
+        assert.equal(ui.copied.length, variant === 'missing' ? 0 : 1)
         assert.ok(button(tree, 'Remove story'))
-        assert.ok(textOf(tree).includes(variant === 'expired' ? 'Server link expired' : 'No recipient link saved here'))
+        assert.ok(textOf(tree).includes(variant === 'missing' ? 'No recipient link saved here' : 'No automatic expiry'))
         assert.ok(read(ui.store).library.entries.length === 1)
       } finally { ui.cleanup() }
     }
@@ -343,7 +349,7 @@ try {
       assert.equal(ui.requests.length, beforeRemove, 'Removal is browser-local only, never server deletion')
     } finally { ui.cleanup() }
   })
-  await checkAsync('expiry is refreshed on screen and rechecked at copy time', async () => {
+  await checkAsync('legacy browser expiry never re-disables upgraded recipient links', async () => {
     const story = shared('expires-soon')
     story.expiresAt = '2026-10-15T00:00:01.000Z'
     const ui = mountLibrary([story])
@@ -352,10 +358,10 @@ try {
       assert.equal(copy.props.disabled, false)
       ui.advance(story.expiresAt, false)
       await copy.props.onClick()
-      assert.deepEqual(ui.copied, [])
+      assert.equal(ui.copied.length, 1)
       ui.advance(story.expiresAt)
-      assert.equal(button(ui.render(), 'Copy recipient link').props.disabled, true)
-      assert.ok(textOf(ui.render()).includes('Your local brief is retained'))
+      assert.equal(button(ui.render(), 'Copy recipient link').props.disabled, false)
+      assert.ok(textOf(ui.render()).includes('No automatic expiry'))
     } finally { ui.cleanup() }
   })
   await checkAsync('local-only sharing warns clearly and clipboard failures are recoverable', async () => {

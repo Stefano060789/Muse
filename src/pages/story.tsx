@@ -349,7 +349,7 @@ export default function StoryPage() {
               {romance ? <p>{romanceCopy(language).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>Change theme</button></p> : null}
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories are included by default unless I leave them out in Personal touches. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
+                I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories are included by default unless I leave them out in Personal touches. The story is stored on Muse&apos;s server until I delete it. This consent applies to this story only.
               </ExplicitConsent>
               {narrator.provider !== 'browser' ? <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                 Enable optional narration: send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
@@ -375,7 +375,7 @@ export default function StoryPage() {
               <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
               {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished ? (
                 <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                  I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories were included unless I left them out during creation. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
+                  I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories were included unless I left them out during creation. The story is stored on Muse&apos;s server until I delete it. This consent applies to this story only.
                 </ExplicitConsent>
               ) : null}
               {narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>

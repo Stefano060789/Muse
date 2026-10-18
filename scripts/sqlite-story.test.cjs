@@ -12,6 +12,7 @@ const fetch = global.fetch
 const realNow = Date.now
 let now = Math.floor(realNow() / 3600000) * 3600000 + 60000
 let passed = 0
+let consentVersion
 const hash = value => createHash('sha256').update(value).digest('hex')
 const filename = path.join(output, 'private', 'stories.sqlite')
 let providerCalls = 0
@@ -41,6 +42,7 @@ async function main() {
   const { storyRepository } = require(repositoryModule)
   const handler = require(path.join(output, 'pages', 'api', 'shared-story.js')).default
   const personalHandler = require(path.join(output, 'pages', 'api', 'personal-story.js')).default
+  consentVersion = require(path.join(output, 'lib', 'legalContact.js')).MUSE_AI_CONSENT_VERSION
   const { sceneCountForDuration } = require(path.join(output, 'lib', 'sharedStory.js'))
   const brief = {
     creatorName: 'Alex', recipientName: 'Sam', narration: 'Playful detective narration',
@@ -66,7 +68,7 @@ async function main() {
     let result
     const headers = {}
     const res = { setHeader: (key, value) => { headers[key] = value }, status: value => { status = value; return res }, json: value => { result = value; return res } }
-    await selected({ method: 'POST', headers: { host: 'localhost:3000', ...extraHeaders }, socket: { remoteAddress: address }, body: { consentVersion: '2026-10-14', ...body } }, res)
+    await selected({ method: 'POST', headers: { host: 'localhost:3000', ...extraHeaders }, socket: { remoteAddress: address }, body: { consentVersion, ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status, body: result }
   }
@@ -82,16 +84,32 @@ async function main() {
       legacy.exec(`
         CREATE TABLE shared_stories (id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL, brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL, expires_at TEXT NOT NULL);
         CREATE TABLE shared_story_sessions (story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE, player_hash TEXT NOT NULL, current_scene INTEGER NOT NULL DEFAULT 0, solved INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, last_attempt_at INTEGER, PRIMARY KEY(story_id, player_hash));
+        CREATE TABLE muse_personal_journeys (id TEXT PRIMARY KEY, capability_hash TEXT NOT NULL, record TEXT NOT NULL, expires_at TEXT NOT NULL);
+        CREATE TABLE muse_personal_journey_requests (
+          journey_id TEXT NOT NULL REFERENCES muse_personal_journeys(id) ON DELETE CASCADE,
+          request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, kind TEXT NOT NULL,
+          status TEXT NOT NULL, reserved_at INTEGER NOT NULL, revision INTEGER NOT NULL,
+          PRIMARY KEY(journey_id, request_id)
+        );
       `)
       legacy.prepare('INSERT INTO shared_stories VALUES (?, ?, ?, ?, ?, ?, ?)').run('legacy', 'owner', 'play', JSON.stringify(brief), JSON.stringify(content), brief.solution, new Date(now + 86400000).toISOString())
       legacy.prepare('INSERT INTO shared_story_sessions VALUES (?, ?, ?, ?, ?, ?)').run('legacy', 'player', 1, 0, 2, null)
+      const oldPersonalRecord = JSON.stringify({ id: 'legacy-personal', expiresAt: new Date(now - 86400000).toISOString() })
+      legacy.prepare('INSERT INTO muse_personal_journeys VALUES (?, ?, ?, ?)').run('legacy-personal', 'hashed-capability', oldPersonalRecord, JSON.parse(oldPersonalRecord).expiresAt)
+      legacy.prepare('INSERT INTO muse_personal_journey_requests VALUES (?, ?, ?, ?, ?, ?, ?)').run('legacy-personal', 'request', 'fingerprint', 'create', 'pending', now - 100000, 0)
     } finally { legacy.close() }
     const repo = storyRepository()
     assert.equal((await repo.findUnexpired('legacy')).brief.solution, brief.solution)
+    assert.equal(inspect(db => db.prepare('SELECT expires_at FROM shared_stories WHERE id = ?').get('legacy')).expires_at, 'infinity')
     assert.deepEqual(await repo.advance('legacy', 'player', 'hint', ''), { current_scene: 1, solved: false, skipped: false, revealed_hints: 0 })
     assert.deepEqual(await storyRepository().advance('legacy', 'player', 'open', ''), { current_scene: 1, solved: false, skipped: false, revealed_hints: 0 })
     assert.equal(inspect(db => db.prepare('SELECT attempts FROM shared_story_sessions WHERE story_id = ?').get('legacy')).attempts, 2)
     assert.equal(inspect(db => db.prepare('SELECT alternative_answers_normalized FROM shared_stories WHERE id = ?').get('legacy')).alternative_answers_normalized, '[]')
+    const personal = inspect(db => db.prepare('SELECT record, expires_at FROM muse_personal_journeys WHERE id = ?').get('legacy-personal'))
+    assert.equal(personal.expires_at, 'infinity')
+    assert.equal(JSON.parse(personal.record).expiresAt, null)
+    assert.equal(inspect(db => db.prepare('SELECT status FROM muse_personal_journey_requests WHERE journey_id = ?').get('legacy-personal')).status, 'pending')
+    assert.deepEqual(inspect(db => db.prepare('PRAGMA foreign_key_check').all()), [])
   })
   await check('explicit SQLite creates schema without Supabase credentials and keeps capabilities hashed', async () => {
     created = await api({ action: 'create', brief })
@@ -99,11 +117,15 @@ async function main() {
     id = created.body.ownerToken.split('.')[0]
     assert.notEqual(created.body.ownerToken, created.body.playToken)
     const row = inspect(db => db.prepare('SELECT * FROM shared_stories WHERE id = ?').get(id))
+    assert.equal(row.expires_at, 'infinity', 'New shared gifts are kept until deletion')
+    assert.equal((await storyRepository().findUnexpired(id)).expires_at, 'infinity', 'Repository keeps the storage sentinel for expiry comparisons')
     assert.equal(row.owner_hash, hash(created.body.ownerToken.split('.')[1]))
     assert.equal(row.play_hash, hash(created.body.playToken.split('.')[1]))
     assert.equal(row.answer_normalized, brief.solution)
     assert.ok(!JSON.stringify(row).includes(created.body.playToken.split('.')[1]))
-    assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.brief.solution, brief.solution)
+    const managed = await api({ action: 'manage', token: created.body.ownerToken })
+    assert.equal(managed.body.brief.solution, brief.solution)
+    assert.equal(managed.body.expiresAt, null, 'API exposes permanent retention without leaking its storage sentinel')
   })
   await check('owner/play separation, wrong/correct answers, cooldown and persisted progress use actual API', async () => {
     for (const action of ['manage', 'progress', 'delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)

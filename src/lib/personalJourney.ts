@@ -41,7 +41,7 @@ export type JourneyRecord = {
   capabilityHash: string
   input: JourneyInput
   createdAt: string
-  expiresAt: string
+  expiresAt: string | null
   opening: JourneyOpening | null
   used: number
   turn: JourneyTurn | null

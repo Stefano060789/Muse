@@ -51,7 +51,7 @@ async function main() {
     })
     await handler({
       method: 'POST', headers: { host: 'localhost:3000', ...(owner ? { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE } : {}) },
-      socket: { remoteAddress: `10.91.0.${address++}` }, body: { consentVersion: '2026-10-14', ...body }
+      socket: { remoteAddress: `10.91.0.${address++}` }, body: { consentVersion: '2026-10-18', ...body }
     }, res)
     return { status: res.statusCode, body: res.body }
   }

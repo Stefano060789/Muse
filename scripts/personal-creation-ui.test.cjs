@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
+const consentVersion = plain('src/lib/legalContact.ts').MUSE_AI_CONSENT_VERSION
 function compile(file) {
   return ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
@@ -69,7 +70,7 @@ async function main() {
     if (id.endsWith('/storyLibrary')) return {}
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
-    if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
+    if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
       stop() { narrationStops++ }, provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
     }), NarrationButton: 'narration' }
@@ -156,6 +157,9 @@ async function main() {
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
   await click('Continue')
   await click('Create my story →')
+  const consentCopy = flatten(tree).filter(value => typeof value === 'string').join(' ')
+  assert.ok(consentCopy.includes('stored on Muse') && consentCopy.includes('until I delete it'))
+  assert.ok(!consentCopy.includes('30 days'))
   assert.equal(requests.length, 0, 'AI consent still required')
   nodes().find(node => node.type === '../components/RomanceOptions').props.onChange('spicy')
   await flush()
