@@ -70,8 +70,8 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   }
 
   const content = <>
-    {provider === 'google' ? <h2>Listen to this scene</h2> : null}
-    <p>{provider === 'google' ? 'AI-generated narration by Google WaveNet. Play the saved recording on iPhone or desktop; no device speech is used.' : 'A prepared recording, separate from the free device voice. No autoplay and no automatic switch to device speech.'}</p>
+    {owner && provider === 'google' ? <h2>Listen to this scene</h2> : null}
+    {owner ? <p>{provider === 'google' ? 'AI-generated narration by Google WaveNet. Play the saved recording on iPhone or desktop; no device speech is used.' : 'A prepared recording, separate from the free device voice. No autoplay and no automatic switch to device speech.'}</p> : null}
     {owner ? <>
       <p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this prepared scene and clue only, not the private answer or final reveal. Each uncached generation uses the operator&apos;s paid budget; replay reuses the recording. Live AI turns are not included.</p>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
@@ -80,18 +80,21 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         <label style={{ display: 'block', margin: '1rem 0' }}><input type="checkbox" checked={consent} disabled={busy || disabled} onChange={event => setConsent(event.target.checked)} /> Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></label>
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
-    </> : <p>Load the sender&apos;s saved recording. Listening never generates paid audio. If it was not prepared, ask the sender to add narration or keep reading.</p>}
+    </> : null}
     {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
     {url ? <>
-      <p>Ready. Tap Play in the audio player below, including on iPhone.</p>
       <audio ref={audioRef} src={url} controls preload="metadata" aria-label={`Studio audio for scene ${sceneIndex + 1}`} onPlay={() => {
         if (disabled) { audioRef.current?.pause(); setError('Finish the current story request, upload or recording before playing Studio audio.'); return }
         beforeListen()
       }} onError={() => setError('This browser could not play Studio audio. Retry loading or read instead.')} style={{ display: 'block', width: '100%', maxWidth: '100%' }} />
     </> : null}
   </>
+  if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>
+    {content}
+    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Playback starts only when you press Play; it never switches to a device voice automatically.</p></details>
+  </section>
   if (provider === 'google') return <section aria-label="Studio narration" className="atelier-card" style={{ margin: '1rem 0' }}>{content}</section>
   return <details aria-label="Studio narration" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d8cdd6', borderRadius: 16, maxWidth: '100%', minWidth: 0 }}>
     <summary>Studio audio · {owner ? 'optional' : 'if prepared'}</summary>

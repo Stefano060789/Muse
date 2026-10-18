@@ -205,8 +205,54 @@ check('service worker claims scope but does not intercept/cache private requests
   assert.equal(activated, true)
   events.fetch({ request: { url: 'https://muse.example/shared#play=PRIVATE' }, respondWith() { throw new Error('Private requests must remain network-only') } })
 })
+check('Home personal touches restore, dictate, save locally and surface storage errors', () => {
+  let saved = '', receiver, cancelled = 0, stopped = 0, failSave = false, selectedLanguage
+  const touches = component('src/components/HomePersonalTouches.tsx', {
+    '../lib/profile': {
+      loadMuseProfile: () => ({ about: 'I love gardens.' }),
+      saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value } }
+    },
+    '../lib/useStoryInteraction': { useStoryInteraction(_before, language) {
+      selectedLanguage = language
+      return { recordingTarget: '', ready: false, error: '',
+        dictate(_target, callback) { receiver = callback }, stopRecording() { stopped++ }, cancelRecording() { cancelled++ } }
+    } },
+    './HoldToSpeakButton': { __esModule: true, default: 'hold' },
+    '../lib/storyLanguage': { STORY_LANGUAGES: [{ code: 'en-US', label: 'English' }, { code: 'ar-SA', label: 'Arabic' }] }
+  })
+  touches.render()
+  const field = () => touches.nodes().find(node => node.type === 'textarea')
+  assert.equal(field().props.value, 'I love gardens.')
+  touches.nodes().find(node => node.type === 'select').props.onChange({ target: { value: 'ar-SA' } })
+  touches.render()
+  assert.equal(selectedLanguage, 'ar-SA')
+  const hold = touches.nodes().find(node => node.type === 'hold')
+  hold.props.onStart(); receiver('I enjoy walking outdoors.'); hold.props.onStop()
+  touches.render()
+  assert.equal(stopped, 1)
+  assert.equal(field().props.value, 'I enjoy walking outdoors.')
+  field().props.onFocus()
+  field().props.onChange({ target: { value: 'I enjoy peaceful walks.' } })
+  touches.render()
+  touches.find('button', 'Save personal touches').props.onClick()
+  touches.render()
+  assert.equal(saved, 'I enjoy peaceful walks.')
+  assert.ok(cancelled >= 3)
+  assert.ok(touches.nodes().some(node => node.props.role === 'status' && /included by default/.test(text(node))))
+  failSave = true
+  field().props.onChange({ target: { value: 'Keep this unsaved text.' } })
+  touches.render()
+  touches.find('button', 'Save personal touches').props.onClick()
+  touches.render()
+  assert.equal(field().props.value, 'Keep this unsaved text.')
+  assert.ok(touches.nodes().some(node => node.props.role === 'alert' && text(node) === 'Storage is full'))
+  assert.ok(touches.nodes().some(node => node.props.href === '/myself'))
+})
 check('home exposes two clear creation paths, demo and saved stories', () => {
-  const home = component('src/pages/index.tsx', { '../components/InstallApp': { __esModule: true, default: 'install' } })
+  const home = component('src/pages/index.tsx', {
+    '../components/InstallApp': { __esModule: true, default: 'install' },
+    '../components/HomePersonalTouches': { __esModule: true, default: 'personal-touches' }
+  })
   home.render()
   for (const href of ['/story', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
   assert.ok(home.nodes().some(node => node.props.href === '/story' && text(node) === 'Create a story'))
@@ -215,6 +261,7 @@ check('home exposes two clear creation paths, demo and saved stories', () => {
   assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
   assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
   assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
+  assert.ok(home.nodes().some(node => node.type === 'personal-touches'), 'Home offers inline personal touches')
   const more = home.nodes().find(node => node.type === 'details')
   assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
   for (const href of ['/story', '/shared#new', '/demo']) {

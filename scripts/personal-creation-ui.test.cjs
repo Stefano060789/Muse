@@ -22,6 +22,8 @@ const label = node => flatten(node.props?.children).filter(value => ['string', '
 async function main() {
   let cursor = 0, tree
   const slots = [], effects = [], requests = [], storage = new Map()
+  const timers = new Map()
+  let nextTimer = 0
   let loadedStory = null
   let interactionRecordingTarget = ''
   let stopRecordingCalls = 0, dictateCalls = 0
@@ -32,6 +34,7 @@ async function main() {
   let responseGate
   const browserEvents = new Map()
   let cloudProvider = 'browser', cloudConsent = false
+  let narrationStops = 0
   const react = {
     useState(initial) {
       const i = cursor++
@@ -42,8 +45,14 @@ async function main() {
     useMemo(fn) { cursor++; return fn() },
     useEffect(fn, deps) {
       const i = cursor++, previous = slots[i]
-      if (!previous || deps.some((value, index) => value !== previous[index])) effects.push(fn)
-      slots[i] = deps
+      if (!previous || deps.some((value, index) => value !== previous.deps[index])) {
+        effects.push(() => {
+          previous?.cleanup?.()
+          const next = { deps, cleanup: fn() }
+          slots[i] = next
+        })
+      }
+      if (!previous) slots[i] = { deps }
     }
   }
   const jsx = (type, props) => ({ type, props: props || {} })
@@ -62,7 +71,7 @@ async function main() {
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
-      stop() {}, provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
+      stop() { narrationStops++ }, provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
     }), NarrationButton: 'narration' }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => { selectedDictationLanguage = language; return ({
       recordingTarget: interactionRecordingTarget, ready: true, error: '',
@@ -74,6 +83,8 @@ async function main() {
   const browser = {
     addEventListener(name, handler) { browserEvents.set(name, handler) },
     removeEventListener(name, handler) { if (browserEvents.get(name) === handler) browserEvents.delete(name) },
+    setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { callback, delay }); return id },
+    clearTimeout(id) { timers.delete(id) },
     localStorage: {
     getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)
   } }
@@ -126,6 +137,8 @@ async function main() {
     'Inline personal touches retain hold-to-speak')
   await click('Save personal touches')
   assert.equal(profile.about, 'I love gardens')
+  assert.equal(nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.checked, true,
+    'Saved memories are included by default')
   assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
   await flush()
   await click('Continue')
@@ -167,11 +180,21 @@ async function main() {
   assert.equal(requests[0].romance, 'spicy')
   assert.equal(requests[0].romanceConfirmed, true)
   assert.equal(requests[0].need, 'A changed fictional evening.')
+  assert.deepEqual(requests[0].profileKeypoints, ['I love gardens'])
   assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')))
   assert.equal(visible()[0].props.disabled, true, 'Saved pending preparation prevents accidental duplicate generation')
-  assert.ok(find('button', 'Sync saved progress (no AI call)'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node).includes('Sync saved progress')))
   await click('Abandon (no refund)')
   assert.equal(visible()[0].props.disabled, false, 'Abandoning pending preparation restores editing')
+  await click('Back')
+  nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: false } })
+  await flush()
+  await click('Continue')
+  nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await flush()
+  await click('Create my story →')
+  assert.deepEqual(requests.at(-1).profileKeypoints, [], 'Users can exclude default memories before consenting to creation')
+  await click('Abandon (no refund)')
   loadedStory = {
     id: 'saved-story', title: 'A quiet door', description: 'A small beginning.', mood: 'curious',
     language: 'en-US', generation: 'ai', currentStep: 0, responses: [],
@@ -210,6 +233,10 @@ async function main() {
   assert.equal(selectedDictationLanguage, 'ar-SA', 'Dictation follows the saved story language')
   const responseField = () => nodes().find(node => node.props['aria-label'] === 'Editable response')
   assert.equal(responseField().props.disabled, false)
+  for (const name of ['Create a different story', 'Delete saved journey from server', 'Sync saved progress (no AI call)']) {
+    assert.ok(!nodes().some(node => node.type === 'button' && label(node) === name), `${name} is absent from the reading view`)
+  }
+  assert.ok(!nodes().some(node => node.props.href === '/myself'), 'Reading view has no personal touches navigation')
   responseField().props.onFocus()
   responseField().props.onChange({ target: { value: 'I follow the path.' } })
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
@@ -222,10 +249,12 @@ async function main() {
   responseField().props.onChange({ target: { value: 'An answer while syncing.' } })
   await flush()
   const beforeFocus = requests.length
+  const stopsBeforeFocus = narrationStops
   browserEvents.get('focus')()
   await flush()
   assert.equal(requests.length, beforeFocus + 1, 'Returning to the tab syncs once without an automatic generation')
   assert.equal(requests.at(-1).action, 'resume')
+  assert.equal(narrationStops, stopsBeforeFocus, 'Automatic progress checks do not stop narration')
   assert.equal(find('button', 'Continue with my answer →').props.disabled, false, 'Returning to the tab does not strand the send button')
   let releaseResponse
   responseGate = new Promise(resolve => { releaseResponse = resolve })
@@ -245,6 +274,17 @@ async function main() {
   assert.equal(responseField().props.disabled, false, 'A failed sync must not lock the editor')
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
   assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')))
+  assert.ok([...timers.values()].some(timer => timer.delay === 15000), 'Failed progress checks schedule automatic recovery')
+  respondSuccessfully = true
+  const beforeRecovery = requests.length
+  const retry = [...timers.values()].find(timer => timer.delay === 15000)
+  retry.callback()
+  await flush()
+  assert.equal(requests.length, beforeRecovery + 1)
+  assert.equal(requests.at(-1).action, 'resume', 'Automatic recovery never retries paid story generation')
+  assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
+  assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
+  assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
   console.log('PASS personal wizard preserves fields, presents one story-wide consent prompt, and explicitly stops dictation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

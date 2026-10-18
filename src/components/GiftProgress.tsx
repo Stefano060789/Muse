@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 
-export default function GiftProgress({ load, sceneCount, adventure }: {
-  load: () => Promise<SharedStoryProgress>; sceneCount: number; adventure: boolean
+export default function GiftProgress({ load, sceneCount, adventure, compact = false }: {
+  load: () => Promise<SharedStoryProgress>; sceneCount: number; adventure: boolean; compact?: boolean
 }) {
   const [progress, setProgress] = useState<SharedStoryProgress | null>(null)
   const [error, setError] = useState('')
@@ -24,11 +24,11 @@ export default function GiftProgress({ load, sceneCount, adventure }: {
       if (mounted.current) setBusy(false)
     }
   }
-  return <section aria-label="Recipient progress" className="atelier-card">
-    <h2>Recipient progress</h2>
-    <p>Private overview of browser playthroughs, not verified people. Opening the link counts as a start; another browser or cleared storage can count again. Counts include earlier recipient links for this story.</p>
+  return <section aria-label="Recipient progress" className={compact ? undefined : 'atelier-card'} style={compact ? { minWidth: 0, maxWidth: '100%' } : undefined}>
+    {!compact ? <><h2>Recipient progress</h2>
+    <p>Private overview of browser playthroughs, not verified people. Opening the link counts as a start; another browser or cleared storage can count again. Counts include earlier recipient links for this story.</p></> : null}
     <button type="button" className="atelier-button" disabled={busy} onClick={() => void refresh()}>
-      {busy ? 'Loading progress...' : progress ? 'Refresh progress' : 'Load progress'}
+      {busy ? 'Loading progress...' : compact ? 'Check completion' : progress ? 'Refresh progress' : 'Load progress'}
     </button>
     {error ? <p role="alert">{error}</p> : null}
     {progress ? <>
@@ -40,6 +40,7 @@ export default function GiftProgress({ load, sceneCount, adventure }: {
         {!adventure && progress.furthestScene !== null ? <><dt>Furthest scene reached</dt><dd>{Math.min(progress.furthestScene + 1, sceneCount)} of {sceneCount}</dd></> : null}
       </dl>
       {!progress.opened ? <p>No playthroughs recorded yet.</p> : null}
+      {compact ? <p>Counts represent browser playthroughs, not verified people, and include earlier recipient links. A different browser or cleared storage can count again.</p> : null}
       <p>Not completed does not mean failed. Reaching the last scene is not the same as solving the mystery. Refresh to check again; there is no live monitoring or extra AI generation.</p>
     </> : null}
   </section>

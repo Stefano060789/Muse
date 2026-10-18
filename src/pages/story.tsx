@@ -2,7 +2,6 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
-import { removeLibraryEntry } from '../lib/storyLibrary'
 import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
@@ -43,7 +42,7 @@ export default function StoryPage() {
   const [storyError, setStoryError] = useState('')
   const [storyNotice, setStoryNotice] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [useProfile, setUseProfile] = useState(false)
+  const [useProfile, setUseProfile] = useState(true)
   const [aiConsent, setAiConsent] = useState(false)
   const [creationStep, setCreationStep] = useState(0)
   const creationSection = useRef<HTMLElement>(null)
@@ -125,10 +124,9 @@ export default function StoryPage() {
     if (!saved || requestLock.current) return
     requestLock.current = true
     setIsGenerating(true); setStoryError(''); setReconciled(false)
-    stopSpeaking(); interaction.cancelRecording()
     try {
       const data = await requestJourney({ action: 'resume', ...saved })
-      if (!data.story) setStoryNotice('Preparation is still pending. Reconcile later; this does not trigger another AI request.')
+      if (!data.story) setStoryNotice('Your story is still being prepared. Progress is checked automatically without another AI request.')
     } catch (error) { setStoryError(error instanceof Error ? error.message : 'Could not reconcile your story.') }
     finally { requestLock.current = false; setIsGenerating(false) }
   }
@@ -144,12 +142,18 @@ export default function StoryPage() {
     return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
   }, [story?.id, Boolean(story?.journey), preparation?.id, creatorCode])
 
+  useEffect(() => {
+    if ((!story?.journey && !preparation) || isGenerating || (reconciled && !story?.journey?.pending)) return
+    const timer = window.setTimeout(() => { void reconcileRef.current() }, storyError ? 15000 : 3000)
+    return () => window.clearTimeout(timer)
+  }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, isGenerating, storyError])
+
   const savePersonalTouches = () => {
     interaction.cancelRecording()
     try {
       saveMuseProfile(profileDraft)
       setProfileReady(true)
-      setStoryNotice('Personal touches saved in this browser. Choose below whether to include them in this story.')
+      setStoryNotice('Personal touches saved in this browser. Your latest five memories are included by default; you can leave them out below.')
       setAiConsent(false)
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not save your personal touches.')
@@ -219,7 +223,7 @@ export default function StoryPage() {
   const choose = async (choice: string) => {
     if (!story || requestLock.current || finished) return
     if (story.journey && (!reconciled || story.journey.pending)) {
-      setStoryError('Your saved progress needs checking before sending. Use Sync saved progress above; your answer is kept.')
+      setStoryError('Your saved progress is being checked automatically before sending. Your answer is kept.')
       return
     }
     const sendsToAi = Boolean(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1))
@@ -257,48 +261,6 @@ export default function StoryPage() {
     if (responseDraft.trim()) choose(responseDraft)
   }
 
-  const deleteSavedJourney = async () => {
-    if (!story?.journey || requestLock.current) return
-    const confirmed = window.confirm(
-      'Permanently delete this personal journey from the server? This cannot be undone. If deletion succeeds, this journey will also be removed from this browser’s story library and compatibility copy. Other saved stories and your profile memories will not be changed.'
-    )
-    if (!confirmed) return
-
-    requestLock.current = true
-    setIsGenerating(true)
-    setStoryError('')
-    setStoryNotice('')
-    stopSpeaking()
-    stopRecording()
-    let serverDeleted = false
-    try {
-      const result = await requestJourney({
-        action: 'delete',
-        id: story.id,
-        capability: story.journey.capability
-      })
-      if (result.deleted !== true) throw new Error('The server did not confirm deletion. Your saved story was kept.')
-      serverDeleted = true
-      if (preparation?.id === story.id) {
-        window.localStorage.removeItem(PREPARATION_KEY)
-        setPreparation(null)
-      }
-      removeLibraryEntry('personal', story.id)
-      setStory(null)
-      setNeed('')
-      setResponseDraft('')
-      setReconciled(false)
-      setStoryNotice('The personal journey was deleted from the server and removed from this browser.')
-    } catch (error) {
-      setStoryError(serverDeleted
-        ? `The server deleted this journey, but this browser could not remove its saved copy. Your story text remains visible here. ${error instanceof Error ? error.message : 'Try removing the browser entry from Story Library.'}`
-        : error instanceof Error ? error.message : 'The journey could not be deleted. Your saved story was kept.')
-    } finally {
-      requestLock.current = false
-      setIsGenerating(false)
-    }
-  }
-
   const startDictation = () => interaction.dictate('response', value => {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
@@ -323,8 +285,7 @@ export default function StoryPage() {
             <NarrationControls narrator={narrator} beforeSpeak={stopRecording} showCloudConsent={false} />
           </details> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
-            <button onClick={reconcile} disabled={isGenerating}>Sync saved progress (no AI call)</button>
-            {!reconciled || story?.journey?.pending ? <p>{isGenerating ? 'Checking your saved progress...' : 'Progress could not be confirmed yet. Sync again before sending; you can keep writing your answer.'}</p> : null}
+            {!reconciled || story?.journey?.pending ? <p role="status">{isGenerating ? 'Checking your saved progress...' : 'Progress is checked automatically. You can keep writing your answer.'}</p> : null}
             {preparation ? <p>Unfinished preparation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon (no refund)</button></p> : null}
           </div> : null}
           {!story ? (
@@ -368,7 +329,7 @@ export default function StoryPage() {
               </label>
               <details style={{ marginTop: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Personal touches (optional)</summary>
-                <p>Keep a few memories in this browser without leaving story creation. They are sent to AI only if you choose to include them.</p>
+                <p>Memories saved here or on Home personalize new stories by default. Review them here or leave them out below. They are sent to AI only when you consent to creating this story.</p>
                 <label>What should Muse remember?
                   <textarea aria-label="Personal touches" value={profileDraft} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setProfileDraft(event.target.value) }} maxLength={4000} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit' }} />
                 </label>
@@ -388,7 +349,7 @@ export default function StoryPage() {
               {romance ? <p>{romanceCopy(language).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>Change theme</button></p> : null}
               <p>One AI call to start; one per response. Up to {duration * 3 / 5} response attempts, including failures.</p>
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
+                I understand that my need, story settings and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories are included by default unless I leave them out in Personal touches. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
               </ExplicitConsent>
               {narrator.provider !== 'browser' ? <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                 Enable optional narration: send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
@@ -414,7 +375,7 @@ export default function StoryPage() {
               <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
               {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished ? (
                 <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                  I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five memories are sent only if I selected that option. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
+                  I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories were included unless I left them out during creation. The story is stored on Muse&apos;s server for up to 30 days. This consent applies to this story only.
                 </ExplicitConsent>
               ) : null}
               {narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>
@@ -436,7 +397,7 @@ export default function StoryPage() {
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
                     {story.journey.choices?.map(choice => <button key={choice} disabled={isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
                   </div>
-                  {!story.journey.choices?.length ? <p>Sync progress to load actions.</p> : null}
+                  {!story.journey.choices?.length ? <p>Your actions load automatically when progress is checked.</p> : null}
                 </> : <>
                 <label>Editable response
                 <textarea aria-label="Editable response" value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder="Write or dictate, then edit before sending…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
@@ -455,11 +416,6 @@ export default function StoryPage() {
                 </> : null}
               </article>
               {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'Attempt limit reached, including failures. Your last scene is saved; no extra AI call is made.' : 'Your story is complete.'} You can still listen or reopen it.</div> : null}
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
-                <button disabled={isGenerating || Boolean(preparation)} onClick={() => { stopSpeaking(); stopRecording(); setStory(null); setNeed(''); setStoryError(''); setReconciled(false); setCreationStep(0); setAiConsent(false); setRomanceConfirmed(false) }} style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>Create a different story</button>
-                <Link href="/myself" style={{ color: '#2d2926', padding: '0.8rem 0', fontWeight: 700 }}>Personal touches</Link>
-                {story.journey ? <button type="button" disabled={isGenerating} onClick={() => void deleteSavedJourney()} style={{ padding: '0.8rem 1rem', cursor: isGenerating ? 'not-allowed' : 'pointer' }}>{isGenerating ? 'Working…' : 'Delete saved journey from server'}</button> : null}
-              </div>
             </section>
           )}
         </div>

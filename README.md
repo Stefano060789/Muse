@@ -39,6 +39,21 @@ The full product definition lives in four documents:
 
 ## Gifts inside Shared Story
 
+Gift-story previews and recipient pages prioritize the story. Sender scenes are
+visible immediately; sharing safeguards, answer/reveal, uploads, narration
+preparation, progress and management stay under **Share and sender tools**.
+New/reuse buttons are absent from the preview; primary navigation still creates
+a new gift story. Recipients see story text and prepared audio together without
+read/listen mode toggles or decorative banners. Settings, hints, keepsakes,
+privacy explanations and the full footer are collapsed; required romance and
+AI-processing consent remain explicit. No create-your-own promotion appears
+after the reveal. Recipient dictation uses the story language, and editing
+cancels late transcripts. Pending live-adventure turns check progress
+automatically with read-only open requests (three seconds while pending,
+fifteen after an error), never automatic paid retries.
+Prepared recipient audio keeps explicit Load/Play controls and shows provider
+information in a collapsed explanation, not repeated recording-ready copy.
+
 ### Simple start and app installation
 
 The same primary menu appears across Muse: **Home**, **Create a story**
@@ -46,14 +61,29 @@ The same primary menu appears across Muse: **Home**, **Create a story**
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
 Saved stories groups **Stories for me** and **Gift stories for others**, including
-private gift-management links. Personal touches (`/myself`) remains optional
-inside story creation, not a separate primary destination. Plans, sample,
+private owner access. Gift-story cards have just **Copy recipient link**,
+**Remove story**, and **Check completion**. Removal only removes this browser's
+entry and keeps recipient links working. Completion checks manually load the
+existing private progress summary (opened, in progress, solved, revealed without
+solving, and furthest prepared scene); they do not poll or generate AI content.
+Counts represent browser playthroughs, not verified individuals. The optional
+creator access code is memory-only and is required when creator access is gated.
+Expired/deleted server stories may no longer have available progress.
+Home includes a **Tell Muse about yourself** editor with typing, hold-to-speak
+and explicit browser-local saving. The latest five memories are included in
+new personal stories by default, disclosed in creation and the AI consent.
+Users can uncheck inclusion in step two or review/remove memories at `/myself`.
+Personal touches remains optional inside story creation, not a separate
+primary destination. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
 Personal creation keeps optional personal touches in a collapsed inline editor
 in step two; the romance theme is selected with mood in step one. Step three
 includes optional cloud-narration permission, separate from story AI processing.
 Restored journeys check saved progress automatically on opening or returning to
-the tab, without generating story text. The response draft stays editable while
+the tab, without generating story text. Pending checks retry after three seconds;
+failed checks retry after fifteen seconds, stopping when synchronized. No manual
+sync button or bottom create/profile/delete actions appear in the reading view.
+Background checks do not explicitly stop narration. The response draft stays editable while
 progress is checked. Hold-to-speak uses the story language; releasing finishes
 dictation, and focusing the response field cancels late transcripts so typing
 is not overwritten.
@@ -569,8 +599,9 @@ return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 ### Shared library and help
 
 Created shared stories stay in this browser's Story Library independently of
-recipient progress. The Shared Stories section offers management, recipient-link
-copying, brief reuse and expiry dates. In private gift management, **Recipient
+recipient progress. The Gift stories for others section offers recipient-link
+copying, browser-local removal, expiry dates and manual completion checks.
+In private gift management, **Recipient
 progress** offers manual Load/Refresh: opened browser playthroughs, still in
 progress, completed by solving, revealed without solving, and the furthest
 prepared scene reached. Live adventures show outcome counts, not a scene-based
@@ -749,8 +780,9 @@ saved explicitly; full or blocked browser storage produces a visible message
 and leaves the previous saved profile unchanged. Damaged stored memories are
 reported rather than silently erased. Forgetting profile memories does not
 erase existing stories or retract information already sent to a provider.
-Only the latest five memories are included in new My Story requests when
-the user selects the opt-in checkbox.
+Only the latest five memories are included in new My Story requests by default.
+Users can leave them out in creation; explicit AI-processing consent is still
+required before anything is sent to the story provider.
 
 The **Story library** is a local index of personal stories and shared-story
 management links, not a fourth primary experience. It lets you resume
@@ -763,8 +795,8 @@ should not control those stories. Removing a library entry is not the same
 as deleting a server-stored shared story; use its creator deletion controls
 to revoke links permanently.
 
-Only the latest five Myself key points are sent, and only when the user
-checks the opt-in box. The current need, latest action and bounded prepared
+Only the latest five saved key points are sent by default; users can uncheck
+inclusion before consenting to creation. The current need, latest action and bounded prepared
 plan/state/recent-narration context are sent to the provider (legacy
 continuations still use bounded visited scenes). No raw profile or unbounded chat history
 is included. Existing saved template stories remain playable locally;
@@ -999,7 +1031,7 @@ no provider call is made without a durable reservation.
   reservation. Consent is not stored. Reading, hints, guessing and deletion do
   not require AI consent. Enabled cloud narration has a separate, session-only
   opt-in to send spoken text to the configured Google/ElevenLabs provider.
-- My Story deletion removes the capability-bound server journey and dependent
+- The personal-journey deletion API removes the capability-bound server journey and dependent
   requests, without resetting aggregate spending/abuse allowances. Shared Story
   management deletion continues to invalidate links and queue media cleanup.
   Existing browser copies on other devices and AI-provider records are not

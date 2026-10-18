@@ -92,7 +92,10 @@ export default function App({ Component, pageProps, router }: AppProps) {
         </> : null}
         <Component {...pageProps} />
       </div>
-      <SiteFooter />
+      {['/shared', '/couples'].includes(router.pathname) ? <details style={{ maxWidth: 850, margin: '1rem auto', padding: '0 1.5rem' }}>
+        <summary>Help, privacy and about Muse</summary>
+        <SiteFooter />
+      </details> : <SiteFooter />}
     </ClientErrorBoundary>
   )
 }

@@ -411,7 +411,7 @@ async function main() {
     const sql = fs.readFileSync(path.join(root, 'supabase', 'personal-journeys.sql'), 'utf8')
     for (const clause of ['security definer set search_path = public, pg_temp', 'enable row level security', 'from public, anon, authenticated', 'to service_role', 'pg_advisory_xact_lock', 'for update', "at time zone 'UTC'", 'public.muse_adventure_budgets', "interval '90 seconds'", "when 5 then 3 when 10 then 6 when 15 then 9 when 20 then 12"]) assert.ok(sql.includes(clause))
   })
-  await check('My Story UI uses authoritative selected mood, memory-only code, shared editable dictation and no timers', () => {
+  await check('My Story UI uses authoritative mood, memory-only code, shared dictation and automatic resume checks', () => {
     const ui = fs.readFileSync(path.join(root, 'src', 'pages', 'story.tsx'), 'utf8')
     assert.ok(ui.includes('mood: selectedMood'))
     assert.ok(!ui.includes('inferPersonalStoryMood'))
@@ -421,7 +421,9 @@ async function main() {
     assert.ok(ui.includes('Editable response'))
     assert.ok(ui.includes("'x-muse-creator-code': creatorCode"))
     assert.ok(!/localStorage\.(?:setItem|getItem)\([^)]*creatorCode/.test(ui))
-    assert.ok(!ui.includes('setInterval') && !ui.includes('setTimeout'))
+    assert.ok(!ui.includes('setInterval'))
+    assert.ok(ui.includes('window.setTimeout') && ui.includes('window.clearTimeout'))
+    assert.ok(!ui.includes('Sync saved progress (no AI call)'))
     assert.ok(ui.includes('!story.journey ? <>'))
   })
   await check('personal deletion requires creator access and capability, cascades requests without resetting budgets or calling AI', async () => {

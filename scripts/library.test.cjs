@@ -46,7 +46,8 @@ try {
     const ts = require('typescript')
     const store = memory()
     for (const story of stories) lib.saveLibraryCreatorStory(story, store)
-    const states = [], effects = [], copied = []
+    const states = [], effects = [], copied = [], requests = []
+    let progressResponse = { ok: true, data: { progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } } }
     let cursor = 0, mounted = false, tick, clock = Date.parse('2026-10-15T00:00:00Z')
     const jsx = (type, props) => ({ type, props: props || {} })
     const react = {
@@ -72,12 +73,17 @@ try {
     assert.deepEqual(compiled.diagnostics, [])
     require('node:vm').runInNewContext(compiled.outputText, {
       module, exports: module.exports, window: browser, navigator: { clipboard },
+      fetch: async (url, options) => {
+        requests.push({ url, ...options, body: JSON.parse(options.body) })
+        return { ok: progressResponse.ok, json: async () => progressResponse.data }
+      },
       Date: class extends Date { static now() { return clock } },
       require(name) {
         if (name === 'react') return react
         if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
         if (name === 'next/head' || name === 'next/link') return { __esModule: true, default: name === 'next/link' ? 'a' : 'head' }
         if (name === '../lib/sharedStorySharing') return sharing
+        if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
           removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
@@ -91,7 +97,8 @@ try {
     mounted = true
     const cleanups = effects.map(effect => effect())
     return {
-      render, copied, clipboard, store,
+      render, copied, clipboard, store, requests,
+      setProgressResponse(value) { progressResponse = value },
       advance(value, update = true) { clock = Date.parse(value); if (update) tick() },
       cleanup() { cleanups.forEach(cleanup => cleanup?.()) }
     }
@@ -271,12 +278,15 @@ try {
       const tree = ui.render(), all = nodes(tree), text = textOf(tree)
       assert.ok(all.some(node => node.props?.id === 'personal-stories-heading'))
       assert.ok(all.some(node => node.props?.id === 'shared-stories-heading'))
-      assert.ok(all.some(node => node.props?.href === `/shared#manage=${encodeURIComponent(story.ownerToken)}`))
-      assert.ok(all.some(node => node.props?.href === `/shared#reuse=${encodeURIComponent(story.ownerToken)}`))
-      assert.ok(text.includes(story.expiresAt))
+      assert.ok(!all.some(node => node.props?.href?.startsWith('/shared#manage=') || node.props?.href?.startsWith('/shared#reuse=')))
+      const card = all.find(node => node.type === 'article')
+      assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Copy recipient link', 'Remove story'])
+      assert.equal(nodes(card).filter(node => node.type === 'gift-progress').length, 1)
+      assert.equal(nodes(card).find(node => node.type === 'gift-progress').props.compact, true)
+      assert.ok(all.some(node => node.type === 'time' && node.props.dateTime === story.expiresAt))
       assert.ok(text.includes('not backed up or synced across devices'))
       assert.ok(text.includes('independently of recipient completion and server expiry'))
-      assert.ok(text.includes('Recipient progress and completion are not tracked here'))
+      assert.ok(text.includes('Check completion'))
       assert.ok(text.includes('private owner access; do not share them'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
       const copy = button(tree, 'Copy recipient link')
@@ -287,7 +297,7 @@ try {
       assert.ok(textOf(ui.render()).includes('Recipient link copied'))
     } finally { ui.cleanup() }
   })
-  await checkAsync('expired and missing recipient links disable copy without disabling local brief reuse', async () => {
+  await checkAsync('expired and missing recipient links disable copy without removing saved stories', async () => {
     for (const variant of ['expired', 'missing']) {
       const story = shared(variant)
       if (variant === 'expired') story.expiresAt = '2000-01-01T00:00:00.000Z'
@@ -298,11 +308,40 @@ try {
         assert.equal(copy.props.disabled, true)
         await copy.props.onClick()
         assert.deepEqual(ui.copied, [])
-        assert.ok(nodes(tree).some(node => node.props?.href === `/shared#reuse=${variant}`))
+        assert.ok(button(tree, 'Remove story'))
         assert.ok(textOf(tree).includes(variant === 'expired' ? 'Server link expired' : 'No recipient link saved here'))
         assert.ok(read(ui.store).library.entries.length === 1)
       } finally { ui.cleanup() }
     }
+  })
+  await checkAsync('completion checks use private owner access, never poll, and surface failures', async () => {
+    const story = shared('private-owner')
+    const ui = mountLibrary([story])
+    try {
+      let tree = ui.render()
+      assert.equal(ui.requests.length, 0, 'Opening the library makes no network request')
+      const progress = () => nodes(ui.render()).find(node => node.type === 'gift-progress')
+      const result = await progress().props.load()
+      assert.equal(result.solved, 1)
+      assert.equal(ui.requests[0].url, '/api/shared-story')
+      assert.equal(ui.requests[0].body.action, 'progress')
+      assert.equal(ui.requests[0].body.token, story.ownerToken)
+      assert.ok(!JSON.stringify(ui.requests[0]).includes(story.playToken))
+      const code = nodes(tree).find(node => node.type === 'input' && node.props.type === 'password')
+      code.props.onChange({ target: { value: 'memory-only-code' } })
+      await progress().props.load()
+      assert.equal(ui.requests[1].headers['x-muse-creator-code'], 'memory-only-code')
+      assert.ok(!JSON.stringify([...ui.store.values]).includes('memory-only-code'))
+      ui.setProgressResponse({ ok: false, data: { error: 'Creator access required.' } })
+      await assert.rejects(progress().props.load(), /Creator access required/)
+      ui.setProgressResponse({ ok: true, data: {} })
+      await assert.rejects(progress().props.load(), /progress was not returned/)
+      assert.equal(read(ui.store).library.entries.length, 1, 'Failed checks do not erase the story')
+      const beforeRemove = ui.requests.length
+      button(ui.render(), 'Remove story').props.onClick()
+      assert.equal(read(ui.store).library.entries.length, 0)
+      assert.equal(ui.requests.length, beforeRemove, 'Removal is browser-local only, never server deletion')
+    } finally { ui.cleanup() }
   })
   await checkAsync('expiry is refreshed on screen and rechecked at copy time', async () => {
     const story = shared('expires-soon')
@@ -351,12 +390,13 @@ try {
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
     assert.ok(page.includes('window.confirm('))
     assert.ok(page.includes('Remove browser entry only'))
-    assert.ok(page.includes('encodeURIComponent(entry.story.ownerToken)'))
-    assert.ok(page.includes('Remote availability not checked'))
+    assert.ok(page.includes('loadProgress(entry.story.ownerToken)'))
+    assert.ok(page.includes('Remove story'))
     for (const field of ['solution', 'message', 'assistanceHints', 'alternativeAnswers', 'recipientHints']) {
       assert.ok(!page.includes(`entry.story.brief.${field}`), `Private ${field} must not appear in cards`)
     }
-    assert.ok(!page.includes('fetch('))
+    assert.ok(page.includes("action: 'progress'"))
+    assert.ok(!page.includes("action: 'delete'"))
     assert.ok(page.includes('selectPersonalStory(id)'))
   })
   check('shared navigation exposes saved stories and shared persistence remains canonical', () => {

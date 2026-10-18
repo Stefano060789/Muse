@@ -10,7 +10,7 @@ function flatten(node) {
   if (Array.isArray(node)) return node.flatMap(flatten)
   return typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [node]
 }
-function mount(load, adventure = false) {
+function mount(load, adventure = false, compact = false) {
   const slots = [], effects = [], cleanups = []
   let cursor = 0, tree
   const jsx = (type, props) => ({ type, props: props || {} })
@@ -26,7 +26,7 @@ function mount(load, adventure = false) {
   const mod = { exports: {} }
   new Function('module', 'exports', 'require', source)(mod, mod.exports, id =>
     id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx, Fragment: 'fragment' } : require(id))
-  const render = () => { cursor = 0; tree = mod.exports.default({ load, adventure, sceneCount: 3 }); return tree }
+  const render = () => { cursor = 0; tree = mod.exports.default({ load, adventure, compact, sceneCount: 3 }); return tree }
   const flush = async () => { render(); effects.splice(0).forEach(effect => cleanups.push(effect())); await new Promise(resolve => setImmediate(resolve)); render() }
   const nodes = () => flatten(tree).filter(node => typeof node === 'object')
   return { flush, nodes, text: () => flatten(tree).filter(node => typeof node !== 'object').join(' '),
@@ -63,6 +63,17 @@ async function main() {
   await live.flush(); live.button().props.onClick(); await live.flush()
   assert.ok(!live.text().includes('Furthest scene reached'), 'Live adventure turns are not measured as prepared scenes')
   live.unmount()
+  const compact = mount(async () => summary, false, true)
+  await compact.flush()
+  assert.match(compact.text(), /Check completion/)
+  assert.equal(compact.nodes().filter(node => node.type === 'button').length, 1)
+  assert.ok(!compact.text().includes('Private overview'), 'Compact card stays uncluttered before checking')
+  compact.button().props.onClick()
+  await compact.flush()
+  assert.match(compact.text(), /Check completion/)
+  assert.equal(compact.nodes().filter(node => node.type === 'dd').length, 5)
+  assert.match(compact.text(), /not verified people/)
+  compact.unmount()
   const pending = mount(() => new Promise(resolve => { release = resolve }))
   await pending.flush()
   const click = pending.button().props.onClick

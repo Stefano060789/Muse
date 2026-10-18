@@ -62,5 +62,6 @@ for (const pathname of ['/shared', '/couples']) {
     pageProps: {}, router: { pathname }
   }))
   assert.equal((html.match(/aria-label="Main navigation"/g) || []).length, 1, 'Gift routes must not get duplicate menus')
+  assert.ok(/<details[^>]*><summary>Help, privacy and about Muse<\/summary>/.test(html), 'Gift pages keep the full footer collapsed')
 }
 console.log('PASS consistent four-item navigation, selected routes, private exclusions, recipient simplicity and app-shell placement')

@@ -23,9 +23,9 @@ function flatten(node) {
   return [node, ...flatten(node.props?.children)]
 }
 function label(node) { return flatten(node.props?.children).filter(value => typeof value === 'string' || typeof value === 'number').join('') }
-async function mount(hash, player = null, owner = null) {
+async function mount(hash, player = null, owner = null, failures = {}) {
   let cursor = 0, tree, requestCount = 0
-  const slots = [], pending = [], requests = [], values = new Map(), timers = []
+  const slots = [], pending = [], requests = [], values = new Map(), timers = [], timerDelays = [], activeTimers = new Set()
   const jsx = (type, props) => ({ type, props: props || {} })
   const react = {
     useState(initial) {
@@ -37,17 +37,29 @@ async function mount(hash, player = null, owner = null) {
     useCallback(callback) { cursor++; return callback },
     useEffect(effect, deps) {
       const index = cursor++, previous = slots[index]
-      if (!previous || !deps || deps.some((value, i) => value !== previous[i])) pending.push(effect)
-      slots[index] = deps
+      if (!previous || !deps || deps.some((value, i) => value !== previous.deps?.[i])) pending.push(() => {
+        previous?.cleanup?.()
+        slots[index].cleanup = effect()
+      })
+      slots[index] = { deps, cleanup: previous?.cleanup }
     }
   }
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
   const browser = {
     location: { origin: 'https://muse.example', search: '', hash }, localStorage: storage,
     history: { replaceState(_a, _b, url) { browser.location.hash = url.includes('#') ? '#' + url.split('#')[1] : '' } },
-    setTimeout(callback) { timers.push(callback); return timers.length }, clearTimeout() {}, scrollTo() {}, confirm() { return true }
+    setTimeout(callback, delay) {
+      const id = timers.length + 1
+      timers.push(() => { activeTimers.delete(id); callback() })
+      timerDelays.push(delay)
+      activeTimers.add(id)
+      return id
+    },
+    clearTimeout(id) { activeTimers.delete(id) }, scrollTo() {}, confirm() { return true }
   }
-  const narrator = { stop() {}, error: '', preferences: {} }
+  let narrationStops = 0
+  const narrator = { stop() { narrationStops++ }, error: '', preferences: {} }
+  let dictationLanguage
   const customRequire = id => {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
@@ -61,7 +73,10 @@ async function mount(hash, player = null, owner = null) {
     if (id.endsWith('/storyRomance')) return romance
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory() {} }
-    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: () => ({ stopRecording() {}, recordingTarget: null, error: '' }) }
+    if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => {
+      dictationLanguage = language
+      return { stopRecording() {}, cancelRecording() {}, recordingTarget: null, error: '' }
+    } }
     if (id.endsWith('/useNarration')) return { useNarration: () => narrator }
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/sharedStoryMedia')) return { formatMediaSize: () => '5 MB', SHARED_MEDIA_ATTEMPTS_PER_STORY: 6, validateVoiceBytes: () => ({ durationSeconds: 1 }) }
@@ -71,6 +86,7 @@ async function mount(hash, player = null, owner = null) {
   const fetchMock = async (_url, options) => {
     const request = JSON.parse(options.body)
     requests.push(request)
+    if (request.action === 'open' && failures.open) return { ok: false, json: async () => ({ error: 'Progress temporarily unavailable' }) }
     if (request.action === 'studio-status' || request.action === 'studio-generate') return { ok: true, json: async () => ({ studio: {
       available: true, reason: null, scenes: request.action === 'studio-generate' ? [{ sceneIndex: request.sceneIndex, status: 'ready' }] : []
     } }) }
@@ -113,7 +129,9 @@ async function mount(hash, player = null, owner = null) {
   const field = id => { const node = nodes().find(node => node.props.id === id); assert.ok(node, 'Missing field: ' + id); return node }
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
-  return { flush, render, nodes, button, field, click, values, timers, requests, browser }
+  return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, browser,
+    dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
+    unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
 }
 async function main() {
   const creator = await mount('#new')
@@ -170,10 +188,11 @@ async function main() {
   submit(); await recipient.flush()
   assert.equal(recipient.requests.filter(request => request.action === 'reply').length, 2)
   assert.ok(recipient.button(language.recipientCopy().updateReply))
-  assert.ok(recipient.nodes().some(node => node.type === 'a' && node.props.href === '/shared?create=1#new'))
+  assert.ok(!recipient.nodes().some(node => node.type === 'a' && node.props.href === '/shared?create=1#new'))
   const arabic = await mount('#play=arabic-fixture', { ...player, language: 'ar-SA' })
   assert.ok(arabic.nodes().some(node => node.type === 'section' && node.props.lang === 'ar-SA' && node.props.dir === 'rtl'))
   assert.ok(arabic.button(language.recipientCopy('ar-SA').openStory))
+  assert.equal(arabic.dictationLanguage(), 'ar-SA', 'Recipient dictation follows the story language')
   console.log('PASS gift cover gates the player and private reply failures preserve text for retry')
   const romanticPlayer = { ...player, romance: 'spicy', language: 'ar-SA', title: 'PRIVATE_ROMANCE_TITLE', gift: { ...player.gift, dedication: 'PRIVATE_ROMANCE_DEDICATION' } }
   const gated = await mount('#play=romance-fixture', romanticPlayer)
@@ -204,6 +223,49 @@ async function main() {
   await studioPlayer.click(language.recipientCopy().openStory)
   const recipientStudio = studioPlayer.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(recipientStudio)
+  assert.ok(!studioPlayer.nodes().some(node => node.props['aria-label'] === 'Story experience'), 'Story text stays visible without mode toggles')
+  assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/PageIllustration'), 'Recipient story has no decorative banner')
+  const disclosure = studioPlayer.nodes().find(node => node.type === 'details' && label(node).startsWith('About this private story'))
+  assert.ok(disclosure && !disclosure.props.open)
+  const activeRecipient = await mount('#play=active-fixture', { ...player, solved: false, gift: undefined, language: 'en-US' })
+  const guessInput = activeRecipient.nodes().find(node => node.type === 'input' && node.props.maxLength === 200)
+  guessInput.props.onFocus()
+  guessInput.props.onChange({ target: { value: 'An editable answer' } })
+  await activeRecipient.flush()
+  assert.ok(activeRecipient.nodes().some(node => node.type === 'input' && node.props.value === 'An editable answer'))
+  assert.ok(!activeRecipient.nodes().some(node => node.type === '../components/MicrophoneCheck'), 'Recipient reading does not expose diagnostic tools')
+  const hints = await mount('#play=hints-fixture', { ...player, solved: false, gift: undefined, hintsRemaining: 2 })
+  assert.ok(hints.nodes().some(node => node.type === 'details' && !node.props.open &&
+    flatten(node).some(child => child?.type === 'summary' && label(child) === language.recipientCopy().hintTitle)), 'Hints are optional and collapsed')
+  const pendingPlayer = { ...player, gift: undefined, solved: false, adventure: {
+    pending: true, actionsRemaining: 10, budgetRemaining: 20, budget: 30, revision: 0, choiceMode: 'free'
+  } }
+  const failures = {}
+  const pendingAdventure = await mount('#play=pending-fixture', pendingPlayer, null, failures)
+  assert.ok(!pendingAdventure.nodes().some(node => node.type === 'button' && label(node) === language.recipientCopy().refreshProgress))
+  const paidBefore = pendingAdventure.requests.filter(request => request.action === 'adventure').length
+  const stopsBefore = pendingAdventure.narrationStops()
+  pendingAdventure.field('adventure-action').props.onChange({ target: { value: 'Keep my draft' } })
+  await pendingAdventure.flush()
+  assert.equal(pendingAdventure.timerDelays.at(-1), 3000)
+  failures.open = true
+  pendingAdventure.timers.at(-1)()
+  await pendingAdventure.flush()
+  assert.equal(pendingAdventure.timerDelays.at(-1), 15000, 'Failed progress checks use a slower automatic retry')
+  assert.ok(pendingAdventure.nodes().some(node => label(node) === 'Progress temporarily unavailable'))
+  failures.open = false
+  pendingPlayer.adventure.pending = false
+  pendingAdventure.timers.at(-1)()
+  await pendingAdventure.flush()
+  assert.equal(pendingAdventure.requests.at(-1).action, 'open', 'Pending turns refresh automatically with a read-only request')
+  assert.equal(pendingAdventure.requests.filter(request => request.action === 'adventure').length, paidBefore, 'Automatic checks never generate a paid turn')
+  assert.equal(pendingAdventure.field('adventure-action').props.value, 'Keep my draft', 'Progress checks preserve typed drafts')
+  assert.equal(pendingAdventure.narrationStops(), stopsBefore, 'Progress checks do not explicitly stop narration')
+  assert.equal(pendingAdventure.activeTimers.size, 0, 'Settled turns stop polling')
+  const unmountedAdventure = await mount('#play=unmount-fixture', { ...pendingPlayer, adventure: { ...pendingPlayer.adventure, pending: true } })
+  assert.equal(unmountedAdventure.activeTimers.size, 1)
+  unmountedAdventure.unmount()
+  assert.equal(unmountedAdventure.activeTimers.size, 0, 'Leaving the story cancels pending progress checks')
   assert.equal(recipientStudio.props.generate, undefined)
   assert.equal(recipientStudio.props.check, undefined)
   const audio = await recipientStudio.props.load(0, new AbortController().signal)
@@ -215,6 +277,12 @@ async function main() {
     content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: '2099-11-15T00:00:00.000Z'
   })
   assert.ok(owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'Management access is independent of pre-send checks')
+  const tools = owner.nodes().find(node => node.props['aria-label'] === 'Sender tools')
+  assert.ok(tools && !tools.props.open, 'Sharing and management stay in a collapsed sender panel')
+  assert.ok(flatten(tools).some(node => node?.type === '../components/PreSendCheck'), 'Sharing safeguards stay available')
+  assert.ok(!owner.nodes().some(node => node.type === 'button' && ['Create new story', 'Reuse this brief'].includes(label(node))))
+  const sceneArticle = owner.nodes().find(node => node.props['aria-label'] === 'Story scene 1')
+  assert.ok(sceneArticle && !flatten(tools).includes(sceneArticle), 'The story is visible outside sender tools')
   const ownerStudio = owner.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(ownerStudio)
   assert.deepEqual(await ownerStudio.props.check(0, new AbortController().signal), { enabled: true, ready: false, blocked: false })
