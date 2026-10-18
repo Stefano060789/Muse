@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { loadStoryLibrary, removeLibraryEntry, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { recipientShareDetails } from '../lib/sharedStorySharing'
 import GiftProgress from '../components/GiftProgress'
-import GiftCard from '../components/GiftCard'
+import ShareGiftStory from '../components/ShareGiftStory'
+import GiftStoryPreview from '../components/GiftStoryPreview'
 import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 
 export default function LibraryPage() {
@@ -13,7 +14,6 @@ export default function LibraryPage() {
   const [ready, setReady] = useState(false)
   const [origin, setOrigin] = useState('')
   const [creatorCode, setCreatorCode] = useState('')
-  const [copyStatus, setCopyStatus] = useState<{ id: string; message: string } | null>(null)
   const refresh = () => {
     const result = loadStoryLibrary()
     setEntries(result.library.entries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
@@ -35,21 +35,6 @@ export default function LibraryPage() {
   const openPersonal = (id: string) => {
     try { selectPersonalStory(id); window.location.assign('/story') }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not reopen this story.') }
-  }
-  const copyRecipientLink = async (entry: Extract<LibraryEntry, { kind: 'shared' }>) => {
-    if (!entry.story.playToken) {
-      setCopyStatus({ id: entry.id, message: 'Recipient link unavailable. Your saved story has not been removed.' })
-      return
-    }
-    try {
-      const details = recipientShareDetails(window.location.origin, entry.story.playToken)
-      await navigator.clipboard.writeText(details.url)
-      setCopyStatus({ id: entry.id, message: details.localOnly
-        ? 'Recipient link copied. This local-only address will not work on another device.'
-        : 'Recipient link copied. No automatic expiry; deleting the story or replacing its recipient link disables access.' })
-    } catch {
-      setCopyStatus({ id: entry.id, message: 'Could not copy the recipient link. Allow clipboard access and try again.' })
-    }
   }
   const loadProgress = async (ownerToken: string): Promise<SharedStoryProgress> => {
     const response = await fetch('/api/shared-story', {
@@ -80,7 +65,7 @@ export default function LibraryPage() {
           <details>
             <summary>Privacy and storage</summary>
             <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
-            <p>Server stories have no automatic expiry. Shared briefs stay saved in this browser independently of recipient completion, until you remove them or clear browser storage. Check completion loads recorded recipient progress only when you ask.</p>
+            <p>Server stories have no automatic expiry. Shared briefs stay saved in this browser independently of recipient completion, until you remove them or clear browser storage. View story progress loads progress only when you ask.</p>
             <p>Removing an entry does not delete its server story, disable recipient links or reset its allowance. Saved entries contain private owner access; do not share them. Only copy the recipient link for sharing.</p>
             <p>Personal journeys require your creator code to reopen; it is never saved. Reopening syncs server progress without an AI call.</p>
           </details>
@@ -93,14 +78,26 @@ export default function LibraryPage() {
           {personalEntries.map(entry => (
             <article className="atelier-card" key={`${entry.kind}:${entry.id}`} style={{ margin: '1rem 0' }}>
               <h3>{entry.story.title}</h3>
-              <p>{entry.story.journey
-                  ? `Personal journey · about ${entry.story.journey.duration} minutes · ${entry.story.journey.revision}/${entry.story.journey.maxTurns} attempts · ${entry.story.journey.status} · Reconcile on reopening`
-                  : `Personal · ${entry.story.responses.length >= entry.story.scenes.length ? 'Completed' : `Scene ${entry.story.currentStep + 1} of ${entry.story.scenes.length}`}`
-              }</p>
-              <p>Saved {new Date(entry.updatedAt).toLocaleString()}</p>
+              {(() => {
+                const completed = entry.story.journey
+                  ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted'
+                  : entry.story.responses.length >= entry.story.scenes.length
+                return <>
+                  <p>{completed ? 'Completed' : `In progress · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
+                  <details>
+                    <summary>Story details</summary>
+                    {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}
+                    <p>Saved {new Date(entry.updatedAt).toLocaleString()} in this browser.</p>
+                  </details>
+                </>
+              })()}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <button className="atelier-button" onClick={() => openPersonal(entry.id)}>Continue personal story</button>
-                <button className="atelier-secondary" onClick={() => remove(entry)}>Remove browser entry only</button>
+                <button className="atelier-button" onClick={() => openPersonal(entry.id)}>
+                  {entry.story.journey
+                    ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted' ? 'Read again' : 'Continue story'
+                    : entry.story.responses.length >= entry.story.scenes.length ? 'Read again' : 'Continue story'}
+                </button>
+                <button className="atelier-secondary" onClick={() => remove(entry)}>Remove from this browser</button>
               </div>
             </article>
           ))}
@@ -108,7 +105,7 @@ export default function LibraryPage() {
           {ready && <section aria-labelledby="shared-stories-heading">
             <h2 id="shared-stories-heading">Gift stories for others</h2>
             <p>Stories you&apos;ve made for someone else. No automatic expiry; saved briefs stay here until you remove them. Deleted stories and replaced links cannot be reopened.</p>
-            <p>Check completion to see opened playthroughs, progress and whether the mystery was solved or revealed without solving. No AI generation or automatic monitoring.</p>
+            <p>View story progress to see the furthest scene reached and whether the ending was unlocked. No AI generation or automatic monitoring.</p>
             <details style={{ marginBottom: '1rem' }}>
               <summary>Creator access (if required)</summary>
               <label>Creator access code
@@ -124,12 +121,12 @@ export default function LibraryPage() {
                 <h3>{entry.story.content.title}</h3>
                 {!entry.story.playToken && <p>No recipient link saved here.</p>}
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <button className="atelier-button" disabled={!entry.story.playToken} onClick={() => copyRecipientLink(entry)}>Copy recipient link</button>
+                  {recipient ? <ShareGiftStory recipientUrl={recipient.url} shareText={recipient.text} expiresAt={null}
+                    disabled={!entry.story.playToken} localOnly={recipient.localOnly} whatsappUrl={recipient.whatsappUrl}
+                    previewContent={<GiftStoryPreview brief={entry.story.brief} content={entry.story.content} />} /> : null}
                   <button className="atelier-secondary" onClick={() => remove(entry)}>Remove story</button>
                   <GiftProgress compact load={() => loadProgress(entry.story.ownerToken)} sceneCount={entry.story.content.scenes.length} adventure={Boolean(entry.story.brief.adventure)} />
-                  {recipient && !recipient.localOnly ? <GiftCard recipientUrl={recipient.url} expiresAt={null} /> : null}
                 </div>
-                {copyStatus?.id === entry.id && <p role="status">{copyStatus.message}</p>}
               </article>
             })}
           </section>}

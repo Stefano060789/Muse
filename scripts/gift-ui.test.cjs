@@ -23,9 +23,10 @@ function flatten(node) {
   return [node, ...flatten(node.props?.children)]
 }
 function label(node) { return flatten(node.props?.children).filter(value => typeof value === 'string' || typeof value === 'number').join('') }
-async function mount(hash, player = null, owner = null, failures = {}) {
+async function mount(hash, player = null, owner = null, failures = {}, values = new Map()) {
   let cursor = 0, tree, requestCount = 0
-  const slots = [], pending = [], requests = [], values = new Map(), timers = [], timerDelays = [], activeTimers = new Set()
+  const slots = [], pending = [], requests = [], timers = [], timerDelays = [], activeTimers = new Set()
+  const listeners = new Map()
   const jsx = (type, props) => ({ type, props: props || {} })
   const react = {
     useState(initial) {
@@ -47,6 +48,9 @@ async function mount(hash, player = null, owner = null, failures = {}) {
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
   const browser = {
     location: { origin: 'https://muse.example', search: '', hash }, localStorage: storage,
+    crypto: require('node:crypto').webcrypto,
+    addEventListener(name, listener) { listeners.set(name, listener) },
+    removeEventListener(name, listener) { if (listeners.get(name) === listener) listeners.delete(name) },
     history: { replaceState(_a, _b, url) { browser.location.hash = url.includes('#') ? '#' + url.split('#')[1] : '' } },
     setTimeout(callback, delay) {
       const id = timers.length + 1
@@ -67,6 +71,33 @@ async function mount(hash, player = null, owner = null, failures = {}) {
     if (id.endsWith('/storyGift')) return {
       ...gifts, loadGiftDraft: () => gifts.loadGiftDraft(storage),
       saveGiftDraft: draft => gifts.saveGiftDraft(draft, storage), removeGiftDraft: () => gifts.removeGiftDraft(storage)
+    }
+    if (id.endsWith('/browserDrafts')) return {
+      readDraft(key, validate) {
+        const raw = storage.getItem(key)
+        if (raw === null) return null
+        let value
+        try { value = JSON.parse(raw) } catch { throw new Error('A saved draft could not be read. It has not been overwritten.') }
+        if (!validate(value)) throw new Error('A saved draft has an unsupported format. It has not been overwritten.')
+        return value
+      },
+      writeDraft(key, value) { storage.setItem(key, JSON.stringify(value)) },
+      removeDraft(key) { storage.removeItem(key) }
+    }
+    if (id.endsWith('/storyPreferences')) return {
+      loadStoryPreferences() {
+        const raw = storage.getItem('muse-preferences')
+        if (raw === null) return { language: 'en-US', duration: 10 }
+        const value = JSON.parse(raw)
+        if (!language.STORY_LANGUAGES.some(option => option.code === value?.language) ||
+            ![5, 10, 15, 20].includes(value?.duration)) throw new Error('Saved story settings are invalid.')
+        return value
+      },
+      saveStoryPreferences(value) {
+        if (!language.STORY_LANGUAGES.some(option => option.code === value.language) ||
+            ![5, 10, 15, 20].includes(value.duration)) throw new Error('Choose a supported language and story duration.')
+        storage.setItem('muse-preferences', JSON.stringify(value))
+      }
     }
     if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
     if (id.endsWith('/storyLanguage')) return plainModule('src/lib/storyLanguage.ts')
@@ -131,20 +162,90 @@ async function mount(hash, player = null, owner = null, failures = {}) {
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
   return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, browser,
+    dispatch(name) { listeners.get(name)?.() },
     dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
 }
 async function main() {
+  const preferenceValues = new Map([['muse-preferences', JSON.stringify({ language: 'es-ES', duration: 15 })]])
+  const preferenceCreator = await mount('#new', null, null, {}, preferenceValues)
+  assert.equal(preferenceCreator.field('shared-language').props.value, 'es-ES')
+  assert.equal(preferenceCreator.nodes().some(node => node.type === 'select' && node.props.value === 15), true)
+  assert.equal(preferenceCreator.nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, false)
+  assert.equal(preferenceCreator.requests.some(request => request.action === 'create'), false, 'Loading preferences never prepares a story')
+  const consent = () => preferenceCreator.nodes().find(node => node.type === '../components/ExplicitConsent')
+  consent().props.onChange(true)
+  preferenceCreator.field('shared-language').props.onChange({ target: { value: 'ar-SA' } })
+  await preferenceCreator.flush()
+  const duration = preferenceCreator.nodes().find(node => node.type === 'select' && node.props.value === 15)
+  duration.props.onChange({ target: { value: '20' } })
+  await preferenceCreator.flush()
+  assert.deepEqual(JSON.parse(preferenceValues.get('muse-preferences')), { language: 'ar-SA', duration: 20 })
+  assert.equal(consent().props.checked, false, 'Changing remembered language or duration never preserves AI consent')
+  console.log('PASS gift creation remembers validated language and duration without remembering consent')
+
+  const refreshValues = new Map([['muse-preferences', JSON.stringify({ language: 'es-ES', duration: 15 })]])
+  const beforeRefresh = await mount('#new', null, null, {}, refreshValues)
+  beforeRefresh.field('brief-creatorName').props.onChange({ target: { value: 'Synthetic sender' } })
+  let immediateDraft = gifts.loadGiftDraft(beforeRefresh.browser.localStorage)
+  assert.equal(immediateDraft.brief.creatorName, 'Synthetic sender', 'Name edits persist synchronously, before render/effect/debounce')
+  await beforeRefresh.flush()
+  beforeRefresh.field('brief-recipientName').props.onChange({ target: { value: 'Synthetic recipient' } })
+  immediateDraft = gifts.loadGiftDraft(beforeRefresh.browser.localStorage)
+  assert.equal(immediateDraft.brief.creatorName, 'Synthetic sender')
+  assert.equal(immediateDraft.brief.recipientName, 'Synthetic recipient', 'The latest name is in storage immediately')
+  await beforeRefresh.flush()
+  assert.equal(beforeRefresh.timers.some((_, index) => beforeRefresh.timerDelays[index] === 600), true, 'The longer coalescing save may still be pending')
+  assert.equal(immediateDraft.brief.language, 'es-ES')
+  assert.equal(immediateDraft.brief.durationMinutes, 15)
+  const afterRefresh = await mount('#new', null, null, {}, refreshValues)
+  await afterRefresh.click('Restore draft')
+  assert.equal(afterRefresh.field('brief-creatorName').props.value, 'Synthetic sender')
+  assert.equal(afterRefresh.field('brief-recipientName').props.value, 'Synthetic recipient')
+  assert.equal(afterRefresh.field('shared-language').props.value, 'es-ES')
+  assert.equal(afterRefresh.requests.some(request => request.action === 'create'), false, 'Reloading a draft never prepares a story')
+  console.log('PASS immediate refresh of #new restores names saved synchronously before the debounce')
+
+  const restoredValues = new Map([['muse-preferences', JSON.stringify({ language: 'zh-CN', duration: 15 })]])
+  gifts.saveGiftDraft({
+    version: 1,
+    brief: {
+      creatorName: 'Draft sender', recipientName: '', narration: 'Warm', setting: '', recipientHints: '',
+      goal: '', solution: '', message: '', durationMinutes: 5, language: 'hi-IN',
+      gift: { occasion: 'birthday', dedication: '', allowReply: false }
+    },
+    assistanceHintsText: '', alternativeAnswersText: '', savedAt: '2026-10-18T00:00:00.000Z'
+  }, {
+    getItem: key => restoredValues.get(key) ?? null,
+    setItem: (key, value) => restoredValues.set(key, value),
+    removeItem: key => restoredValues.delete(key)
+  })
+  const restoredCreator = await mount('#new', null, null, {}, restoredValues)
+  restoredCreator.nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await restoredCreator.click('Restore draft')
+  assert.equal(restoredCreator.field('shared-language').props.value, 'hi-IN', 'Restored gift draft keeps its own language')
+  assert.equal(restoredCreator.nodes().some(node => node.type === 'select' && node.props.value === 5), true, 'Restored gift draft keeps its own duration')
+  assert.equal(restoredCreator.nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, false,
+    'Restoring gift writing always requires fresh consent')
+  assert.deepEqual(JSON.parse(restoredValues.get('muse-preferences')), { language: 'zh-CN', duration: 15 },
+    'Restoring an older draft does not overwrite the main preferences')
+  assert.equal(restoredCreator.requests.some(request => request.action === 'create'), false, 'Restoring writing never prepares a story')
+  console.log('PASS restoring gift writing does not restore consent or overwrite main preferences')
+
   const creator = await mount('#new')
   await creator.click('Birthday')
   creator.field('brief-creatorName').props.onChange({ target: { value: 'Sender' } })
   await creator.flush()
+  const giftDraftRaw = () => creator.values.get(gifts.GIFT_DRAFT_KEY)
   creator.field('brief-recipientName').props.onChange({ target: { value: 'Recipient' } })
   await creator.flush()
   creator.timers.at(-1)()
   const saved = gifts.loadGiftDraft(creator.browser.localStorage)
   assert.equal(saved.brief.gift.occasion, 'birthday')
   assert.equal(saved.brief.language, 'en-US')
+  for (const excluded of ['creatorCode', 'ownerToken', 'playToken', 'aiConsent', 'mediaUrl', 'voiceUrl']) {
+    assert.equal(giftDraftRaw().includes(excluded), false, `Gift drafts do not store ${excluded}`)
+  }
   creator.field('shared-language').props.onChange({ target: { value: 'ar-SA' } })
   await creator.flush()
   creator.timers.at(-1)()
@@ -234,6 +335,18 @@ async function main() {
   guessInput.props.onChange({ target: { value: 'An editable answer' } })
   await activeRecipient.flush()
   assert.ok(activeRecipient.nodes().some(node => node.type === 'input' && node.props.value === 'An editable answer'))
+  const answerDrafts = [...activeRecipient.values].filter(([key]) => key.startsWith('muse-shared-recipient-draft:'))
+  assert.equal(answerDrafts.length, 1)
+  assert.match(answerDrafts[0][0], /:answer:0$/)
+  assert.ok(!answerDrafts[0][0].includes('active-fixture'), 'Recipient capability is hashed rather than saved in the draft key')
+  assert.deepEqual(JSON.parse(answerDrafts[0][1]), { revision: 0, text: 'An editable answer' })
+  assert.ok(!answerDrafts[0][1].includes('c'.repeat(64)), 'Draft values contain no session token')
+  const resumedRecipient = await mount('#play=active-fixture', { ...player, solved: false, gift: undefined }, null, {}, activeRecipient.values)
+  assert.equal(resumedRecipient.nodes().find(node => node.type === 'input' && node.props.maxLength === 200).props.value, 'An editable answer',
+    'Unsent recipient answers are restored for the same story and revision')
+  const nextScene = await mount('#play=active-fixture', { ...player, solved: false, gift: undefined, sceneIndex: 1, sceneCount: 2 }, null, {}, activeRecipient.values)
+  assert.equal(nextScene.nodes().find(node => node.type === 'input' && node.props.maxLength === 200).props.value, '',
+    'Answers from earlier revisions are not restored into the next scene')
   assert.ok(!activeRecipient.nodes().some(node => node.type === '../components/MicrophoneCheck'), 'Recipient reading does not expose diagnostic tools')
   const hints = await mount('#play=hints-fixture', { ...player, solved: false, gift: undefined, hintsRemaining: 2 })
   assert.ok(hints.nodes().some(node => node.type === 'details' && !node.props.open &&
@@ -248,6 +361,14 @@ async function main() {
   const stopsBefore = pendingAdventure.narrationStops()
   pendingAdventure.field('adventure-action').props.onChange({ target: { value: 'Keep my draft' } })
   await pendingAdventure.flush()
+  const actionDraft = [...pendingAdventure.values].find(([key]) => key.startsWith('muse-shared-recipient-draft:') && key.endsWith(':action:0'))
+  assert.ok(actionDraft, 'Freeform recipient actions use a separate story/revision draft key')
+  assert.deepEqual(JSON.parse(actionDraft[1]), { revision: 0, text: 'Keep my draft' })
+  assert.ok(!actionDraft[0].includes('pending-fixture'))
+  assert.ok(!actionDraft[1].includes('c'.repeat(64)))
+  const resumedAction = await mount('#play=pending-fixture', { ...pendingPlayer, adventure: { ...pendingPlayer.adventure } }, null, {}, pendingAdventure.values)
+  assert.equal(resumedAction.field('adventure-action').props.value, 'Keep my draft',
+    'Unsent freeform actions restore only for their story and revision')
   assert.equal(pendingAdventure.timerDelays.at(-1), 3000)
   failures.open = true
   pendingAdventure.timers.at(-1)()

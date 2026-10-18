@@ -31,7 +31,7 @@ export default function DemoPage() {
         <SampleNarration key={sampleAudio.message.src} src={sampleAudio.message.src} label="Listen to the message" />
         <p>This is how a thoughtful gift can end. Your own story can include a private message, photo, video or voice recording.</p>
         <Link href="/shared#new" style={{ ...button, display: 'inline-block', background: '#2d2926', color: 'white', textDecoration: 'none' }}>Make a story for someone</Link>
-        <p><Link href="/story" style={{ color: 'inherit' }}>Or try a story for yourself</Link></p>
+        <p><Link href="/story?new=1" style={{ color: 'inherit' }}>Or try a story for yourself</Link></p>
         <button style={button} onClick={() => { setOpened(false); setScene(0); setRevealed(false); setHint(false); setAnswer(''); setFeedback('') }}>Try the sample again</button>
       </section> : <section className="atelier-card">
         <p>Scene {scene + 1} of {SAMPLE_STORY.scenes.length}</p><h1>{current.title}</h1>

@@ -14,6 +14,11 @@ import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact
 import { STORY_LANGUAGES, storyLanguage, type StoryLanguageCode } from '../lib/storyLanguage'
 import RomanceOptions from '../components/RomanceOptions'
 import { requireRomanceConfirmation, romanceCopy, type StoryRomance } from '../lib/storyRomance'
+import { removeLibraryEntry } from '../lib/storyLibrary'
+import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
+import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
+import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
+import StoryKeepsake from '../components/StoryKeepsake'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -45,8 +50,16 @@ export default function StoryPage() {
   const [useProfile, setUseProfile] = useState(true)
   const [aiConsent, setAiConsent] = useState(false)
   const [creationStep, setCreationStep] = useState(0)
+  const [draftsReady, setDraftsReady] = useState(false)
+  const [draftNotice, setDraftNotice] = useState('')
+  const [draftError, setDraftError] = useState('')
+  const [rereading, setRereading] = useState(false)
+  const [answerLoaded, setAnswerLoaded] = useState<string | null>(null)
+  const draftWritable = useRef(true)
+  const answerWritable = useRef(true)
   const creationSection = useRef<HTMLElement>(null)
   const requestLock = useRef(false)
+  const deletedOnServer = useRef<string | null>(null)
   const narrator = useNarration(story || {}, story?.mood || selectedMood, {
     progress: story?.journey ? story.journey.revision / story.journey.maxTurns
       : story ? story.currentStep / Math.max(1, story.scenes.length - 1) : 0,
@@ -70,7 +83,7 @@ export default function StoryPage() {
 
   useEffect(() => {
     try {
-      setStory(loadPersonalStory())
+      setStory(new URLSearchParams(window.location?.search || '').get('new') === '1' ? null : loadPersonalStory())
       const profile = loadMuseProfile()
       setProfileReady(Boolean(profile))
       setProfileDraft(profile?.about || '')
@@ -84,6 +97,63 @@ export default function StoryPage() {
       setStoryNotice(error instanceof Error ? error.message : 'This browser could not restore your story or memories.')
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      const preferences = loadStoryPreferences()
+      setLanguage(preferences.language); setDuration(preferences.duration)
+      const draft = readDraft(PERSONAL_DRAFT_KEY, isPersonalDraft)
+      if (draft) {
+        setNeed(draft.need); setSelectedMood(draft.mood); setChoiceMode(draft.choiceMode)
+        setLanguage(draft.language); setDuration(draft.duration); setRomance(draft.romance)
+        setUseProfile(draft.useProfile); setProfileDraft(draft.profileDraft); setCreationStep(draft.step)
+        setDraftNotice('Draft restored. Review your choices and consent before creating.')
+      }
+    } catch (error) {
+      draftWritable.current = false
+      setDraftError(error instanceof Error ? error.message : 'Could not restore your draft or preferences.')
+    }
+    setDraftsReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!draftsReady || story || preparation || !draftWritable.current) return
+    try {
+      writeDraft(PERSONAL_DRAFT_KEY, { need, mood: selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, step: creationStep })
+      saveStoryPreferences({ language, duration })
+      setDraftNotice('Draft saved in this browser.')
+      setDraftError('')
+    } catch {
+      setDraftError('Your draft or preferences could not be saved. Keep this page open or copy your writing before leaving.')
+    }
+  }, [draftsReady, story, preparation, need, selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, creationStep])
+
+  useEffect(() => {
+    setAnswerLoaded(null)
+    setRereading(false)
+    answerWritable.current = true
+    if (!story) return
+    try {
+      const saved = readDraft(responseDraftKey(story.id), isResponseDraft)
+      setResponseDraft(saved?.revision === (story.journey?.revision ?? story.currentStep) ? saved.text : '')
+      setAnswerLoaded(story.id)
+    } catch {
+      answerWritable.current = false
+      setDraftError('Your saved answer could not be restored. It has not been overwritten.')
+    }
+  }, [story?.id])
+
+  useEffect(() => {
+    if (!story || answerLoaded !== story.id || !answerWritable.current) return
+    try {
+      if (responseDraft) writeDraft(responseDraftKey(story.id), { revision: story.journey?.revision ?? story.currentStep, text: responseDraft })
+      else removeDraft(responseDraftKey(story.id))
+      setDraftNotice(responseDraft ? 'Draft saved in this browser.' : '')
+      setDraftError('')
+    } catch {
+      setDraftError('Your answer could not be saved in this browser. Copy it before leaving this page.')
+    }
+  }, [answerLoaded, story?.id, story?.journey?.revision, story?.currentStep, responseDraft])
 
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
   const sceneTitle = scene?.title.trim().replace(/\s+/g, ' ') || ''
@@ -113,6 +183,7 @@ export default function StoryPage() {
     if (data.status === 'failed' || data.snapshot?.status === 'failed') throw new Error('This attempt failed and was consumed. No automatic retry is made.')
     if (data.story && saved) {
       window.localStorage.removeItem(PREPARATION_KEY)
+      if (preparation) removeDraft(PERSONAL_DRAFT_KEY)
       setPreparation(null)
     }
     setReconciled(!data.snapshot?.pending)
@@ -121,7 +192,7 @@ export default function StoryPage() {
 
   const reconcile = async () => {
     const saved = preparation || (story?.journey ? { id: story.id, capability: story.journey.capability } : null)
-    if (!saved || requestLock.current) return
+    if (!saved || requestLock.current || deletedOnServer.current === saved.id) return
     requestLock.current = true
     setIsGenerating(true); setStoryError(''); setReconciled(false)
     try {
@@ -143,7 +214,7 @@ export default function StoryPage() {
   }, [story?.id, Boolean(story?.journey), preparation?.id, creatorCode])
 
   useEffect(() => {
-    if ((!story?.journey && !preparation) || isGenerating || (reconciled && !story?.journey?.pending)) return
+    if ((!story?.journey && !preparation) || deletedOnServer.current === story?.id || isGenerating || (reconciled && !story?.journey?.pending)) return
     const timer = window.setTimeout(() => { void reconcileRef.current() }, storyError ? 15000 : 3000)
     return () => window.clearTimeout(timer)
   }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, isGenerating, storyError])
@@ -207,6 +278,7 @@ export default function StoryPage() {
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
       await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      removeDraft(PERSONAL_DRAFT_KEY)
       setRomanceConfirmed(false)
       setNeed('')
       setResponseDraft('')
@@ -261,6 +333,51 @@ export default function StoryPage() {
     if (responseDraft.trim()) choose(responseDraft)
   }
 
+  const deleteStory = async () => {
+    if (!story || requestLock.current) return
+    const selected = story
+    const message = selected.journey
+      ? 'Permanently delete this story and its saved progress from the server and this browser? This cannot be undone and does not refund used attempts.'
+      : 'Delete this story and its saved progress from this browser? This cannot be undone.'
+    if (!window.confirm(message)) return
+    requestLock.current = true
+    setIsGenerating(true)
+    setStoryError('')
+    stopSpeaking()
+    interaction.cancelRecording()
+    try {
+      if (selected.journey && deletedOnServer.current !== selected.id) {
+        const response = await fetch('/api/personal-story', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+          body: JSON.stringify({ mode: 'journey', action: 'delete', id: selected.id, capability: selected.journey.capability })
+        })
+        const data = await response.json()
+        if (!response.ok || data.deleted !== true) throw new Error(data.error || 'Story deletion was not confirmed. Your saved story has not been removed.')
+        deletedOnServer.current = selected.id
+      }
+      removeLibraryEntry('personal', selected.id)
+      removeDraft(responseDraftKey(selected.id))
+      if (preparation?.id === selected.id) {
+        window.localStorage.removeItem(PREPARATION_KEY)
+        setPreparation(null)
+      }
+      setStory(null)
+      setResponseDraft('')
+      setAiConsent(false)
+      setCreationStep(0)
+      setReconciled(false)
+      setStoryNotice('Story deleted.')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Could not delete your story.'
+      setStoryError(deletedOnServer.current === selected.id
+        ? `The server story was deleted, but this browser could not finish removing its saved copy. Try Delete story again. ${detail}`
+        : detail)
+    } finally {
+      requestLock.current = false
+      setIsGenerating(false)
+    }
+  }
+
   const startDictation = () => interaction.dictate('response', value => {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
@@ -272,6 +389,8 @@ export default function StoryPage() {
         <div className="atelier-shell atelier-shell--narrow">
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
+          {draftError ? <p role="alert">{draftError}</p> : null}
+          {draftNotice && (!story || responseDraft) ? <p role="status">{draftNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
           <details style={{ marginBottom: '1rem' }}>
           <summary>Creator access (beta)</summary>
@@ -415,7 +534,19 @@ export default function StoryPage() {
                 </> : null}
                 </> : null}
               </article>
-              {finished ? <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>{story.journey?.status === 'exhausted' ? 'Attempt limit reached, including failures. Your last scene is saved; no extra AI call is made.' : 'Your story is complete.'} You can still listen or reopen it.</div> : null}
+              {finished ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
+                <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : 'Your story is complete.'}</h2>
+                <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'Take a moment. You can return to this story whenever you like.'}</p>
+                <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
+                <StoryKeepsake story={{ title: story.title, creatorName: 'Muse', recipientName: 'you', scenes: story.scenes }} />
+                <p className="atelier-note">The keepsake includes available story text, not your private answers, personal touches or access links.</p>
+                {rereading ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
+                  {story.scenes.map((savedScene, index) => <article key={index}><h3>{savedScene.title}</h3><p className="atelier-prose">{savedScene.body}</p></article>)}
+                </div> : null}
+              </section> : null}
+              <div style={{ marginTop: '2rem' }}>
+                <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>
+              </div>
             </section>
           )}
         </div>

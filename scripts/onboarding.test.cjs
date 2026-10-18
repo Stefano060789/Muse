@@ -209,6 +209,7 @@ check('service worker claims scope but does not intercept/cache private requests
 check('Home personal touches restore, dictate, save locally and surface storage errors', () => {
   let saved = '', receiver, cancelled = 0, stopped = 0, failSave = false, selectedLanguage
   const touches = component('src/components/HomePersonalTouches.tsx', {
+    '../lib/storyPreferences': { loadStoryPreferences: () => ({ language: 'en-US', duration: 10 }) },
     '../lib/profile': {
       loadMuseProfile: () => ({ about: 'I love gardens.' }),
       saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value } }
@@ -252,21 +253,32 @@ check('Home personal touches restore, dictate, save locally and surface storage 
 check('home exposes two clear creation paths, demo and saved stories', () => {
   const home = component('src/pages/index.tsx', {
     '../components/InstallApp': { __esModule: true, default: 'install' },
-    '../components/HomePersonalTouches': { __esModule: true, default: 'personal-touches' }
+    '../components/HomePersonalTouches': { __esModule: true, default: 'personal-touches' },
+    '../lib/storyLibrary': {
+      loadStoryLibrary: () => ({ library: { entries: [] }, error: null }),
+      selectPersonalStory() {}
+    }
   })
-  home.render()
-  for (const href of ['/story', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
-  assert.ok(home.nodes().some(node => node.props.href === '/story' && text(node) === 'Create a story'))
-  assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create a gift story'))
-  assert.equal(home.nodes().some(node => node.props.href === '/myself'), false, 'Optional personalization belongs inside story creation')
-  assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
-  assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
-  assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
-  assert.ok(home.nodes().some(node => node.type === 'personal-touches'), 'Home offers inline personal touches')
-  const more = home.nodes().find(node => node.type === 'details')
-  assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
-  for (const href of ['/story', '/shared#new', '/demo']) {
-    assert.ok(home.nodes().some(node => node.props.href === href && !flatten(more).includes(node)), 'Primary paths stay outside collapsed details')
+  const previousWindow = global.window
+  global.window = { addEventListener() {}, removeEventListener() {} }
+  try {
+    home.render()
+    for (const href of ['/story?new=1', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
+    assert.ok(home.nodes().some(node => node.props.href === '/story?new=1' && text(node) === 'Create a story'))
+    assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create a gift story'))
+    assert.equal(home.nodes().some(node => node.props.href === '/myself'), false, 'Optional personalization belongs inside story creation')
+    assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
+    assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
+    assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
+    assert.ok(home.nodes().some(node => node.type === 'personal-touches'), 'Home offers inline personal touches')
+    const more = home.nodes().find(node => node.type === 'details')
+    assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
+    for (const href of ['/story?new=1', '/shared#new', '/demo']) {
+      assert.ok(home.nodes().some(node => node.props.href === href && !flatten(more).includes(node)), 'Primary paths stay outside collapsed details')
+    }
+  } finally {
+    if (previousWindow === undefined) delete global.window
+    else global.window = previousWindow
   }
 })
 async function installationChecks() {

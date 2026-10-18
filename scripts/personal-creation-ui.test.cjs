@@ -9,9 +9,9 @@ function compile(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
   }).outputText
 }
-function plain(file) {
+function plain(file, browser) {
   const module = { exports: {} }
-  new Function('module', 'exports', 'require', compile(file))(module, module.exports, id => id.startsWith('.') ? plain(path.join(path.dirname(file), id + '.ts')) : require(id))
+  new Function('module', 'exports', 'require', 'window', compile(file))(module, module.exports, id => id.startsWith('.') ? plain(path.join(path.dirname(file), id + '.ts'), browser) : require(id), browser)
   return module.exports
 }
 function flatten(node) {
@@ -32,6 +32,8 @@ async function main() {
   let selectedDictationLanguage
   let transcriptReceiver
   let respondSuccessfully = false
+  let confirmDeletion = true, deletionSuccess = false, removalFails = false
+  const removals = []
   let responseGate
   const browserEvents = new Map()
   let cloudProvider = 'browser', cloudConsent = false
@@ -67,8 +69,14 @@ async function main() {
       loadMuseProfile: () => profile,
       saveMuseProfile: about => { profile = { about, keypoints: [about] }; return profile }
     }
-    if (id.endsWith('/storyLibrary')) return {}
+    if (id.endsWith('/storyLibrary')) return { removeLibraryEntry(kind, id) {
+      if (removalFails) throw new Error('Browser storage unavailable')
+      removals.push({ kind, id })
+    } }
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
+    if (id.endsWith('/browserDrafts')) return plain('src/lib/browserDrafts.ts', browser)
+    if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
+    if (id.endsWith('/personalDraft')) return plain('src/lib/personalDraft.ts', browser)
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
@@ -82,6 +90,7 @@ async function main() {
     throw new Error('Unexpected dependency: ' + id)
   }
   const browser = {
+    confirm() { return confirmDeletion },
     addEventListener(name, handler) { browserEvents.set(name, handler) },
     removeEventListener(name, handler) { if (browserEvents.get(name) === handler) browserEvents.delete(name) },
     setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { callback, delay }); return id },
@@ -93,6 +102,7 @@ async function main() {
     module, module.exports, mockRequire, browser, async (_url, options) => {
       const body = JSON.parse(options.body)
       requests.push(body)
+      if (body.action === 'delete') return { ok: deletionSuccess, json: async () => deletionSuccess ? { deleted: true } : { error: 'Deletion denied' } }
       if (body.action === 'respond' && responseGate) await responseGate
       if (respondSuccessfully) return { ok: true, json: async () => ({
         story: body.action === 'respond' ? { ...loadedStory, journey: { ...loadedStory.journey, revision: 1 } } : loadedStory
@@ -189,6 +199,19 @@ async function main() {
   assert.equal(visible()[0].props.disabled, true, 'Saved pending preparation prevents accidental duplicate generation')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node).includes('Sync saved progress')))
   await click('Abandon (no refund)')
+  const savedCreation = JSON.parse(storage.get('muse-personal-creation-draft'))
+  assert.equal(savedCreation.language, 'ar-SA')
+  assert.equal(savedCreation.need, 'A changed fictional evening.')
+  assert.equal('aiConsent' in savedCreation, false, 'Drafts never persist AI authorization')
+  assert.equal('creatorCode' in savedCreation, false, 'Drafts never persist creator credentials')
+  const beforeRestore = requests.length
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.equal(requests.length, beforeRestore, 'Restoring a creation draft never calls AI')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
+  assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, false, 'Restored drafts require fresh consent')
+  assert.equal(nodes().find(node => node.type === '../components/RomanceOptions').props.confirmed, false, 'Restored romance requires fresh acknowledgment')
+  nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
   assert.equal(visible()[0].props.disabled, false, 'Abandoning pending preparation restores editing')
   await click('Back')
   nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: false } })
@@ -218,6 +241,11 @@ async function main() {
   await flush()
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true,
     'Editing response text does not make the story-wide consent prompt recur')
+  assert.deepEqual(JSON.parse(storage.get('muse-personal-answer:saved-story')), { revision: 0, text: 'I step inside.' })
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Editable response').props.value, 'I step inside.',
+    'Unsent answers survive remount without being erased during hydration')
   const holdToSpeak = nodes().find(node => node.type === '../components/HoldToSpeakButton')
   assert.ok(holdToSpeak)
   const stopsBefore = stopRecordingCalls
@@ -289,6 +317,74 @@ async function main() {
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
   assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
   assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
+  const beforeDelete = requests.length
+  confirmDeletion = false
+  await click('Delete story')
+  assert.equal(requests.length, beforeDelete, 'Cancelled deletion never calls the server')
+  assert.equal(removals.length, 0)
+  confirmDeletion = true
+  await click('Delete story')
+  assert.equal(requests.at(-1).action, 'delete')
+  assert.equal(requests.at(-1).capability, 'test-capability')
+  assert.equal(requests.at(-1).mode, 'journey')
+  assert.equal(removals.length, 0, 'Server deletion failure retains the local story')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Deletion denied')))
+  deletionSuccess = true
+  removalFails = true
+  await click('Delete story')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('server story was deleted')))
+  const afterServerDelete = requests.length
+  removalFails = false
+  await click('Delete story')
+  assert.equal(requests.length, afterServerDelete, 'Local cleanup retry does not delete the server story again')
+  assert.deepEqual(removals, [{ kind: 'personal', id: 'saved-story' }])
+  assert.ok(nodes().some(node => node.props.role === 'status' && label(node) === 'Story deleted.'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Delete story'))
+  loadedStory = { ...loadedStory, journey: undefined }
+  slots.length = 0; effects.length = 0
+  await flush()
+  const beforeLegacyDelete = requests.length
+  await click('Delete story')
+  assert.equal(requests.length, beforeLegacyDelete, 'Browser-only legacy stories delete without a server request')
+  assert.equal(removals.length, 2)
+  assert.equal(storage.has('muse-personal-answer:saved-story'), false, 'Deleting a story removes its unsent answer')
+  loadedStory = { ...loadedStory, responses: ['Enter', 'Follow'], currentStep: 1 }
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your story is complete.'))
+  await click('Read again')
+  assert.ok(nodes().some(node => node.type === 'h3' && label(node) === 'The Door'))
+  const keepsake = nodes().find(node => node.type === '../components/StoryKeepsake')
+  assert.deepEqual(Object.keys(keepsake.props.story).sort(), ['creatorName', 'recipientName', 'scenes', 'title'],
+    'Keepsakes receive text only, not answers or capabilities')
+  assert.ok(!JSON.stringify(keepsake.props.story).includes('test-capability'))
+  browser.location = { search: '?new=1' }
+  slots.length = 0; effects.length = 0
+  const beforeNewStory = requests.length
+  await flush()
+  assert.equal(requests.length, beforeNewStory, 'Explicit new-story navigation never generates or deletes an existing story')
+  assert.equal(visible().length, 1, 'Create a story opens creation even when another saved story exists')
+  storage.set('muse-personal-creation-draft', '{broken')
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.equal(storage.get('muse-personal-creation-draft'), '{broken', 'Unreadable drafts are retained, not silently overwritten')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('saved draft could not be read')))
+  const preferences = plain('src/lib/storyPreferences.ts', browser)
+  assert.throws(() => preferences.saveStoryPreferences({ language: 'bad', duration: 10 }))
+  assert.throws(() => preferences.saveStoryPreferences({ language: 'en-US', duration: '10' }))
+  preferences.saveStoryPreferences({ language: 'zh-CN', duration: 20 })
+  assert.deepEqual(preferences.loadStoryPreferences(), { language: 'zh-CN', duration: 20 })
+  const drafts = plain('src/lib/browserDrafts.ts', browser)
+  const originalWriter = browser.localStorage.setItem
+  browser.localStorage.setItem = () => { throw new Error('Storage blocked') }
+  assert.throws(() => drafts.writeDraft('synthetic', {}), /Storage blocked/, 'Storage failures propagate instead of reporting success')
+  storage.delete('muse-personal-creation-draft')
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('could not be saved')),
+    'Blocked draft persistence is surfaced in the interface')
+  assert.ok(!nodes().some(node => node.props.role === 'status' && label(node) === 'Draft saved in this browser.'))
+  browser.localStorage.setItem = originalWriter
   console.log('PASS personal wizard preserves fields, presents one story-wide consent prompt, and explicitly stops dictation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

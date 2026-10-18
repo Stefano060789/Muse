@@ -26,7 +26,7 @@ export default function StoryKeepsake({ story }: { story: KeepsakeStory }) {
       <div className="muse-keepsake-tools" style={{ maxWidth: 680, margin: '0 auto 1rem' }}>
         <h2>Your keepsake</h2>
         <p>Print or choose Save as PDF in your device&apos;s print menu. Only the story text below is included. Answers, links, replies, photos, video and voice recordings are excluded.</p>
-        <p>This text keepsake can be kept after the online story expires. It is not an offline interactive story or a backup of attachments. On iPhone, use the print preview&apos;s sharing options to save a PDF; available steps depend on iOS.</p>
+        <p>This text keepsake remains available even if the online story is deleted. It is not an offline interactive story or a backup of attachments. On iPhone, use the print preview&apos;s sharing options to save a PDF; available steps depend on iOS.</p>
         {story.message ? <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={includeMessage} onChange={event => setIncludeMessage(event.target.checked)} /> Include the private final message</label> : null}
         {error ? <p role="alert">{error}</p> : null}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

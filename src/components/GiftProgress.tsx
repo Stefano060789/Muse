@@ -25,23 +25,24 @@ export default function GiftProgress({ load, sceneCount, adventure, compact = fa
     }
   }
   return <section aria-label="Recipient progress" className={compact ? undefined : 'atelier-card'} style={compact ? { minWidth: 0, maxWidth: '100%' } : undefined}>
-    {!compact ? <><h2>Recipient progress</h2>
-    <p>Private overview of browser playthroughs, not verified people. Opening the link counts as a start; another browser or cleared storage can count again. Counts include earlier recipient links for this story.</p></> : null}
+    {!compact ? <h2>Story progress</h2> : null}
     <button type="button" className="atelier-button" disabled={busy} onClick={() => void refresh()}>
-      {busy ? 'Loading progress...' : compact ? 'Check completion' : progress ? 'Refresh progress' : 'Load progress'}
+      {busy ? 'Loading progress...' : progress ? 'Refresh story progress' : 'View story progress'}
     </button>
     {error ? <p role="alert">{error}</p> : null}
     {progress ? <>
-      <dl aria-live="polite">
-        <dt>Opened playthroughs</dt><dd>{progress.opened}</dd>
-        <dt>Still in progress</dt><dd>{progress.inProgress}</dd>
-        <dt>Completed by solving</dt><dd>{progress.solved}</dd>
-        <dt>Revealed without solving</dt><dd>{progress.skipped}</dd>
-        {!adventure && progress.furthestScene !== null ? <><dt>Furthest scene reached</dt><dd>{Math.min(progress.furthestScene + 1, sceneCount)} of {sceneCount}</dd></> : null}
-      </dl>
-      {!progress.opened ? <p>No playthroughs recorded yet.</p> : null}
-      {compact ? <p>Counts represent browser playthroughs, not verified people, and include earlier recipient links. A different browser or cleared storage can count again.</p> : null}
-      <p>Not completed does not mean failed. Reaching the last scene is not the same as solving the mystery. Refresh to check again; there is no live monitoring or extra AI generation.</p>
+      <p role="status">
+        {!progress.opened ? 'Not started' : <>
+          {!adventure && progress.furthestScene !== null ? `Scene ${Math.min(progress.furthestScene + 1, sceneCount)} of ${sceneCount} reached · ` : ''}
+          {progress.solved + progress.skipped > 0 ? 'Finished' : 'Not finished'}
+        </>}
+      </p>
+      {adventure && progress.opened ? <p>Live adventures do not have a fixed scene count. Finished means the ending was unlocked.</p> : null}
+      <details>
+        <summary>About story progress</summary>
+        <p>Shows the furthest scene reached across browser playthroughs, including earlier recipient links. Finished means at least one playthrough unlocked the ending, by solving or revealing it. It does not measure audio listened to or verify who read the story.</p>
+        <p>Refresh to check again. No live monitoring or extra AI generation.</p>
+      </details>
     </> : null}
   </section>
 }

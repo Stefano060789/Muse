@@ -80,7 +80,7 @@ export default function MyselfPage() {
       <Head><title>Muse — Personal touches</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
       <main className="atelier-page">
         <div className="atelier-shell atelier-shell--narrow">
-          <Link href="/story">Back to story creation</Link>
+          <Link href="/story?new=1">Back to story creation</Link>
           <p className="atelier-eyebrow">Personal touches · Optional</p>
           <h1 className="atelier-title">Personal touches</h1>
           <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Your latest five personalize new personal stories by default; you can leave them out before creation. Saving does not send them to AI: story creation still requires your consent. Browser storage is readable text, so keep this browser private.</p>
@@ -109,7 +109,7 @@ export default function MyselfPage() {
             <button onClick={forget}>Forget all memories</button>
           </section>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
-            <Link href="/story" style={{ background: '#2d2926', color: '#fffaf6', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none', fontWeight: 700 }}>Create My Story →</Link>
+            <Link href="/story?new=1" style={{ background: '#2d2926', color: '#fffaf6', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none', fontWeight: 700 }}>Create My Story →</Link>
             <Link href="/shared" style={{ color: '#2d2926', border: '1px solid #2d2926', borderRadius: 999, padding: '0.85rem 1.2rem', textDecoration: 'none' }}>Create a story for someone</Link>
           </div>
         </div>

@@ -16,7 +16,8 @@ import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
-import GiftCard from '../components/GiftCard'
+import ShareGiftStory from '../components/ShareGiftStory'
+import GiftStoryPreview from '../components/GiftStoryPreview'
 import { storyHasAccess } from '../lib/storyRetention'
 import GiftProgress from '../components/GiftProgress'
 import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
@@ -24,7 +25,9 @@ import StudioNarration, { type StudioSceneStatus } from '../components/StudioNar
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
-import { GIFT_OCCASIONS, loadGiftDraft, removeGiftDraft, saveGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
+import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
+import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
+import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
   formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
@@ -68,8 +71,43 @@ const DEFAULT_NARRATION = 'A warm, playful mystery told in the second person, wi
 const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
 const idleUpload: UploadState = { phase: 'idle', progress: 0 }
 const mediaLabel = (kind: SharedMediaKind) => kind === 'video' ? 'video' : 'photo'
+const hasGiftDraftWriting = (brief: SharedStoryBrief) =>
+  [brief.creatorName, brief.recipientName, brief.setting, brief.solution, brief.message, brief.recipientHints, brief.gift?.dedication].some(value => value?.trim())
 type AssistanceField = 'assistanceHints' | 'alternativeAnswers'
 const assistanceLines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+type RecipientAnswerDraft = { revision: number; text: string }
+type RecipientDraftState = { revision: number | null; answerKey: string; actionKey: string; answerWritable: boolean; actionWritable: boolean; ready: boolean }
+
+function isGiftDraft(value: unknown): value is GiftDraft {
+  parseGiftDraft(value)
+  return true
+}
+
+function loadGiftDraft(): GiftDraft | null {
+  return readDraft(GIFT_DRAFT_KEY, isGiftDraft)
+}
+
+function saveGiftDraft(draft: GiftDraft): void {
+  writeDraft(GIFT_DRAFT_KEY, parseGiftDraft(draft))
+}
+
+function removeGiftDraft(): void {
+  removeDraft(GIFT_DRAFT_KEY)
+}
+
+function isRecipientAnswerDraft(value: unknown): value is RecipientAnswerDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const draft = value as Record<string, unknown>
+  return Object.keys(draft).sort().join() === 'revision,text' &&
+    Number.isInteger(draft.revision) && Number(draft.revision) >= 0 &&
+    typeof draft.text === 'string' && draft.text.length <= 800
+}
+
+async function recipientAnswerDraftKey(token: string, kind: 'answer' | 'action', revision: number): Promise<string> {
+  const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+  const storyId = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  return `muse-shared-recipient-draft:${storyId}:${kind}:${revision}`
+}
 
 async function request<T>(body: Record<string, unknown>, creatorCode = '', signal?: AbortSignal): Promise<T> {
   const response = await fetch('/api/shared-story', {
@@ -151,6 +189,15 @@ export default function SharedStoryPage() {
   const [sessionToken, setSessionToken] = useState('')
   const [guess, setGuess] = useState('')
   const [actionText, setActionText] = useState('')
+  const [recipientDraft, setRecipientDraft] = useState<RecipientDraftState>({
+    revision: null, answerKey: '', actionKey: '', answerWritable: false, actionWritable: false, ready: false
+  })
+  const [recipientDraftError, setRecipientDraftError] = useState('')
+  const recipientDraftRef = useRef(recipientDraft)
+  const actionTextRef = useRef(actionText)
+  const recipientTokenRef = useRef('')
+  recipientDraftRef.current = recipientDraft
+  actionTextRef.current = actionText
   const [aiConsent, setAiConsent] = useState(false)
   const [romanceConfirmed, setRomanceConfirmed] = useState(false)
   const [romanceNotice, setRomanceNotice] = useState<RomanceNotice | null>(null)
@@ -164,8 +211,6 @@ export default function SharedStoryPage() {
   const [origin, setOrigin] = useState('')
   const [tunnelAddress, setTunnelAddress] = useState('')
   const [publicOrigin, setPublicOrigin] = useState('')
-  const [canDeviceShare, setCanDeviceShare] = useState(false)
-  const [sharing, setSharing] = useState(false)
   const [creatorCodeInput, setCreatorCodeInput] = useState('')
   const [creatorCode, setCreatorCode] = useState('')
   const [mediaFile, setMediaFile] = useState<File | null>(null)
@@ -187,8 +232,11 @@ export default function SharedStoryPage() {
   const [draftReady, setDraftReady] = useState(false)
   const [draftStatus, setDraftStatus] = useState('')
   const [draftUnreadable, setDraftUnreadable] = useState(false)
+  const [preferencesError, setPreferencesError] = useState('')
   const [creatorStep, setCreatorStep] = useState(0)
   const [sendReady, setSendReady] = useState('')
+  const giftDraftSnapshot = useRef({ brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy })
+  giftDraftSnapshot.current = { brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy }
   const creatorForm = useRef<HTMLFormElement>(null)
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const studioAudio = useRef<HTMLAudioElement>(null)
@@ -215,6 +263,54 @@ export default function SharedStoryPage() {
   const recipientLanguage = storyLanguage(player?.language || romanceNotice?.language)
   const romanceText = romanceCopy(romanceNotice?.language || player?.language)
   const recipientRequest = <T,>(body: Record<string, unknown>) => request<T>({ ...body, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
+  const applyStoryPreferences = () => {
+    try {
+      const preferences = loadStoryPreferences()
+      setBrief(current => ({ ...current, language: preferences.language, durationMinutes: preferences.duration }))
+      setPreferencesError('')
+    } catch (cause) {
+      setPreferencesError(cause instanceof Error ? `Saved story settings could not be loaded: ${cause.message}` : 'Saved story settings could not be loaded.')
+    }
+  }
+  const rememberStoryPreferences = (language: SharedStoryBrief['language'], duration: number) => {
+    try {
+      const selectedLanguage = language || loadStoryPreferences().language
+      saveStoryPreferences({ language: selectedLanguage, duration })
+      setPreferencesError('')
+    } catch (cause) {
+      setPreferencesError(cause instanceof Error ? `Story settings could not be remembered: ${cause.message}` : 'Story settings could not be remembered.')
+    }
+  }
+  const persistGiftDraftNow = (
+    nextBrief: SharedStoryBrief,
+    nextAssistanceHintsText = giftDraftSnapshot.current.assistanceHintsText,
+    nextAlternativeAnswersText = giftDraftSnapshot.current.alternativeAnswersText
+  ) => {
+    const current = giftDraftSnapshot.current
+    if (!current.draftReady || current.pendingDraft || current.draftUnreadable || current.loading || current.creator || current.playToken || current.busy || !hasGiftDraftWriting(nextBrief)) return
+    try {
+      saveGiftDraft({
+        version: 1, brief: nextBrief, assistanceHintsText: nextAssistanceHintsText,
+        alternativeAnswersText: nextAlternativeAnswersText, savedAt: new Date().toISOString()
+      })
+      setDraftStatus('Draft saved on this device. Media and recordings must be attached again after reopening.')
+    } catch {
+      setDraftStatus('Draft could not be saved. Keep this page open or copy your writing before leaving.')
+    }
+  }
+  const updateBrief = (update: (current: SharedStoryBrief) => SharedStoryBrief) => {
+    const nextBrief = update(giftDraftSnapshot.current.brief)
+    setBrief(nextBrief)
+    persistGiftDraftNow(nextBrief)
+  }
+  const updateGiftDraftText = (key: 'assistanceHintsText' | 'alternativeAnswersText', value: string) => {
+    const current = giftDraftSnapshot.current
+    const assistance = key === 'assistanceHintsText' ? value : current.assistanceHintsText
+    const alternatives = key === 'alternativeAnswersText' ? value : current.alternativeAnswersText
+    if (key === 'assistanceHintsText') setAssistanceHintsText(value)
+    else setAlternativeAnswersText(value)
+    persistGiftDraftNow(current.brief, assistance, alternatives)
+  }
   useEffect(() => { setRomanceConfirmed(false) }, [brief])
   useEffect(() => {
     interaction.cancelRecording()
@@ -223,7 +319,6 @@ export default function SharedStoryPage() {
   useEffect(() => {
     let active = true
     setOrigin(window.location.origin)
-    setCanDeviceShare(typeof navigator.share === 'function')
     const initialize = async () => {
       try {
         if (new URLSearchParams(window.location.search).has('share')) {
@@ -296,7 +391,11 @@ export default function SharedStoryPage() {
             setNotice(`${error instanceof Error ? error.message : 'This browser could not save your management link.'} Keep a copy of your private management link yourself.`)
           }
         } else {
-          try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
+          try {
+            const draft = loadGiftDraft()
+            setPendingDraft(draft)
+            if (!draft) applyStoryPreferences()
+          } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
           setDraftReady(true)
         }
       } catch (error) {
@@ -308,6 +407,73 @@ export default function SharedStoryPage() {
     void initialize()
     return () => { active = false }
   }, [creatorCode, creatorLocked])
+
+  useEffect(() => {
+    if (!playToken || !player || (romanceNotice && !romanceAccepted)) return
+    let active = true
+    const revision = player.adventure?.revision ?? player.sceneIndex
+    const isAdventure = Boolean(player.adventure)
+    const preservePendingAction = recipientTokenRef.current === playToken &&
+      recipientDraftRef.current.ready && recipientDraftRef.current.revision !== revision && Boolean(actionTextRef.current)
+    recipientTokenRef.current = playToken
+    setRecipientDraft({ revision: null, answerKey: '', actionKey: '', answerWritable: false, actionWritable: false, ready: false })
+    setRecipientDraftError('')
+    setGuess('')
+    if (!preservePendingAction) setActionText('')
+    void (async () => {
+      let answerKey = ''
+      let actionKey = ''
+      let answerWritable = false
+      let actionWritable = false
+      let draftError = ''
+      try {
+        answerKey = await recipientAnswerDraftKey(playToken, 'answer', revision)
+        if (isAdventure) actionKey = await recipientAnswerDraftKey(playToken, 'action', revision)
+        const answer = readDraft(answerKey, isRecipientAnswerDraft)
+        if (answer) {
+          if (answer.revision !== revision) throw new Error('The saved answer belongs to a different story step and was not restored.')
+          if (active) setGuess(answer.text)
+        }
+        answerWritable = true
+      } catch (cause) {
+        draftError = cause instanceof Error ? cause.message : 'Could not read the saved answer. It was not overwritten.'
+      }
+      if (isAdventure && actionKey) {
+        try {
+          const action = readDraft(actionKey, isRecipientAnswerDraft)
+          if (action) {
+            if (action.revision !== revision) throw new Error('The saved action belongs to a different story step and was not restored.')
+            if (active && !preservePendingAction) setActionText(action.text)
+          }
+          actionWritable = true
+        } catch (cause) {
+          draftError = [draftError, cause instanceof Error ? cause.message : 'Could not read the saved action. It was not overwritten.'].filter(Boolean).join(' ')
+        }
+      }
+      if (active) {
+        setRecipientDraft({ revision, answerKey, actionKey, answerWritable, actionWritable, ready: true })
+        setRecipientDraftError(draftError)
+      }
+    })()
+    return () => { active = false }
+  }, [playToken, player?.sceneIndex, player?.adventure?.revision, Boolean(player?.adventure), Boolean(romanceNotice && !romanceAccepted)])
+
+  useEffect(() => {
+    if (!recipientDraft.ready || !player) return
+    const revision = player.adventure?.revision ?? player.sceneIndex
+    if (recipientDraft.revision !== revision) return
+    const persist = (key: string, writable: boolean, text: string) => {
+      if (!key || !writable) return
+      try {
+        if (text) writeDraft(key, { revision, text })
+        else removeDraft(key)
+      } catch (cause) {
+        setRecipientDraftError(cause instanceof Error ? cause.message : 'Your unsent answer could not be saved on this device.')
+      }
+    }
+    persist(recipientDraft.answerKey, recipientDraft.answerWritable, guess)
+    persist(recipientDraft.actionKey, recipientDraft.actionWritable, actionText)
+  }, [recipientDraft, player?.sceneIndex, player?.adventure?.revision, guess, actionText])
 
   const acceptRomance = async () => {
     if (!romanceNotice || !recipientConfirmation || busy) return
@@ -333,7 +499,7 @@ export default function SharedStoryPage() {
 
   useEffect(() => {
     if (!draftReady || pendingDraft || draftUnreadable || loading || creator || playToken || busy) return
-    if (![brief.creatorName, brief.recipientName, brief.setting, brief.solution, brief.message, brief.recipientHints, brief.gift?.dedication].some(value => value?.trim())) return
+    if (!hasGiftDraftWriting(brief)) return
     const timer = window.setTimeout(() => {
       try {
         saveGiftDraft({ version: 1, brief, assistanceHintsText, alternativeAnswersText, savedAt: new Date().toISOString() })
@@ -344,10 +510,26 @@ export default function SharedStoryPage() {
     }, 600)
     return () => window.clearTimeout(timer)
   }, [brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy])
+  useEffect(() => {
+    const flushGiftDraft = () => {
+      const draft = giftDraftSnapshot.current
+      if (!draft.draftReady || draft.pendingDraft || draft.draftUnreadable || draft.loading || draft.creator || draft.playToken || draft.busy || !hasGiftDraftWriting(draft.brief)) return
+      try {
+        saveGiftDraft({
+          version: 1, brief: draft.brief, assistanceHintsText: draft.assistanceHintsText,
+          alternativeAnswersText: draft.alternativeAnswersText, savedAt: new Date().toISOString()
+        })
+      } catch {
+        setDraftStatus('Draft could not be saved before leaving. Keep this page open or copy your writing before leaving.')
+      }
+    }
+    window.addEventListener('pagehide', flushGiftDraft)
+    return () => window.removeEventListener('pagehide', flushGiftDraft)
+  }, [])
 
   const chooseOccasion = (occasion?: GiftOccasion) => {
     const chosen = GIFT_OCCASIONS.find(item => item.id === occasion)
-    setBrief(current => {
+    updateBrief(current => {
       const { gift: _gift, ...rest } = current
       if (!chosen) return rest
       const presetSetting = !current.setting || GIFT_OCCASIONS.some(item => item.idea === current.setting)
@@ -395,7 +577,11 @@ export default function SharedStoryPage() {
     setVoiceUrl('')
     setVoiceError('')
     setReplies([])
-    try { setPendingDraft(loadGiftDraft()) } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
+    try {
+      const draft = loadGiftDraft()
+      setPendingDraft(draft)
+      if (!reuseBrief && !draft) applyStoryPreferences()
+    } catch (error) { setDraftUnreadable(true); setDraftStatus(error instanceof Error ? error.message : 'Could not read your draft.') }
     setDraftReady(true)
     setUpload(idleUpload)
     setAiConsent(false)
@@ -761,20 +947,24 @@ export default function SharedStoryPage() {
   const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
-      {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
-        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { setBrief({ ...brief, [key]: event.target.value }); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
-      <HoldToSpeakButton label={`Hold to dictate ${label}`} releaseLabel={`Release to stop ${label}`} recording={interaction.recordingTarget === key} disabled={busy} onStart={() => interaction.dictate(key, (value) => { setBrief((current) => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
+      {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
+        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
+      <HoldToSpeakButton label={`Hold to dictate ${label}`} releaseLabel={`Release to stop ${label}`} recording={interaction.recordingTarget === key} disabled={busy} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
       {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
     </div>
   )
 
   const assistanceField = (key: AssistanceField, label: string, description: string, maxEntries: number, maxEntryLength: number) => {
     const value = key === 'assistanceHints' ? assistanceHintsText : alternativeAnswersText
-    const update = key === 'assistanceHints' ? setAssistanceHintsText : setAlternativeAnswersText
     return (
       <div style={{ marginBottom: '1.2rem' }}>
         <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label} (optional)</label>
-        <textarea id={`brief-${key}`} value={value} onChange={event => { update(event.target.value); setAiConsent(false) }} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder="One entry per line" aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
+        <textarea id={`brief-${key}`} value={value} onChange={event => {
+          const nextValue = event.target.value
+          if (key === 'assistanceHints') updateGiftDraftText('assistanceHintsText', nextValue)
+          else updateGiftDraftText('alternativeAnswersText', nextValue)
+          setAiConsent(false)
+        }} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder="One entry per line" aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
         <p id={`brief-${key}-help`}>{description} Max {maxEntries} lines, {maxEntryLength} characters each.</p>
       </div>
     )
@@ -783,32 +973,11 @@ export default function SharedStoryPage() {
   const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} label="Use device voice (quality varies)" beforeSpeak={interaction.stopRecording} />
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
-  const playerLink = shareDetails?.url || ''
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
   const selectedOccasion = GIFT_OCCASIONS.find(item => item.id === brief.gift?.occasion)
   const showGiftCover = Boolean(player?.gift && !giftOpened)
   const adventureCanSubmit = Boolean(player?.adventure &&
     (player.adventure.pending || (player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0)))
-
-  const shareOnDevice = async () => {
-    if (!shareDetails || shareDetails.localOnly || sharing) return
-    if (!confirmShareReady()) return
-    setSharing(true)
-    setError('')
-    narrator.stop()
-    try {
-      await navigator.share({ title: 'A Muse story for you', text: shareDetails.text, url: shareDetails.url })
-      setNotice('Link handed to your device sharing app. Delivery is handled by that app.')
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setNotice('Sharing cancelled. Your story and link are unchanged.')
-      } else {
-        setError('Could not open device sharing. Copy the recipient link or use WhatsApp instead.')
-      }
-    } finally {
-      setSharing(false)
-    }
-  }
 
   return (
     <main className="atelier-page">
@@ -822,6 +991,7 @@ export default function SharedStoryPage() {
       {!playToken && !creator ? <PageIllustration pathname="/shared" /> : null}
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}</p> : null}
+        {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {creatorLocked && !playToken ? <section style={cardStyle} aria-label="Private creator access">
           <h2>Private creator access</h2>
@@ -845,6 +1015,8 @@ export default function SharedStoryPage() {
           <MicrophoneCheck stopSignal={voiceRecording ? 'gift-voice-recording' : interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
         </details> : null}
+        {recipientDraftError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{recipientDraftError}</p> : null}
+        {playToken && player && !recipientDraft.ready ? <p role="status">Checking for an unsent answer saved in this browser…</p> : null}
         {loading ? <p role="status">Opening your private story...</p> : playToken && romanceNotice && !romanceAccepted ? (
           <section lang={recipientLanguage.code} dir={recipientLanguage.dir} aria-label="Romance content notice" style={cardStyle}>
             <h1>{romanceText.title(romanceNotice.romance)}</h1>
@@ -936,11 +1108,11 @@ export default function SharedStoryPage() {
                   <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}</div>
                   {!player.adventure.choices?.length && !player.adventure.pending ? <p>{recipientText.refreshProgress}</p> : null}
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
-                  <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy} /></label>
+                  <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
                   <p>{recipientText.reviewGuess}</p>
                   <HoldToSpeakButton label={`Hold to ${recipientText.dictateAction.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAction.toLowerCase()}`} disabled={busy} recording={interaction.recordingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
                   {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
-                  <button disabled={busy || Boolean(player.adventure.pending) || !actionText.trim()} style={primaryStyle}>{recipientText.submitAction}</button>
+                  <button disabled={busy || !recipientDraft.ready || Boolean(player.adventure.pending) || !actionText.trim()} style={primaryStyle}>{recipientText.submitAction}</button>
                 </form> : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
                 {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
               </article> : <article style={cardStyle}>
@@ -975,11 +1147,11 @@ export default function SharedStoryPage() {
                   </details>
                 ) : null}
                 <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
-                  <label style={{ fontWeight: 700 }}>{recipientText.answer}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy} /></label>
+                  <label style={{ fontWeight: 700 }}>{recipientText.answer}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <button disabled={busy || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
-                    <HoldToSpeakButton label={`Hold to ${recipientText.dictateAnswer.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAnswer.toLowerCase()}`} disabled={busy} recording={interaction.recordingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
+                    <button disabled={busy || !recipientDraft.ready || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
+                    <HoldToSpeakButton label={`Hold to ${recipientText.dictateAnswer.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAnswer.toLowerCase()}`} disabled={busy || !recipientDraft.ready} recording={interaction.recordingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
                   </div>
                   <p>{recipientText.reviewGuess}</p>
                   {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
@@ -1154,26 +1326,13 @@ export default function SharedStoryPage() {
                 }}>Use tunnel for recipient links</button>
                 {publicOrigin ? <><p role="status">Temporary recipient address: {publicOrigin}</p><button style={buttonStyle} onClick={() => { setPublicOrigin(''); setTunnelAddress(''); setNotice('Recipient links now use the local address again.') }}>Return to local links</button></> : null}
               </details>
-              {playerLink ? <>
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
-                  <a href={playerLink} target="_blank" rel="noopener noreferrer" onClick={event => { if (!confirmShareReady()) event.preventDefault(); narrator.stop() }} style={{ ...primaryStyle, textDecoration: 'none' }}>Open recipient story</a>
-                  <button onClick={() => copy(playerLink, true)} style={buttonStyle}>Copy recipient link</button>
-                </div>
-                <p>Test in a private window for fresh progress.</p>
-                <label>Recipient link<input readOnly value={playerLink} style={fieldStyle} onFocus={(event) => event.target.select()} /></label>
-              </> : null}
               {shareDetails ? (
                 <>
-                  {shareDetails.localOnly ? (
-                    <p role="status">Local link: works only on this computer. External sharing is disabled.</p>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                      <a href={shareDetails.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={event => { if (!confirmShareReady()) event.preventDefault(); narrator.stop() }} style={{ ...buttonStyle, color: 'inherit' }}>Share on WhatsApp</a>
-                      <GiftCard key={playerLink} recipientUrl={shareDetails.url} expiresAt={creator.expiresAt} disabled={busy || sharing} />
-                      {canDeviceShare ? <button disabled={busy || sharing} onClick={() => void shareOnDevice()} style={buttonStyle}>{sharing ? 'Opening sharing...' : 'Share with another app'}</button> : null}
-                    </div>
-                  )}
-                  <p>Confirm sending in your sharing app. Only the recipient link is shared, not private answers or reveals. Device voices vary; Studio audio is available only when separately prepared.</p>
+                  <ShareGiftStory recipientUrl={shareDetails.url} shareText={shareDetails.text} expiresAt={creator.expiresAt}
+                    disabled={busy || voiceRecording} localOnly={shareDetails.localOnly}
+                    whatsappUrl={shareDetails.whatsappUrl} beforeShare={confirmShareReady} onShareStart={() => narrator.stop()}
+                    previewContent={<GiftStoryPreview brief={creator.brief} content={creator.content} />} />
+                  <p>Confirm sending in your sharing app. Device voices vary; Studio audio is available only when separately prepared.</p>
                 </>
               ) : null}
               <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>
@@ -1205,7 +1364,14 @@ export default function SharedStoryPage() {
                 setPendingDraft(null); setAiConsent(false)
               }}>Restore draft</button>
               <button type="button" style={buttonStyle} onClick={() => {
-                try { removeGiftDraft(); setPendingDraft(null); setDraftStatus('Draft discarded.') } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
+                try {
+                  removeGiftDraft()
+                  setPendingDraft(null)
+                  setBrief({ ...blankBrief })
+                  setAiConsent(false)
+                  applyStoryPreferences()
+                  setDraftStatus('Draft discarded.')
+                } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
               }}>Discard saved draft</button>
             </aside> : null}
             {draftStatus ? <p role="status" style={{ fontSize: '0.9rem' }}>{draftStatus}</p> : null}
@@ -1217,12 +1383,18 @@ export default function SharedStoryPage() {
                 try {
                   removeGiftDraft()
                   setBrief({ ...blankBrief }); setAssistanceHintsText(''); setAlternativeAnswersText(''); setCreatorStep(0)
-                  setVoiceFile(null); setMediaFile(null); setAiConsent(false); setDraftStatus('Draft discarded.')
+                  setVoiceFile(null); setMediaFile(null); setAiConsent(false); applyStoryPreferences(); setDraftStatus('Draft discarded.')
                 } catch { setDraftStatus('Could not discard the draft. Check browser storage access.') }
               }}>Discard draft and clear form</button>
             </details> : null}
             {draftUnreadable ? <button type="button" style={buttonStyle} onClick={() => {
-              try { removeGiftDraft(); setDraftUnreadable(false); setDraftStatus('Unreadable draft discarded.') } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
+              try {
+                removeGiftDraft()
+                setDraftUnreadable(false)
+                setBrief({ ...blankBrief })
+                applyStoryPreferences()
+                setDraftStatus('Unreadable draft discarded.')
+              } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
             <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
               {['For someone', 'The story', 'The surprise'].map((label, index) => <li key={label} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>)}
@@ -1244,7 +1416,8 @@ export default function SharedStoryPage() {
                   <select id="shared-language" value={brief.language ?? ''} disabled={busy} style={fieldStyle} onChange={event => {
                     const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
                     if (!language) return
-                    setBrief(current => ({ ...current, language: language.code })); setAiConsent(false)
+                    updateBrief(current => ({ ...current, language: language.code })); setAiConsent(false)
+                    rememberStoryPreferences(language.code, brief.durationMinutes)
                   }}>
                     {!brief.language ? <option value="">Keep original language (saved brief)</option> : null}
                     {STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}
@@ -1254,7 +1427,7 @@ export default function SharedStoryPage() {
                   <summary>About story language</summary>
                   <p>Scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; your words stay unchanged. Settings and errors may remain English.</p>
                 </details>
-                <RomanceOptions value={brief.romance} onChange={romance => { setBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
+                <RomanceOptions value={brief.romance} onChange={romance => { updateBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
               </div>
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -1264,14 +1437,19 @@ export default function SharedStoryPage() {
                 {textField('goal', 'What should they find or solve?', 'Find the hiding place of the letter.', 600)}
                 {textField('recipientHints', selectedOccasion?.question ?? 'Personal touches', selectedOccasion?.placeholder ?? 'Favourite places, shared memories, inside jokes...', 1500, true)}
                 <label style={{ fontWeight: 700 }}>Story length
-                  <select value={brief.durationMinutes} onChange={(event) => { setBrief({ ...brief, durationMinutes: Number(event.target.value) }); setAiConsent(false) }} style={fieldStyle} disabled={busy}>
+                  <select value={brief.durationMinutes} onChange={(event) => {
+                    const duration = Number(event.target.value)
+                    updateBrief(current => ({ ...current, durationMinutes: duration }))
+                    setAiConsent(false)
+                    rememberStoryPreferences(brief.language, duration)
+                  }} style={fieldStyle} disabled={busy}>
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>About {duration} minutes</option>)}
                   </select>
                 </label>
                 <label style={{ fontWeight: 700 }}>How should the recipient interact?
                   <select aria-label="Story interaction" value={brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic'} disabled={busy} onChange={event => {
                     const mode = event.target.value
-                    setBrief(current => {
+                    updateBrief(current => {
                       const { adventure, ...rest } = current
                       return mode === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: mode === 'suggested' ? 'suggested' : 'free' } }
                     })
@@ -1284,7 +1462,7 @@ export default function SharedStoryPage() {
                 </label>
                 {brief.adventure ? <>
                   <label htmlFor="adventure-budget">Total live AI action budget (all recipients)
-                    <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { setBrief({ ...brief, adventure: { ...brief.adventure!, actionBudget: Number(event.target.value) } }); setAiConsent(false) }} style={fieldStyle} />
+                    <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, adventure: { ...current.adventure!, actionBudget: Number(event.target.value) } })); setAiConsent(false) }} style={fieldStyle} />
                   </label>
                   <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
@@ -1295,10 +1473,10 @@ export default function SharedStoryPage() {
                 <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Personalize the gift story (optional)</summary>
                 {!brief.gift ? <p>Choose an occasion above to add a personal opening and optional replies.</p> : <>
                   <label htmlFor="gift-dedication" style={{ display: 'block', marginTop: '1rem', fontWeight: 700 }}>A note on the cover
-                    <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={2} style={fieldStyle} placeholder="A little adventure, just for you." disabled={busy} onChange={event => { setBrief({ ...brief, gift: { ...brief.gift!, dedication: event.target.value } }); setAiConsent(false) }} />
+                    <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={2} style={fieldStyle} placeholder="A little adventure, just for you." disabled={busy} onChange={event => { updateBrief(current => ({ ...current, gift: { ...current.gift!, dedication: event.target.value } })); setAiConsent(false) }} />
                   </label>
                   <p>Visible before solving. Keep the secret answer and final surprise out of this note.</p>
-                  <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={brief.gift.allowReply} disabled={busy} onChange={event => { setBrief({ ...brief, gift: { ...brief.gift!, allowReply: event.target.checked } }); setAiConsent(false) }} /> Let them send a private thank-you after the reveal</label>
+                  <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={brief.gift.allowReply} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, gift: { ...current.gift!, allowReply: event.target.checked } })); setAiConsent(false) }} /> Let them send a private thank-you after the reveal</label>
                 </>}
                 <GiftVoiceRecorder file={voiceFile} onChange={file => { setVoiceFile(file); setAiConsent(false) }} disabled={busy} onActiveChange={setVoiceRecording} beforeRecord={() => { narrator.stop(); interaction.stopRecording() }} />
               </details>
@@ -1312,7 +1490,7 @@ export default function SharedStoryPage() {
                 <p>Message, photo or video: revealed after a correct answer, or a confirmed skip if you allow it.</p>
                 <label style={{ fontWeight: 700 }}>How can the surprise be unlocked?
                   <select aria-label="Reveal policy" value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
-                    setBrief({ ...brief, unlockPolicy: event.target.value === 'allow-skip' ? 'allow-skip' : 'solve' })
+                    updateBrief(current => ({ ...current, unlockPolicy: event.target.value === 'allow-skip' ? 'allow-skip' : 'solve' }))
                     setAiConsent(false)
                   }} style={fieldStyle}>
                     <option value="solve">Solve to unlock</option>

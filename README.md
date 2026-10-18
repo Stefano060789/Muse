@@ -57,22 +57,31 @@ information in a collapsed explanation, not repeated recording-ready copy.
 ### Simple start and app installation
 
 The same primary menu appears across Muse: **Home**, **Create a story**
-(`/story`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
+(`/story?new=1`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
 Saved stories groups **Stories for me** and **Gift stories for others**, including
-private owner access. Gift-story cards have just **Copy recipient link**,
-**Remove story**, and **Check completion**. Removal only removes this browser's
-entry and keeps recipient links working. Completion checks manually load the
-existing private progress summary (opened, in progress, solved, revealed without
-solving, and furthest prepared scene); they do not poll or generate AI content.
-Counts represent browser playthroughs, not verified individuals. The optional
+private owner access. Gift-story cards offer **Share gift story**,
+**Remove story**, and **View story progress**. The sharing panel groups native
+device sharing where supported, recipient-link copying and printable QR codes.
+Its local recipient-facing preview never opens a playthrough or records progress.
+Local-only addresses cannot be externally shared or printed as QR codes.
+Removal only
+removes this browser's entry and keeps recipient links working. Progress checks
+show **Scene 2 of 5 reached · Not finished**, **Finished** after the ending is
+unlocked, or **Not started**. They do not poll or generate AI content. Details
+explain that the result combines browser playthroughs, not verified individuals,
+and does not measure listening time. The optional
 creator access code is memory-only and is required when creator access is gated.
 Expired/deleted server stories may no longer have available progress.
 Home includes a **Tell Muse about yourself** editor with typing, hold-to-speak
 and explicit browser-local saving. The latest five memories are included in
 new personal stories by default, disclosed in creation and the AI consent.
 Users can uncheck inclusion in step two or review/remove memories at `/myself`.
+Returning visitors can continue their latest unfinished personal story directly
+from Home; completed stories offer **Read again**. Saved personal touches collapse
+to leave space for the story, and personal library cards keep attempt details
+behind an optional disclosure.
 Personal touches remains optional inside story creation, not a separate
 primary destination. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
@@ -82,7 +91,12 @@ includes optional cloud-narration permission, separate from story AI processing.
 Restored journeys check saved progress automatically on opening or returning to
 the tab, without generating story text. Pending checks retry after three seconds;
 failed checks retry after fifteen seconds, stopping when synchronized. No manual
-sync button or bottom create/profile/delete actions appear in the reading view.
+sync button or bottom create/profile actions appear in the reading view.
+**Delete story** is available at the bottom after creation, with confirmation.
+For server journeys it requires creator access and the story capability, deletes
+server progress before removing the browser entry, and never refunds attempts.
+Legacy browser-only stories are removed locally. Failed deletion preserves the
+story; a local cleanup failure after server deletion is explicit and retryable.
 Background checks do not explicitly stop narration. The response draft stays editable while
 progress is checked. Hold-to-speak uses the story language; releasing finishes
 dictation, and focusing the response field cancels late transcripts so typing
@@ -265,7 +279,16 @@ no autoplay, extra image services or paid calls are introduced. Personal story
 creation is split into mood, personal details and review. Navigating these
 steps does not call AI; explicit provider consent and any romance confirmation
 are still required at creation. Values survive Back/Continue within the open
-page, but unfinished personal form values are not a persisted draft.
+page and autosave in this browser, including optional unsaved personal touches.
+Unsent personal answers are stored separately by story and revision; stale
+answers are not restored against a different saved scene. Restoring drafts never
+generates story text or restores AI, narration or romance consent. Storage errors
+are explicit and unreadable drafts are not overwritten. Browser-local drafts
+are unencrypted, not synced or backed up. Language and duration are remembered;
+existing narration settings already remember voice/style and ambient preferences.
+Completed personal stories offer a read-only rereading view and printable text
+keepsake without private answers, memories or access links; an exhausted allowance
+is not presented as a completed ending.
 
 The same visual foundation covers gifts, the browser-local library, personal
 touches, billing and legal/support pages. Existing storage, pricing,
@@ -612,12 +635,12 @@ return explicit errors; no fake AI or insecure URL-sharing fallback is used.
 
 Created shared stories stay in this browser's Story Library independently of
 recipient progress. The Gift stories for others section offers recipient-link
-copying, browser-local removal, printable QR cards and manual completion checks.
-In private gift management, **Recipient
-progress** offers manual Load/Refresh: opened browser playthroughs, still in
-progress, completed by solving, revealed without solving, and the furthest
-prepared scene reached. Live adventures show outcome counts, not a scene-based
-percentage. Reaching the final scene does not mean the mystery was solved.
+copying, browser-local removal, printable QR cards and manual progress checks.
+Private gift management uses the same simple scene/outcome display. Scene
+progress is the furthest prepared scene reached across browser playthroughs;
+**Finished** means at least one unlocked the ending by solving or revealing it.
+Live adventures have no fixed scene count and show started/finished status
+without inventing a percentage. Reaching the final scene alone is not finishing.
 These are anonymous browser sessions, not unique people or proof of reading:
 opening a link counts even before opening its gift cover; another browser or
 cleared storage may count again. Counts include earlier recipient links for the

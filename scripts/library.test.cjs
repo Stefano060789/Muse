@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
+const savedGiftFixture = require('./saved-gift-fixture.cjs')
 
 const root = path.resolve(__dirname, '..')
 const output = fs.mkdtempSync(path.join(__dirname, '.library-tests-'))
@@ -42,10 +43,11 @@ try {
     assert.equal(result.error, null)
     return result
   }
-  function mountLibrary(stories, origin = 'https://muse.example') {
+  function mountLibrary(stories, origin = 'https://muse.example', personalStories = []) {
     const ts = require('typescript')
     const store = memory()
     for (const story of stories) lib.saveLibraryCreatorStory(story, store)
+    for (const story of personalStories) lib.saveLibraryPersonalStory(story, store)
     const states = [], effects = [], copied = [], requests = []
     let progressResponse = { ok: true, data: { progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } } }
     let cursor = 0, mounted = false, tick, clock = Date.parse('2026-10-15T00:00:00Z')
@@ -84,7 +86,8 @@ try {
         if (name === 'next/head' || name === 'next/link') return { __esModule: true, default: name === 'next/link' ? 'a' : 'head' }
         if (name === '../lib/sharedStorySharing') return sharing
         if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
-        if (name === '../components/GiftCard') return { __esModule: true, default: 'gift-card' }
+        if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
+        if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
           removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
@@ -271,35 +274,57 @@ try {
     assert.equal(entries.find(entry => entry.id === 'first').story.content.title, first.content.title)
     assert.equal(entries.find(entry => entry.id === 'first').story.brief.message, first.brief.message)
   })
-  await checkAsync('shared library separates actions, copies only recipient capability, and hides private brief fields', async () => {
-    const story = shared('owner/#? private')
-    story.playToken = 'recipient/#? token'
+  await checkAsync('shared library integrates the safe recipient share panel without exposing management access', async () => {
+    const story = JSON.parse(JSON.stringify(savedGiftFixture))
     const ui = mountLibrary([story])
     try {
       const tree = ui.render(), all = nodes(tree), text = textOf(tree)
+      assert.equal(ui.requests.length, 0, 'Rendering a locally saved gift uses no backend calls')
       assert.ok(all.some(node => node.props?.id === 'personal-stories-heading'))
       assert.ok(all.some(node => node.props?.id === 'shared-stories-heading'))
       assert.ok(!all.some(node => node.props?.href?.startsWith('/shared#manage=') || node.props?.href?.startsWith('/shared#reuse=')))
       const card = all.find(node => node.type === 'article')
-      assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Copy recipient link', 'Remove story'])
+      assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Remove story'])
       assert.equal(nodes(card).filter(node => node.type === 'gift-progress').length, 1)
       assert.equal(nodes(card).find(node => node.type === 'gift-progress').props.compact, true)
-      const qr = nodes(card).find(node => node.type === 'gift-card')
-      assert.equal(qr.props.recipientUrl, sharing.recipientShareDetails('https://muse.example', story.playToken).url)
-      assert.equal(qr.props.expiresAt, null)
-      assert.ok(!JSON.stringify(qr.props).includes(story.ownerToken), 'Printing receives only the recipient link, never owner access')
+      const panel = nodes(card).find(node => node.type === 'share-gift-story')
+      const details = sharing.recipientShareDetails('https://muse.example', story.playToken)
+      assert.equal(panel.props.recipientUrl, details.url)
+      assert.equal(panel.props.shareText, details.text)
+      assert.equal(panel.props.whatsappUrl, details.whatsappUrl)
+      assert.equal(panel.props.expiresAt, null)
+      assert.equal(panel.props.localOnly, false)
+      assert.equal(panel.props.previewContent.type, 'gift-story-preview')
+      const validatedStory = lib.validateCreatorStory(story)
+      assert.deepEqual(panel.props.previewContent.props.brief, validatedStory.brief)
+      assert.deepEqual(panel.props.previewContent.props.content, validatedStory.content)
+      assert.ok(!JSON.stringify(panel.props).includes(story.ownerToken), 'Sharing receives only recipient-facing data, never owner access')
       assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
       assert.ok(text.includes('not backed up or synced across devices'))
       assert.ok(text.includes('independently of recipient completion'))
-      assert.ok(text.includes('Check completion'))
+      assert.ok(text.includes('View story progress'))
       assert.ok(text.includes('private owner access; do not share them'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
-      const copy = button(tree, 'Copy recipient link')
-      assert.equal(copy.props.disabled, false)
-      await copy.props.onClick()
-      assert.deepEqual(ui.copied, [sharing.recipientShareDetails('https://muse.example', story.playToken).url])
-      assert.ok(!ui.copied[0].includes('owner'))
-      assert.ok(textOf(ui.render()).includes('Recipient link copied'))
+    } finally { ui.cleanup() }
+  })
+  check('personal cards keep progress simple and place journey allowances and storage details under disclosure', () => {
+    const story = personal('journey')
+    story.scenes = [{ title: 'Opening', body: 'Begin here.', question: '', choices: [] }]
+    story.journey = {
+      duration: 5, maxTurns: 3, revision: 1, pending: false, status: 'active',
+      state: { inventory: [], discoveries: [], relationships: [], progress: 'Started' },
+      capability: 'a'.repeat(64), choiceMode: 'free'
+    }
+    const ui = mountLibrary([], 'https://muse.example', [story])
+    try {
+      const tree = ui.render(), card = nodes(tree).find(node => node.type === 'article')
+      const progress = nodes(card).find(node => node.type === 'p' && textOf(node).includes('In progress'))
+      assert.match(textOf(progress), /In progress · Scene 1 of 1/)
+      assert.doesNotMatch(textOf(progress), /attempt|active|reconcil|status/i)
+      assert.match(textOf(nodes(card).find(node => node.type === 'details')), /up to\s+3\s+story steps/)
+      assert.ok(textOf(nodes(card).find(node => node.type === 'details')).includes('in this browser'))
+      assert.ok(button(card, 'Continue story'))
+      assert.ok(button(card, 'Remove from this browser'))
     } finally { ui.cleanup() }
   })
   await checkAsync('legacy expiry does not block migrated links, while missing links remain disabled', async () => {
@@ -310,10 +335,13 @@ try {
       else story.expiresAt = null
       const ui = mountLibrary([story])
       try {
-        const tree = ui.render(), copy = button(tree, 'Copy recipient link')
-        assert.equal(copy.props.disabled, variant === 'missing')
-        await copy.props.onClick()
-        assert.equal(ui.copied.length, variant === 'missing' ? 0 : 1)
+        const tree = ui.render()
+        const share = nodes(tree).find(node => node.type === 'share-gift-story')
+        assert.equal(Boolean(share), variant !== 'missing')
+        if (share) {
+          assert.equal(share.props.disabled, false)
+          assert.equal(share.props.expiresAt, null, 'Legacy expiry does not disable sharing')
+        }
         assert.ok(button(tree, 'Remove story'))
         assert.ok(textOf(tree).includes(variant === 'missing' ? 'No recipient link saved here' : 'No automatic expiry'))
         assert.ok(read(ui.store).library.entries.length === 1)
@@ -354,25 +382,24 @@ try {
     story.expiresAt = '2026-10-15T00:00:01.000Z'
     const ui = mountLibrary([story])
     try {
-      const copy = button(ui.render(), 'Copy recipient link')
-      assert.equal(copy.props.disabled, false)
+      const sharePanel = nodes(ui.render()).find(node => node.type === 'share-gift-story')
+      assert.ok(sharePanel)
+      assert.equal(sharePanel.props.expiresAt, null)
       ui.advance(story.expiresAt, false)
-      await copy.props.onClick()
-      assert.equal(ui.copied.length, 1)
       ui.advance(story.expiresAt)
-      assert.equal(button(ui.render(), 'Copy recipient link').props.disabled, false)
+      assert.equal(nodes(ui.render()).find(node => node.type === 'share-gift-story').props.disabled, false)
       assert.ok(textOf(ui.render()).includes('No automatic expiry'))
     } finally { ui.cleanup() }
   })
   await checkAsync('local-only sharing warns clearly and clipboard failures are recoverable', async () => {
-    const ui = mountLibrary([shared('local')], 'http://localhost:3000')
+    const story = shared('local')
+    const ui = mountLibrary([story], 'http://localhost:3000')
     try {
       assert.ok(textOf(ui.render()).includes('Local-only address'))
-      await button(ui.render(), 'Copy recipient link').props.onClick()
-      assert.ok(textOf(ui.render()).includes('will not work on another device'))
-      ui.clipboard.writeText = async () => { throw new Error('denied') }
-      await button(ui.render(), 'Copy recipient link').props.onClick()
-      assert.ok(textOf(ui.render()).includes('Could not copy the recipient link'))
+      const panel = nodes(ui.render()).find(node => node.type === 'share-gift-story')
+      assert.ok(panel)
+      assert.equal(panel.props.localOnly, true)
+      assert.equal(panel.props.whatsappUrl, sharing.recipientShareDetails('http://localhost:3000', story.playToken).whatsappUrl)
       assert.ok(!textOf(ui.render()).includes('Unreadable entries'))
       assert.equal(read(ui.store).library.entries.length, 1)
     } finally { ui.cleanup() }
@@ -395,7 +422,7 @@ try {
   check('library UI keeps private details out of cards and confirms browser-only deletion', () => {
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
     assert.ok(page.includes('window.confirm('))
-    assert.ok(page.includes('Remove browser entry only'))
+    assert.ok(page.includes('Remove from this browser'))
     assert.ok(page.includes('loadProgress(entry.story.ownerToken)'))
     assert.ok(page.includes('Remove story'))
     for (const field of ['solution', 'message', 'assistanceHints', 'alternativeAnswers', 'recipientHints']) {
