@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { loadStoryLibrary, removeLibraryEntry, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
+import { loadStoryLibrary, removeLibraryEntry, restoreLibraryCreatorStories, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { recipientShareDetails } from '../lib/sharedStorySharing'
 import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
@@ -14,6 +14,31 @@ export default function LibraryPage() {
   const [ready, setReady] = useState(false)
   const [origin, setOrigin] = useState('')
   const [creatorCode, setCreatorCode] = useState('')
+  const [recovering, setRecovering] = useState(false)
+  const [recoveryError, setRecoveryError] = useState('')
+  const [recoveryNotice, setRecoveryNotice] = useState('')
+  const [nextPage, setNextPage] = useState<string | null>(null)
+  const recover = async (after: string | null = null) => {
+    if (recovering || !creatorCode.trim()) return
+    setRecovering(true); setRecoveryError(''); setRecoveryNotice('')
+    try {
+      const response = await fetch('/api/shared-story', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+        body: JSON.stringify({ action: 'library', after })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Could not load stories from the server.')
+      if (!Array.isArray(data.stories) || (data.next !== null && typeof data.next !== 'string')) throw new Error('The server returned an invalid story collection.')
+      const added = restoreLibraryCreatorStories(data.stories)
+      setNextPage(data.next)
+      refresh()
+      setRecoveryNotice(data.stories.length
+        ? `Loaded ${data.stories.length} gift stories; ${added} added to this browser. Existing recipient links and progress are unchanged.`
+        : 'No retained gift stories were found on this server page. Deleted or already purged stories cannot be recovered.')
+    } catch (cause) {
+      setRecoveryError(cause instanceof Error ? cause.message : 'Could not load stories from the server. Your saved entries were not removed.')
+    } finally { setRecovering(false) }
+  }
   const refresh = () => {
     const result = loadStoryLibrary()
     setEntries(result.library.entries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
@@ -61,7 +86,7 @@ export default function LibraryPage() {
             <a href="#personal-stories-heading">Stories for me ({personalEntries.length})</a>
             <a href="#shared-stories-heading">Gift stories for others ({sharedEntries.length})</a>
           </nav>
-          <p role="note">Saved only in this browser, not backed up or synced across devices. Keep this browser private.</p>
+          <p role="note">This collection is saved in this browser. To restore retained gift stories on another device, use Creator access below. Keep this browser private.</p>
           <details>
             <summary>Privacy and storage</summary>
             <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
@@ -106,12 +131,17 @@ export default function LibraryPage() {
             <h2 id="shared-stories-heading">Gift stories for others</h2>
             <p>Stories you&apos;ve made for someone else. No automatic expiry; saved briefs stay here until you remove them. Deleted stories and replaced links cannot be reopened.</p>
             <p>View story progress to see the furthest scene reached and whether the ending was unlocked. No AI generation or automatic monitoring.</p>
-            <details style={{ marginBottom: '1rem' }}>
-              <summary>Creator access (if required)</summary>
+            <details open style={{ marginBottom: '1rem' }}>
+              <summary>Creator access and server recovery</summary>
               <label>Creator access code
-                <input type="password" autoComplete="off" maxLength={512} value={creatorCode} onChange={event => setCreatorCode(event.target.value)} style={{ display: 'block', width: '100%', maxWidth: 400, boxSizing: 'border-box' }} />
+                <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={recovering} onChange={event => { setCreatorCode(event.target.value); setNextPage(null); setRecoveryNotice(''); setRecoveryError('') }} style={{ display: 'block', width: '100%', maxWidth: 400, boxSizing: 'border-box' }} />
               </label>
-              <p>Only needed if Muse requires creator access to check completion. Never saved in this browser.</p>
+              <p>This private-beta administrator code can restore all retained gift stories on this deployment, including private sender details. It is not a personal account and is never saved. No AI calls or credits are used.</p>
+              <button type="button" disabled={recovering || !creatorCode.trim()} onClick={() => void recover()}>{recovering ? 'Loading stories...' : 'Load stories from server'}</button>
+              {nextPage ? <button type="button" disabled={recovering} onClick={() => void recover(nextPage)}>Load more stories</button> : null}
+              <p>Original recipient links keep working. Newly recovered links also stop working if the administrator code changes. Stories already deleted or purged cannot be recovered.</p>
+              {recoveryError ? <p role="alert">{recoveryError}</p> : null}
+              {recoveryNotice ? <p role="status">{recoveryNotice}</p> : null}
             </details>
             {origin && recipientShareDetails(origin, '').localOnly && <p role="note">Local-only address: recipient links from this browser will not work on another device. Use a publicly reachable Muse address to share.</p>}
             {!sharedEntries.length && <p>No gift stories saved in this browser. <Link href="/shared#new">Create a gift story</Link>.</p>}

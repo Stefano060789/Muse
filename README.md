@@ -56,6 +56,21 @@ information in a collapsed explanation, not repeated recording-ready copy.
 
 ### Simple start and app installation
 
+**Private-beta server recovery:** Saved stories has an explicit **Load stories
+from server** action under Creator access. The configured deployment-wide
+`MUSE_CREATOR_ACCESS_CODE` grants administrator access to all retained gifts,
+including private sender briefs; it is not a per-user account. Recovery is
+disabled without a valid configured code even in local development. Pages contain
+at most 20 stories and merge into the current browser without removing personal
+stories or duplicating gifts. Original links, sessions, budgets and progress are
+unchanged; no AI call occurs. Recovery derives role-separated HMAC capabilities
+from the administrator code and current stored link hashes, without storing
+plaintext secrets or needing a schema migration. Recovered links are invalidated
+by administrator-code changes; replacing the recipient link also invalidates
+recovered recipient links. Reload the server collection to refresh recovered
+access. Deleted or purged stories and browser-only data cannot be recovered.
+This is private-beta administrator recovery, not general account/cloud sync.
+
 The same primary menu appears across Muse: **Home**, **Create a story**
 (`/story?new=1`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
 It sits above decorative artwork, highlights the current area, and uses a

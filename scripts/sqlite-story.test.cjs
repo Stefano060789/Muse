@@ -343,6 +343,69 @@ async function main() {
     assert.equal((await api({ ...args, confirmSkip: true })).status, 404)
     await repo.delete(storyId)
   })
+  await check('administrator recovery restores retained gifts without changing original capabilities or progress', async () => {
+    const callsBefore = providerCalls
+    assert.equal((await api({ action: 'library' })).status, 503, 'Local development must not expose an ungated collection')
+    const code = 'synthetic-recovery-admin-code'
+    process.env.MUSE_CREATOR_ACCESS_CODE = code
+    const auth = { 'x-muse-creator-code': code }
+    try {
+      assert.equal((await api({ action: 'library' })).status, 401)
+      assert.equal((await api({ action: 'library' }, handler, '127.0.0.1', { 'x-muse-creator-code': 'incorrect' })).status, 401)
+      assert.equal((await api({ action: 'library', after: 'not-a-uuid' }, handler, '127.0.0.1', auth)).status, 400)
+      const before = await storyRepository().findUnexpired(id)
+      const progressBefore = await storyRepository().progress(id)
+      const result = await api({ action: 'library' }, handler, '127.0.0.1', auth)
+      assert.equal(result.status, 200)
+      assert.deepEqual(await storyRepository().progress(id), progressBefore, 'Listing never creates a recipient session')
+      const restored = result.body.stories.find(story => story.ownerToken.startsWith(id + '.'))
+      assert.ok(restored)
+      assert.ok(!JSON.stringify(restored).includes(before.owner_hash))
+      assert.notEqual(restored.ownerToken, created.body.ownerToken)
+      assert.equal((await api({ action: 'manage', token: restored.ownerToken }, handler, '127.0.0.1', auth)).status, 200)
+      assert.equal((await api({ action: 'manage', token: restored.playToken }, handler, '127.0.0.1', auth)).status, 404)
+      assert.equal((await api({ action: 'open', token: restored.ownerToken })).status, 404)
+      assert.equal((await api({ action: 'open', token: restored.playToken })).status, 200)
+      assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 200)
+      const after = await storyRepository().findUnexpired(id)
+      assert.equal(after.owner_hash, before.owner_hash)
+      assert.equal(after.play_hash, before.play_hash)
+      // Opening a recipient link is a real playthrough, but listing/recovery
+      // itself must not create one.
+      assert.deepEqual((await api({ action: 'progress', token: restored.ownerToken }, handler, '127.0.0.1', auth)).body.progress, await storyRepository().progress(id))
+      const { recoveryKey, matchesRecoveryKey } = require(path.join(output, 'lib', 'creatorRecovery.js'))
+      assert.equal(matchesRecoveryKey(restored.playToken.split('.')[1], { ...before, play_hash: hash('rotated') }, 'play'), false)
+      assert.notEqual(recoveryKey({ ...before, id: randomUUID() }, 'play'), restored.playToken.split('.')[1])
+      process.env.MUSE_CREATOR_ACCESS_CODE = code + '-changed'
+      assert.equal((await api({ action: 'open', token: restored.playToken })).status, 404)
+      assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 200)
+      assert.equal(providerCalls, callsBefore, 'Recovery never calls the AI provider')
+      process.env.MUSE_CREATOR_ACCESS_CODE = code
+      const extraIds = []
+      for (let index = 0; index < 23; index++) {
+        const extraId = randomUUID()
+        extraIds.push(extraId)
+        await storyRepository().insert({ ...before, id: extraId })
+      }
+      const seen = new Set()
+      let cursor = null
+      do {
+        const page = await api({ action: 'library', after: cursor }, handler, '127.0.0.1', auth)
+        assert.equal(page.status, 200)
+        assert.ok(page.body.stories.length <= 20)
+        for (const item of page.body.stories) {
+          const key = item.ownerToken.split('.')[0]
+          assert.ok(!seen.has(key), 'Pagination must not repeat stories')
+          seen.add(key)
+        }
+        cursor = page.body.next
+      } while (cursor)
+      for (const extraId of extraIds) {
+        assert.ok(seen.has(extraId))
+        await storyRepository().delete(extraId)
+      }
+    } finally { delete process.env.MUSE_CREATOR_ACCESS_CODE }
+  })
   await check('rotation invalidates old play capability and deletion cascades persisted sessions', async () => {
     const rotated = await api({ action: 'share', token: created.body.ownerToken })
     assert.equal(rotated.status, 200)

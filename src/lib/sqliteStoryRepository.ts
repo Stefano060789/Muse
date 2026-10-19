@@ -254,6 +254,16 @@ export class SqliteStoryRepository implements StoryRepository {
     })
   }
 
+  async listRetained(after: string | null, limit: number) {
+    return this.transaction(db => {
+      const rows = db.prepare('SELECT * FROM shared_stories WHERE (? IS NULL OR id > ?) ORDER BY id LIMIT ?').all(after, after, limit)
+      return rows.map(row => ({
+        ...row, brief: JSON.parse(String(row.brief)), content: JSON.parse(String(row.content)),
+        alternative_answers_normalized: JSON.parse(String(row.alternative_answers_normalized))
+      })) as StoredStory[]
+    })
+  }
+
   async delete(id: string) {
     this.transaction(db => { db.prepare('DELETE FROM shared_stories WHERE id = ?').run(id) })
   }

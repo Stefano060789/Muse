@@ -19,6 +19,7 @@ import { requireProviderConsent } from '../../lib/providerConsent'
 import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRomance'
 import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } from '../../lib/studioNarration'
 import { PERMANENT_STORY_EXPIRY, publicStoryExpiry } from '../../lib/storyRetention'
+import { matchesRecoveryKey, recoveryKey } from '../../lib/creatorRecovery'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -26,7 +27,7 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
-const OWNER_ACTIONS = ['manage', 'progress', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function matches(secretValue: string, storedHash: string): boolean {
   const actual = Buffer.from(hash(secretValue), 'hex')
@@ -139,6 +140,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const studioPreview = action === 'studio-audio' && body.preview === true
     if ((!PLAYER_ACTIONS.includes(String(action)) || studioPreview) && !requireCreatorAccess(req, res)) return
+    if (action === 'library') {
+      // Unlike local creation, collection recovery must never use an ungated
+      // development environment as administrator authorization.
+      const code = process.env.MUSE_CREATOR_ACCESS_CODE
+      if (!code || code.length < 16 || code.length > 512) throw new SharedStoryError('Server recovery requires a configured private Creator access code.', 503)
+      if (body.after !== undefined && body.after !== null && (typeof body.after !== 'string' || !UUID.test(body.after))) {
+        throw new SharedStoryError('The story collection page is invalid.')
+      }
+      const page = await database().listRetained(body.after || null, 21)
+      const stories = page.slice(0, 20).map(story => ({
+        recovered: true,
+        ownerToken: `${story.id}.${recoveryKey(story, 'owner')}`,
+        playToken: `${story.id}.${recoveryKey(story, 'play')}`,
+        brief: story.brief, content: story.content, expiresAt: publicStoryExpiry(story.expires_at)
+      }))
+      return res.status(200).json({ stories, next: page.length > 20 ? page[19].id : null })
+    }
     if (action === 'create' || action === 'adventure' || action === 'studio-generate') requireProviderConsent(body)
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
@@ -185,7 +203,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await sweepStudioAudio(db)
     const story = await db.findUnexpired(id)
     const ownerAction = OWNER_ACTIONS.includes(String(action)) || studioPreview
-    if (!story || !matches(key, ownerAction ? story.owner_hash : story.play_hash)) {
+    if (!story || (!matches(key, ownerAction ? story.owner_hash : story.play_hash) && !matchesRecoveryKey(key, story, ownerAction ? 'owner' : 'play'))) {
       throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
     }
     let romance: ReturnType<typeof parseStoryRomance>

@@ -9,7 +9,7 @@ import { parseStoryRomance } from './storyRomance'
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
 const SHARED_KEY = 'muse-shared-creator'
-export type CreatorStory = { ownerToken: string; playToken?: string; brief: SharedStoryBrief; content: SharedStoryContent; expiresAt: string | null }
+export type CreatorStory = { ownerToken: string; playToken?: string; recovered?: boolean; brief: SharedStoryBrief; content: SharedStoryContent; expiresAt: string | null }
 export type LibraryEntry =
   | { kind: 'personal'; id: string; updatedAt: string; story: PersonalStory }
   | { kind: 'shared'; id: string; updatedAt: string; story: CreatorStory }
@@ -111,6 +111,7 @@ export function validateCreatorStory(value: unknown): CreatorStory {
   assertStoryNarrationLanguage(content.narrationLanguage, brief.language)
   return {
     ownerToken: identifier(input.ownerToken),
+    ...(input.recovered === true ? { recovered: true } : {}),
     ...(input.playToken !== undefined ? { playToken: identifier(input.playToken) } : {}),
     expiresAt: input.expiresAt === null ? null : date(input.expiresAt), brief,
     content: { title: text(content.title), description: text(content.description), scenes, ...narration(content) }
@@ -214,6 +215,30 @@ export function saveLibraryCreatorStory(value: CreatorStory, store?: BrowserStor
     library.latestShared = story.ownerToken
   }, store)
   compatibility(SHARED_KEY, JSON.stringify(story), store)
+}
+export function restoreLibraryCreatorStories(values: unknown[], store?: BrowserStorage): number {
+  const stories = values.map(validateCreatorStory)
+  let added = 0
+  update(library => {
+    for (const story of stories) {
+      const storyId = story.ownerToken.split('.')[0]
+      const existing = library.entries.find(entry => entry.kind === 'shared' && entry.story.ownerToken.split('.')[0] === storyId)
+      if (existing?.kind === 'shared') {
+        if (existing.story.recovered) {
+          if (library.latestShared === existing.id) library.latestShared = story.ownerToken
+          existing.id = story.ownerToken
+          existing.story = story
+        } else {
+          existing.story = { ...story, recovered: false, ownerToken: existing.story.ownerToken, playToken: existing.story.playToken || story.playToken }
+        }
+      } else {
+        library.entries.push({ kind: 'shared', id: story.ownerToken, updatedAt: new Date().toISOString(), story })
+        library.latestShared = story.ownerToken
+        added++
+      }
+    }
+  }, store)
+  return added
 }
 export function selectPersonalStory(id: string, store?: BrowserStorage): void {
   const library = update(library => {

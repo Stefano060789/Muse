@@ -30,6 +30,7 @@ export type StoredStory = {
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
+  listRetained(after: string | null, limit: number): Promise<StoredStory[]>
   progress(storyId: string): Promise<SharedStoryProgress>
   studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
@@ -101,6 +102,14 @@ export function storyRepository(): StoryRepository {
   const giftUnavailable = () => new SharedStoryError('Gift features are not available in storage yet. Apply supabase/shared-story-gifts.sql, then retry.', 503)
   const giftStorageError = (error: unknown) => isMissingGiftSchema(error) ? giftUnavailable() : storyStorageError(error)
   return {
+    async listRetained(after, limit) {
+      let query = db.from('shared_stories').select('*').gt('expires_at', new Date().toISOString()).order('id', { ascending: true }).limit(limit)
+      if (after) query = query.gt('id', after)
+      const { data, error } = await query
+      if (error) throw storyStorageError(error)
+      if (!Array.isArray(data)) throw storyStorageError()
+      return data as StoredStory[]
+    },
     async progress(storyId) {
       const sessions = () => db.from('shared_story_sessions')
       const [active, solved, skipped, furthest] = await Promise.all([

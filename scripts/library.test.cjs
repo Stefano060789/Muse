@@ -90,6 +90,7 @@ try {
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
+          restoreLibraryCreatorStories: values => lib.restoreLibraryCreatorStories(values, store),
           removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
           selectPersonalStory: id => lib.selectPersonalStory(id, store)
         }
@@ -300,11 +301,60 @@ try {
       assert.deepEqual(panel.props.previewContent.props.content, validatedStory.content)
       assert.ok(!JSON.stringify(panel.props).includes(story.ownerToken), 'Sharing receives only recipient-facing data, never owner access')
       assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
-      assert.ok(text.includes('not backed up or synced across devices'))
+      assert.ok(text.includes('restore retained gift stories on another device'))
       assert.ok(text.includes('independently of recipient completion'))
       assert.ok(text.includes('View story progress'))
       assert.ok(text.includes('private owner access; do not share them'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
+    } finally { ui.cleanup() }
+  })
+  check('server recovery merges stories atomically without duplicate IDs or replacing original recipient links', () => {
+    const store = memory()
+    lib.saveLibraryPersonalStory(personal('keep-me'), store)
+    lib.saveLibraryCreatorStory(shared('same-story.original-owner'), store)
+    const recovered = shared('same-story.recovered-owner')
+    recovered.playToken = 'recovered-recipient'
+    recovered.content.title = 'Refreshed story'
+    assert.equal(lib.restoreLibraryCreatorStories([recovered, shared('another-story.recovered')], store), 1)
+    const result = read(store).library
+    assert.equal(result.entries.length, 3)
+    const original = result.entries.find(entry => entry.id === 'same-story.original-owner')
+    assert.equal(original.story.playToken, 'recipient-secret')
+    assert.equal(original.story.content.title, 'Refreshed story')
+    // Recovered capabilities must be refreshable after administrator-code rotation.
+    lib.restoreLibraryCreatorStories([{ ...shared('rotate.before'), recovered: true }], store)
+    lib.restoreLibraryCreatorStories([{ ...shared('rotate.after'), recovered: true }], store)
+    assert.ok(!read(store).library.entries.some(entry => entry.id === 'rotate.before'))
+    assert.ok(read(store).library.entries.some(entry => entry.id === 'rotate.after'))
+    const before = store.getItem('muse-story-library')
+    assert.throws(() => lib.restoreLibraryCreatorStories([shared('new.recovered'), { invalid: true }], store))
+    assert.equal(store.getItem('muse-story-library'), before)
+  })
+  await checkAsync('Creator recovery is explicit, keeps codes memory-only, validates pages and reports failures', async () => {
+    const ui = mountLibrary([])
+    const password = () => nodes(ui.render()).find(node => node.type === 'input' && node.props.type === 'password')
+    try {
+      assert.equal(button(ui.render(), 'Load stories from server').props.disabled, true)
+      assert.equal(ui.requests.length, 0)
+      password().props.onChange({ target: { value: 'synthetic-creator-code' } })
+      ui.setProgressResponse({ ok: false, data: { error: 'Access denied' } })
+      await button(ui.render(), 'Load stories from server').props.onClick()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.ok(textOf(ui.render()).includes('Access denied'))
+      ui.setProgressResponse({ ok: true, data: { stories: [shared('recovered.owner')], next: 'next-page' } })
+      button(ui.render(), 'Load stories from server').props.onClick()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.equal(read(ui.store).library.entries.length, 1)
+      assert.ok(button(ui.render(), 'Load more stories'))
+      assert.equal(ui.requests.at(-1).body.action, 'library')
+      assert.equal(ui.requests.at(-1).headers['x-muse-creator-code'], 'synthetic-creator-code')
+      assert.ok(!JSON.stringify([...ui.store.values]).includes('synthetic-creator-code'))
+      assert.ok(textOf(ui.render()).includes('Existing recipient links and progress are unchanged'))
+      ui.setProgressResponse({ ok: true, data: { stories: 'invalid', next: null } })
+      button(ui.render(), 'Load more stories').props.onClick()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.ok(textOf(ui.render()).includes('invalid story collection'))
+      assert.equal(read(ui.store).library.entries.length, 1)
     } finally { ui.cleanup() }
   })
   check('personal cards keep progress simple and place journey allowances and storage details under disclosure', () => {

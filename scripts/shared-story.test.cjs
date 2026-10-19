@@ -284,6 +284,8 @@ async function main() {
   let progressFailure = false
   let runtimeProviderCalls = 0
   const progressQueries = []
+  const collectionQueries = []
+  let collectionFailure = false
   let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
@@ -327,6 +329,11 @@ async function main() {
       return json([])
     }
     assert.equal(location.pathname, '/rest/v1/shared_stories')
+    if ((!options.method || options.method === 'GET') && location.searchParams.has('limit')) {
+      collectionQueries.push(location)
+      if (collectionFailure) return json({ message: 'private collection failure' }, 400)
+      return json(stored ? [stored] : [])
+    }
     if (options.method === 'POST') {
       stored = body
       return new Response(null, { status: 201 })
@@ -370,6 +377,43 @@ async function main() {
     assert.deepEqual(created.body.content, content)
     assert.equal(created.body.expiresAt, null, 'Permanent stories expose an explicit null expiry')
     assert.equal(stored.expires_at, 'infinity', 'Hosted storage uses PostgreSQL infinity, never a distant date')
+  })
+  await check('hosted Creator recovery is gated, paginated, read-only and returns usable role-separated capabilities', async () => {
+    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
+    const code = 'synthetic-hosted-recovery-code'
+    process.env.MUSE_CREATOR_ACCESS_CODE = code
+    try {
+      const calls = runtimeProviderCalls
+      const before = JSON.stringify(stored)
+      assert.equal((await api({ action: 'library' })).status, 401)
+      assert.equal(collectionQueries.length, 0)
+      const result = await api({ action: 'library' }, 'POST', { 'x-muse-creator-code': code })
+      assert.equal(result.status, 200)
+      assert.equal(result.body.next, null)
+      assert.equal(result.body.stories.length, 1)
+      const query = collectionQueries.at(-1)
+      assert.equal(query.searchParams.get('limit'), '21')
+      assert.equal(query.searchParams.get('order'), 'id.asc')
+      assert.ok(query.searchParams.get('expires_at').startsWith('gt.'))
+      const recovered = result.body.stories[0]
+      assert.equal(recovered.recovered, true)
+      assert.equal(recovered.brief.message, brief.message)
+      assert.equal(recovered.expiresAt, null)
+      assert.equal((await api({ action: 'manage', token: recovered.ownerToken }, 'POST', { 'x-muse-creator-code': code })).status, 200)
+      assert.equal(JSON.stringify(stored), before, 'Recovery does not patch stored hashes')
+      const after = stored.id
+      await api({ action: 'library', after }, 'POST', { 'x-muse-creator-code': code })
+      assert.equal(collectionQueries.at(-1).searchParams.get('id'), `gt.${after}`)
+      collectionFailure = true
+      const failed = await api({ action: 'library' }, 'POST', { 'x-muse-creator-code': code })
+      assert.equal(failed.status, 503)
+      assert.ok(!JSON.stringify(failed.body).includes('private collection failure'))
+      assert.equal(runtimeProviderCalls, calls)
+    } finally {
+      collectionFailure = false
+      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
+      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
+    }
   })
   await check('recipient cannot access management and owner cannot play with the owner token', async () => {
     assert.equal((await api({ action: 'manage', token: created.body.playToken })).status, 404)
