@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { forgetMuseProfile, loadMuseProfile, replaceMuseProfileKeypoints, saveMuseProfile, type MuseProfile } from '../lib/profile'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import HoldToSpeakButton from '../components/HoldToSpeakButton'
+import { STORY_LANGUAGES, type StoryLanguageCode } from '../lib/storyLanguage'
+import { loadStoryPreferences } from '../lib/storyPreferences'
 
 export default function MyselfPage() {
   const [about, setAbout] = useState('')
@@ -11,7 +13,8 @@ export default function MyselfPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<string[]>([])
-  const interaction = useStoryInteraction(undefined, 'en-US')
+  const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
+  const interaction = useStoryInteraction(undefined, language)
   const isRecording = Boolean(interaction.recordingTarget)
 
   useEffect(() => {
@@ -20,6 +23,12 @@ export default function MyselfPage() {
       if (profile) applyProfile(profile)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not read saved memories.')
+    }
+    try {
+      const preferred = loadStoryPreferences().language
+      if (preferred) setLanguage(preferred)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not read your saved story language.')
     }
   }, [])
 
@@ -30,6 +39,7 @@ export default function MyselfPage() {
   }
 
   const save = () => {
+    interaction.cancelRecording()
     setError('')
     setMessage('')
     if (!about.trim()) {
@@ -77,21 +87,32 @@ export default function MyselfPage() {
 
   return (
     <>
-      <Head><title>Muse — Personal touches</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
+      <Head><title>Muse — Myself</title><meta name="description" content="Tell Muse what matters to you so your stories feel personal." /></Head>
       <main className="atelier-page">
         <div className="atelier-shell atelier-shell--narrow">
-          <Link href="/story?new=1">Back to story creation</Link>
           <p className="atelier-eyebrow">Personal touches · Optional</p>
-          <h1 className="atelier-title">Personal touches</h1>
-          <p style={{ maxWidth: 620, fontSize: '1.15rem', lineHeight: 1.7 }}>Save up to 20 memories in this browser. Your latest five personalize new personal stories by default; you can leave them out before creation. Saving does not send them to AI: story creation still requires your consent. Browser storage is readable text, so keep this browser private.</p>
-          <p style={{ maxWidth: 620, lineHeight: 1.7 }}>Speaking uses speech recognition from your browser or device and may be processed by an online speech service. Review the text before using it.</p>
+          <h1 className="atelier-title">Myself</h1>
+          <p className="atelier-subtitle">Tell Muse about yourself. Your latest five memories help shape new stories.</p>
+          <p className="atelier-note">Saved only in this browser. Sent to AI only when you consent to creating a story; you can leave them out.</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>
-            <label style={{ display: 'block', fontWeight: 700 }}>What should Muse remember?
-              <textarea value={about} onChange={(event) => setAbout(event.target.value)} rows={8} placeholder="People, places, feelings, things you love…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
+            <label style={{ display: 'block', fontWeight: 700 }}>About yourself
+              <textarea aria-label="About yourself" value={about} maxLength={4000} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setAbout(event.target.value) }} rows={5} placeholder="People, places, feelings, things you love…" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
             </label>
+            <details style={{ marginTop: '0.75rem' }}>
+              <summary>Voice input language</summary>
+              <select aria-label="Personal touches voice language" value={language} onChange={event => {
+                const selected = STORY_LANGUAGES.find(option => option.code === event.target.value)
+                if (!selected) { setError('Choose a supported story language.'); return }
+                interaction.cancelRecording()
+                setLanguage(selected.code)
+              }}>
+                {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+              </select>
+            </details>
+            <p className="atelier-note">Speaking may use an online speech service. Review the text before saving.</p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-              <button onClick={save} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>Save what matters</button>
-              <HoldToSpeakButton recording={isRecording} label="Hold to speak to Muse" releaseLabel="Release to stop" onStart={() => { setMessage(''); interaction.dictate('about', setAbout) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
+              <button onClick={save} disabled={!about.trim()} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>Save personal touches</button>
+              <HoldToSpeakButton recording={isRecording} label="Hold to speak about yourself" releaseLabel="Release to stop" onStart={() => { setMessage(''); interaction.dictate('about', value => setAbout(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
             </div>
             {message ? <p role="status" style={{ lineHeight: 1.6, marginBottom: 0 }}>{message}</p> : null}
             {error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{error}</p> : null}

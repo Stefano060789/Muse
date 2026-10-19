@@ -32,17 +32,9 @@ export default function GiftProgress({ load, sceneCount, adventure, compact = fa
     {error ? <p role="alert">{error}</p> : null}
     {progress ? <>
       <p role="status">
-        {!progress.opened ? 'Not started' : <>
-          {!adventure && progress.furthestScene !== null ? `Scene ${Math.min(progress.furthestScene + 1, sceneCount)} of ${sceneCount} reached · ` : ''}
-          {progress.solved + progress.skipped > 0 ? 'Finished' : 'Not finished'}
-        </>}
+        {!adventure ? `${!progress.opened || progress.furthestScene === null ? 0 : Math.max(0, Math.min(progress.furthestScene + 1, sceneCount))}/${sceneCount} · ` : ''}
+        {progress.solved + progress.skipped > 0 ? 'Finished' : 'Not finished'}
       </p>
-      {adventure && progress.opened ? <p>Live adventures do not have a fixed scene count. Finished means the ending was unlocked.</p> : null}
-      <details>
-        <summary>About story progress</summary>
-        <p>Shows the furthest scene reached across browser playthroughs, including earlier recipient links. Finished means at least one playthrough unlocked the ending, by solving or revealing it. It does not measure audio listened to or verify who read the story.</p>
-        <p>Refresh to check again. No live monitoring or extra AI generation.</p>
-      </details>
     </> : null}
   </section>
 }

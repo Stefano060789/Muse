@@ -206,20 +206,20 @@ check('service worker claims scope but does not intercept/cache private requests
   assert.equal(activated, true)
   events.fetch({ request: { url: 'https://muse.example/shared#play=PRIVATE' }, respondWith() { throw new Error('Private requests must remain network-only') } })
 })
-check('Home personal touches restore, dictate, save locally and surface storage errors', () => {
+check('Myself restores, dictates, saves locally and surfaces storage errors', () => {
   let saved = '', receiver, cancelled = 0, stopped = 0, failSave = false, selectedLanguage
-  const touches = component('src/components/HomePersonalTouches.tsx', {
+  const touches = component('src/pages/myself.tsx', {
     '../lib/storyPreferences': { loadStoryPreferences: () => ({ language: 'en-US', duration: 10 }) },
     '../lib/profile': {
-      loadMuseProfile: () => ({ about: 'I love gardens.' }),
-      saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value } }
+      loadMuseProfile: () => ({ about: 'I love gardens.', keypoints: ['I love gardens'] }),
+      saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value, keypoints: [value] } }
     },
     '../lib/useStoryInteraction': { useStoryInteraction(_before, language) {
       selectedLanguage = language
       return { recordingTarget: '', ready: false, error: '',
         dictate(_target, callback) { receiver = callback }, stopRecording() { stopped++ }, cancelRecording() { cancelled++ } }
     } },
-    './HoldToSpeakButton': { __esModule: true, default: 'hold' },
+    '../components/HoldToSpeakButton': { __esModule: true, default: 'hold' },
     '../lib/storyLanguage': { STORY_LANGUAGES: [{ code: 'en-US', label: 'English' }, { code: 'ar-SA', label: 'Arabic' }] }
   })
   touches.render()
@@ -240,7 +240,7 @@ check('Home personal touches restore, dictate, save locally and surface storage 
   touches.render()
   assert.equal(saved, 'I enjoy peaceful walks.')
   assert.ok(cancelled >= 3)
-  assert.ok(touches.nodes().some(node => node.props.role === 'status' && /included by default/.test(text(node))))
+  assert.ok(touches.nodes().some(node => node.props.role === 'status' && /Saved in this browser/.test(text(node))))
   failSave = true
   field().props.onChange({ target: { value: 'Keep this unsaved text.' } })
   touches.render()
@@ -248,12 +248,12 @@ check('Home personal touches restore, dictate, save locally and surface storage 
   touches.render()
   assert.equal(field().props.value, 'Keep this unsaved text.')
   assert.ok(touches.nodes().some(node => node.props.role === 'alert' && text(node) === 'Storage is full'))
-  assert.ok(touches.nodes().some(node => node.props.href === '/myself'))
+  assert.ok(touches.nodes().some(node => node.props.href === '/story?new=1'))
+  assert.ok(touches.nodes().some(node => node.type === 'h1' && text(node) === 'Myself'))
 })
 check('home exposes two clear creation paths, demo and saved stories', () => {
   const home = component('src/pages/index.tsx', {
     '../components/InstallApp': { __esModule: true, default: 'install' },
-    '../components/HomePersonalTouches': { __esModule: true, default: 'personal-touches' },
     '../lib/storyLibrary': {
       loadStoryLibrary: () => ({ library: { entries: [] }, error: null }),
       selectPersonalStory() {}
@@ -266,11 +266,11 @@ check('home exposes two clear creation paths, demo and saved stories', () => {
     for (const href of ['/story?new=1', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
     assert.ok(home.nodes().some(node => node.props.href === '/story?new=1' && text(node) === 'Create a story'))
     assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create a gift story'))
-    assert.equal(home.nodes().some(node => node.props.href === '/myself'), false, 'Optional personalization belongs inside story creation')
+    assert.equal(home.nodes().some(node => node.props.href === '/myself'), false, 'Myself is accessible through the main menu, not a Home editor')
     assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
     assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
     assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
-    assert.ok(home.nodes().some(node => node.type === 'personal-touches'), 'Home offers inline personal touches')
+    assert.equal(home.nodes().some(node => node.type === 'textarea'), false, 'Personal touches no longer clutter Home')
     const more = home.nodes().find(node => node.type === 'details')
     assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
     for (const href of ['/story?new=1', '/shared#new', '/demo']) {

@@ -349,7 +349,7 @@ try {
       assert.equal(ui.requests.at(-1).body.action, 'library')
       assert.equal(ui.requests.at(-1).headers['x-muse-creator-code'], 'synthetic-creator-code')
       assert.ok(!JSON.stringify([...ui.store.values]).includes('synthetic-creator-code'))
-      assert.ok(textOf(ui.render()).includes('Existing recipient links and progress are unchanged'))
+      assert.ok(textOf(ui.render()).includes('Loaded 1 gift story.'))
       ui.setProgressResponse({ ok: true, data: { stories: 'invalid', next: null } })
       button(ui.render(), 'Load more stories').props.onClick()
       await new Promise(resolve => setImmediate(resolve))
@@ -393,7 +393,10 @@ try {
           assert.equal(share.props.expiresAt, null, 'Legacy expiry does not disable sharing')
         }
         assert.ok(button(tree, 'Remove story'))
-        assert.ok(textOf(tree).includes(variant === 'missing' ? 'No recipient link saved here' : 'No automatic expiry'))
+        if (variant === 'missing') assert.ok(textOf(tree).includes('No recipient link saved here'))
+        assert.ok(!textOf(tree).includes('View story progress to see'), 'Gift cards omit instructional copy')
+        const access = nodes(tree).find(node => node.type === 'details' && textOf(node).includes('Creator access code'))
+        assert.ok(access && !access.props.open, 'Creator recovery stays collapsed until needed')
         assert.ok(read(ui.store).library.entries.length === 1)
       } finally { ui.cleanup() }
     }
@@ -438,7 +441,7 @@ try {
       ui.advance(story.expiresAt, false)
       ui.advance(story.expiresAt)
       assert.equal(nodes(ui.render()).find(node => node.type === 'share-gift-story').props.disabled, false)
-      assert.ok(textOf(ui.render()).includes('No automatic expiry'))
+      assert.equal(nodes(ui.render()).find(node => node.type === 'share-gift-story').props.expiresAt, null)
     } finally { ui.cleanup() }
   })
   await checkAsync('local-only sharing warns clearly and clipboard failures are recoverable', async () => {

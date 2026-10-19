@@ -27,9 +27,9 @@ function load(relative) {
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Create a story', 'Create a gift story', 'Saved stories']
+const expected = ['Home', 'Myself', 'Create a story', 'Create a gift story', 'Saved stories']
 for (const [pathname, selected] of [
-  ['/', 'Home'], ['/story', 'Create a story'], ['/myself', 'Create a story'],
+  ['/', 'Home'], ['/story', 'Create a story'], ['/myself', 'Myself'],
   ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Saved stories'],
   ['/demo', null], ['/billing', null], ['/privacy', null], ['/creator', null]
 ]) {
@@ -38,7 +38,7 @@ for (const [pathname, selected] of [
   assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(match => match[1]), expected)
   const active = [...nav.matchAll(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/g)].map(match => match[1])
   assert.deepEqual(active, selected ? [selected] : [], pathname)
-  assert.ok(!/creator|operations|myself/.test(nav), 'Private tools and optional settings are not primary destinations')
+  assert.ok(!/creator|operations/.test(nav), 'Private tools are not primary destinations')
 }
 const recipient = render(React.createElement(Navigation, { pathname: '/shared', recipient: true }))
 assert.ok(recipient.includes('Muse home'))
@@ -72,4 +72,4 @@ for (const pathname of ['/shared', '/couples']) {
   assert.equal((html.match(/aria-label="Main navigation"/g) || []).length, 1, 'Gift routes must not get duplicate menus')
   assert.ok(/<details[^>]*><summary>Help, privacy and about Muse<\/summary>/.test(html), 'Gift pages keep the full footer collapsed')
 }
-console.log('PASS consistent four-item navigation, selected routes, private exclusions, recipient simplicity and app-shell placement')
+console.log('PASS five-item navigation with Myself before creation, selected routes, private exclusions and recipient simplicity')

@@ -29,12 +29,12 @@ export default function LibraryPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Could not load stories from the server.')
       if (!Array.isArray(data.stories) || (data.next !== null && typeof data.next !== 'string')) throw new Error('The server returned an invalid story collection.')
-      const added = restoreLibraryCreatorStories(data.stories)
+      restoreLibraryCreatorStories(data.stories)
       setNextPage(data.next)
       refresh()
       setRecoveryNotice(data.stories.length
-        ? `Loaded ${data.stories.length} gift stories; ${added} added to this browser. Existing recipient links and progress are unchanged.`
-        : 'No retained gift stories were found on this server page. Deleted or already purged stories cannot be recovered.')
+        ? `Loaded ${data.stories.length} gift ${data.stories.length === 1 ? 'story' : 'stories'}.`
+        : 'No saved gift stories found.')
     } catch (cause) {
       setRecoveryError(cause instanceof Error ? cause.message : 'Could not load stories from the server. Your saved entries were not removed.')
     } finally { setRecovering(false) }
@@ -129,17 +129,18 @@ export default function LibraryPage() {
           </section>}
           {ready && <section aria-labelledby="shared-stories-heading">
             <h2 id="shared-stories-heading">Gift stories for others</h2>
-            <p>Stories you&apos;ve made for someone else. No automatic expiry; saved briefs stay here until you remove them. Deleted stories and replaced links cannot be reopened.</p>
-            <p>View story progress to see the furthest scene reached and whether the ending was unlocked. No AI generation or automatic monitoring.</p>
-            <details open style={{ marginBottom: '1rem' }}>
-              <summary>Creator access and server recovery</summary>
+            <details style={{ marginBottom: '1rem' }}>
+              <summary>Creator access</summary>
               <label>Creator access code
                 <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={recovering} onChange={event => { setCreatorCode(event.target.value); setNextPage(null); setRecoveryNotice(''); setRecoveryError('') }} style={{ display: 'block', width: '100%', maxWidth: 400, boxSizing: 'border-box' }} />
               </label>
-              <p>This private-beta administrator code can restore all retained gift stories on this deployment, including private sender details. It is not a personal account and is never saved. No AI calls or credits are used.</p>
+              <p>Admin access to all saved gift stories and private sender details. Code not saved.</p>
               <button type="button" disabled={recovering || !creatorCode.trim()} onClick={() => void recover()}>{recovering ? 'Loading stories...' : 'Load stories from server'}</button>
               {nextPage ? <button type="button" disabled={recovering} onClick={() => void recover(nextPage)}>Load more stories</button> : null}
-              <p>Original recipient links keep working. Newly recovered links also stop working if the administrator code changes. Stories already deleted or purged cannot be recovered.</p>
+              <details>
+                <summary>Recovery details</summary>
+                <p>Original links stay unchanged. Recovered links depend on this admin code. Deleted stories cannot be restored. No AI credits used.</p>
+              </details>
               {recoveryError ? <p role="alert">{recoveryError}</p> : null}
               {recoveryNotice ? <p role="status">{recoveryNotice}</p> : null}
             </details>

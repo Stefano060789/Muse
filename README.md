@@ -71,7 +71,7 @@ recovered recipient links. Reload the server collection to refresh recovered
 access. Deleted or purged stories and browser-only data cannot be recovered.
 This is private-beta administrator recovery, not general account/cloud sync.
 
-The same primary menu appears across Muse: **Home**, **Create a story**
+The same primary menu appears across Muse: **Home**, **Myself** (`/myself`), **Create a story**
 (`/story?new=1`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
@@ -83,22 +83,23 @@ Its local recipient-facing preview never opens a playthrough or records progress
 Local-only addresses cannot be externally shared or printed as QR codes.
 Removal only
 removes this browser's entry and keeps recipient links working. Progress checks
-show **Scene 2 of 5 reached · Not finished**, **Finished** after the ending is
-unlocked, or **Not started**. They do not poll or generate AI content. Details
-explain that the result combines browser playthroughs, not verified individuals,
-and does not measure listening time. The optional
+show **2/5 · Not finished**, **Finished** after the ending is unlocked, or
+**0/5 · Not finished** before opening. The fraction measures the furthest scene
+reached across browser playthroughs, not listening time. Live adventures have no
+fixed scene count and show only the finish status. Checks do not poll or generate
+AI content. The optional
 creator access code is memory-only and is required when creator access is gated.
 Expired/deleted server stories may no longer have available progress.
-Home includes a **Tell Muse about yourself** editor with typing, hold-to-speak
-and explicit browser-local saving. The latest five memories are included in
+**Myself** appears before **Create a story** in the main navigation, with typing,
+hold-to-speak, explicit browser-local saving and memory editing/removal.
+It is optional, not a mandatory step before creation. The latest five memories are included in
 new personal stories by default, disclosed in creation and the AI consent.
 Users can uncheck inclusion in step two or review/remove memories at `/myself`.
 Returning visitors can continue their latest unfinished personal story directly
-from Home; completed stories offer **Read again**. Saved personal touches collapse
-to leave space for the story, and personal library cards keep attempt details
+from Home; completed stories offer **Read again**. Personal touches live on Myself,
+not Home, and personal library cards keep attempt details
 behind an optional disclosure.
-Personal touches remains optional inside story creation, not a separate
-primary destination. Plans, sample,
+Personal touches also remain optional inside story creation. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
 Personal creation keeps optional personal touches in a collapsed inline editor
 in step two; the romance theme is selected with mood in step one. Step three

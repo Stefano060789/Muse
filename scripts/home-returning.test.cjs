@@ -42,7 +42,6 @@ function mount(file, dependencies, browser) {
     'next/head': { __esModule: true, default: 'Head' },
     'next/link': { __esModule: true, default: 'Link' },
     '../components/InstallApp': { __esModule: true, default: 'InstallApp' },
-    '../components/HomePersonalTouches': { __esModule: true, default: 'HomePersonalTouches' },
     '../components/HoldToSpeakButton': { __esModule: true, default: 'HoldToSpeakButton' },
     './HoldToSpeakButton': { __esModule: true, default: 'HoldToSpeakButton' },
     '../lib/storyLibrary': dependencies.storyLibrary,
@@ -120,7 +119,7 @@ function personalTouches(preferences, profile) {
       removeItem: key => values.delete(key)
     }
   }
-  const component = mount('src/components/HomePersonalTouches.tsx', {
+  const component = mount('src/pages/myself.tsx', {
     profile: {
       loadMuseProfile: () => profile,
       saveMuseProfile: about => ({ about, keypoints: [about], updatedAt: new Date().toISOString() })
@@ -180,9 +179,9 @@ function main() {
       about: 'I love gardens.', keypoints: ['I love gardens.'], updatedAt: '2026-10-17T00:00:00.000Z'
     })
     const tree = ui.flushEffects()
-    const details = nodes(tree).find(node => node.type === 'details')
-    assert.equal(details.props.open, false, 'Saved memories collapse after loading')
-    assert.ok(nodes(tree).some(node => node.type === 'textarea'), 'Collapsed memories remain editable when opened')
+    assert.ok(nodes(tree).some(node => node.type === 'h1' && text(node) === 'Myself'))
+    assert.equal(nodes(tree).find(node => node.type === 'textarea').props.value, 'I love gardens.')
+    assert.ok(text(tree).includes('Your memories'), 'Myself keeps memory management available')
     assert.equal(nodes(tree).find(node => node.type === 'select' && node.props['aria-label'] === 'Personal touches voice language').props.value, 'ar-SA')
     assert.deepEqual(ui.writes, [], 'Reading preferences never writes language or credentials')
   }

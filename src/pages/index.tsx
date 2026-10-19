@@ -2,7 +2,6 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import InstallApp from '../components/InstallApp'
-import HomePersonalTouches from '../components/HomePersonalTouches'
 import { loadStoryLibrary, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 
 type PersonalLibraryEntry = Extract<LibraryEntry, { kind: 'personal' }>
@@ -94,7 +93,6 @@ export default function Home() {
             <img src="/illustrations/moonlit-passage.svg" width="1200" height="400" alt="" />
           </figure>
         </section>
-        <HomePersonalTouches />
         <aside className="atelier-home-more" aria-label="More about Muse">
           <p className="atelier-note">Already started? <Link href="/library">Find your saved stories and gift stories</Link>.</p>
           <details>
