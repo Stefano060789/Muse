@@ -117,15 +117,19 @@ END;`
 
 export class SqliteStoryRepository implements StoryRepository {
   private readonly filename: string
-  async progress(storyId: string): Promise<SharedStoryProgress> {
+  async progress(storyId: string, adventure = false): Promise<SharedStoryProgress> {
     return this.transaction(db => {
       const row = db.prepare(`SELECT count(*) AS opened,
         coalesce(sum(CASE WHEN solved = 0 AND skipped = 0 THEN 1 ELSE 0 END), 0) AS in_progress,
         coalesce(sum(CASE WHEN solved = 1 THEN 1 ELSE 0 END), 0) AS solved,
         coalesce(sum(CASE WHEN solved = 0 AND skipped = 1 THEN 1 ELSE 0 END), 0) AS skipped,
         max(current_scene) AS furthest_scene FROM shared_story_sessions WHERE story_id = ?`).get(storyId)!
+      const turns = adventure ? db.prepare(`SELECT max(completed) AS furthest FROM
+        (SELECT count(*) AS completed FROM muse_adventure_requests WHERE story_id = ? AND status = 'done' GROUP BY player_hash)`).get(storyId)! : null
       return { opened: Number(row.opened), inProgress: Number(row.in_progress), solved: Number(row.solved),
-        skipped: Number(row.skipped), furthestScene: row.furthest_scene === null ? null : Number(row.furthest_scene) }
+        skipped: Number(row.skipped), furthestScene: adventure
+          ? row.opened ? Number(turns?.furthest || 0) : null
+          : row.furthest_scene === null ? null : Number(row.furthest_scene) }
     })
   }
   async studio(request: StudioRequest): Promise<StudioResult> {

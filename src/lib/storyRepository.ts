@@ -31,7 +31,7 @@ export type PlayerState = { current_scene: number; solved: boolean; skipped: boo
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
   listRetained(after: string | null, limit: number): Promise<StoredStory[]>
-  progress(storyId: string): Promise<SharedStoryProgress>
+  progress(storyId: string, adventure?: boolean): Promise<SharedStoryProgress>
   studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
@@ -110,7 +110,7 @@ export function storyRepository(): StoryRepository {
       if (!Array.isArray(data)) throw storyStorageError()
       return data as StoredStory[]
     },
-    async progress(storyId) {
+    async progress(storyId, adventure = false) {
       const sessions = () => db.from('shared_story_sessions')
       const [active, solved, skipped, furthest] = await Promise.all([
         sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', false).eq('skipped', false),
@@ -121,8 +121,24 @@ export function storyRepository(): StoryRepository {
       for (const result of [active, solved, skipped, furthest]) if (result.error) throw storyStorageError(result.error)
       const counts = [active.count, solved.count, skipped.count]
       if (counts.some(count => count === null || !Number.isSafeInteger(count) || count < 0) || !Array.isArray(furthest.data)) throw storyStorageError()
-      const scene = furthest.data.length ? furthest.data[0].current_scene : null
+      let scene = furthest.data.length ? furthest.data[0].current_scene : null
       if (scene !== null && (!Number.isSafeInteger(scene) || scene < 0)) throw storyStorageError()
+      if (adventure) {
+        const completed = new Map<string, number>()
+        for (let offset = 0; ; offset += 1000) {
+          const result = await db.from('muse_adventure_requests').select('player_hash,request_id')
+            .eq('story_id', storyId).eq('status', 'done')
+            .order('player_hash').order('request_id').range(offset, offset + 999)
+          if (result.error || !Array.isArray(result.data)) throw storyStorageError(result.error)
+          for (const row of result.data) {
+            if (typeof row.player_hash !== 'string') throw storyStorageError()
+            completed.set(row.player_hash, (completed.get(row.player_hash) || 0) + 1)
+          }
+          if (result.data.length < 1000) break
+        }
+        scene = scene === null ? null : 0
+        for (const count of completed.values()) scene = Math.max(scene ?? 0, count)
+      }
       return { opened: active.count! + solved.count! + skipped.count!, inProgress: active.count!, solved: solved.count!, skipped: skipped.count!, furthestScene: scene }
     },
     async studio(request) {

@@ -5,7 +5,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { generateSharedStory, sharedStoryProviderConfig } from '../../lib/sharedStoryGenerator'
 import { normalizeSharedAnswer, parseSharedStoryBrief, sharedStoryPlayerView, SharedStoryError } from '../../lib/sharedStory'
 import { storyDatabase as database, reserveStoryRequest as reserveRequest } from '../../lib/storyRequestLimits'
-import type { StoryRepository } from '../../lib/storyRepository'
+import type { StoryRepository, StoredStory } from '../../lib/storyRepository'
 import { requireCreatorAccess } from '../../lib/creatorAccess'
 import { adventureGlobalCap, adventureChoiceView, generateAdventureTurn, parseAdventureAction, type AdventureRequest } from '../../lib/sharedAdventure'
 import {
@@ -28,6 +28,13 @@ const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
 const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+
+async function storyProgress(db: StoryRepository, story: StoredStory) {
+  return {
+    ...await db.progress(story.id, Boolean(story.brief.adventure)),
+    sceneCount: story.brief.adventure ? null : story.content.scenes.length
+  }
+}
 
 function matches(secretValue: string, storedHash: string): boolean {
   const actual = Buffer.from(hash(secretValue), 'hex')
@@ -148,13 +155,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (body.after !== undefined && body.after !== null && (typeof body.after !== 'string' || !UUID.test(body.after))) {
         throw new SharedStoryError('The story collection page is invalid.')
       }
-      const page = await database().listRetained(body.after || null, 21)
-      const stories = page.slice(0, 20).map(story => ({
+      const db = database()
+      const page = await db.listRetained(body.after || null, 21)
+      const stories = await Promise.all(page.slice(0, 20).map(async story => ({
         recovered: true,
         ownerToken: `${story.id}.${recoveryKey(story, 'owner')}`,
         playToken: `${story.id}.${recoveryKey(story, 'play')}`,
-        brief: story.brief, content: story.content, expiresAt: publicStoryExpiry(story.expires_at)
-      }))
+        brief: story.brief, content: story.content, expiresAt: publicStoryExpiry(story.expires_at),
+        ...(body.includeProgress === true ? { progress: await storyProgress(db, story) } : {})
+      })))
       return res.status(200).json({ stories, next: page.length > 20 ? page[19].id : null })
     }
     if (action === 'create' || action === 'adventure' || action === 'studio-generate') requireProviderConsent(body)
@@ -236,7 +245,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).send(Buffer.from(audio))
     }
     if (action === 'progress') {
-      return res.status(200).json({ progress: await db.progress(id) })
+      return res.status(200).json({ progress: await storyProgress(db, story) })
     }
     if (action === 'manage') {
       if (story.brief.gift) await db.giftReady()

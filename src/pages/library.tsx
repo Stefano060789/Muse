@@ -1,12 +1,12 @@
 import Head from 'next/head'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadStoryLibrary, removeLibraryEntry, restoreLibraryCreatorStories, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { recipientShareDetails } from '../lib/sharedStorySharing'
 import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
-import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
+import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 
 export default function LibraryPage() {
   const [entries, setEntries] = useState<LibraryEntry[]>([])
@@ -17,27 +17,61 @@ export default function LibraryPage() {
   const [recovering, setRecovering] = useState(false)
   const [recoveryError, setRecoveryError] = useState('')
   const [recoveryNotice, setRecoveryNotice] = useState('')
-  const [nextPage, setNextPage] = useState<string | null>(null)
-  const recover = async (after: string | null = null) => {
-    if (recovering || !creatorCode.trim()) return
+  const [progressByStory, setProgressByStory] = useState<Record<string, SharedStoryProgress>>({})
+  const recoveryPending = useRef<Promise<Record<string, SharedStoryProgress>> | null>(null)
+  const creatorAccess = useRef<HTMLDetailsElement>(null)
+  const creatorInput = useRef<HTMLInputElement>(null)
+  const requestCreatorAccess = () => {
+    if (creatorAccess.current) creatorAccess.current.open = true
+    creatorInput.current?.focus()
+  }
+  const recover = (): Promise<Record<string, SharedStoryProgress>> => {
+    if (recoveryPending.current) return recoveryPending.current
     setRecovering(true); setRecoveryError(''); setRecoveryNotice('')
+    setProgressByStory({})
+    const request = recoverStories().finally(() => {
+      recoveryPending.current = null
+      setRecovering(false)
+    })
+    recoveryPending.current = request
+    return request
+  }
+  const recoverStories = async (): Promise<Record<string, SharedStoryProgress>> => {
     try {
-      const response = await fetch('/api/shared-story', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
-        body: JSON.stringify({ action: 'library', after })
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Could not load stories from the server.')
-      if (!Array.isArray(data.stories) || (data.next !== null && typeof data.next !== 'string')) throw new Error('The server returned an invalid story collection.')
-      restoreLibraryCreatorStories(data.stories)
-      setNextPage(data.next)
+      const stories: unknown[] = []
+      const progress: Record<string, SharedStoryProgress> = {}
+      const cursors = new Set<string>()
+      let after: string | null = null
+      do {
+        const response = await fetch('/api/shared-story', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+          body: JSON.stringify({ action: 'library', after, includeProgress: true })
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'Could not load story progress.')
+        if (!Array.isArray(data.stories) || (data.next !== null && typeof data.next !== 'string')) throw new Error('The server returned an invalid story collection.')
+        for (const story of data.stories) {
+          if (!story || typeof story.ownerToken !== 'string') throw new Error('The server returned an invalid story collection.')
+          progress[story.ownerToken.split('.')[0]] = parseSharedStoryProgress(story.progress)
+          stories.push(story)
+        }
+        after = data.next
+        if (after) {
+          if (cursors.has(after)) throw new Error('Could not finish loading stories. Try again.')
+          cursors.add(after)
+        }
+      } while (after)
+      restoreLibraryCreatorStories(stories)
+      setProgressByStory(progress)
       refresh()
-      setRecoveryNotice(data.stories.length
-        ? `Loaded ${data.stories.length} gift ${data.stories.length === 1 ? 'story' : 'stories'}.`
+      setRecoveryNotice(stories.length
+        ? ''
         : 'No saved gift stories found.')
+      return progress
     } catch (cause) {
       setRecoveryError(cause instanceof Error ? cause.message : 'Could not load stories from the server. Your saved entries were not removed.')
-    } finally { setRecovering(false) }
+      throw cause
+    }
   }
   const refresh = () => {
     const result = loadStoryLibrary()
@@ -62,15 +96,22 @@ export default function LibraryPage() {
     catch (error) { setError(error instanceof Error ? error.message : 'Could not reopen this story.') }
   }
   const loadProgress = async (ownerToken: string): Promise<SharedStoryProgress> => {
+    if (creatorCode.trim()) {
+      const progress = await recover()
+      const restored = progress[ownerToken.split('.')[0]]
+      if (restored) return restored
+    }
     const response = await fetch('/api/shared-story', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) },
       body: JSON.stringify({ action: 'progress', token: ownerToken })
     })
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Could not check completion. If creator access is required, enter your code above and try again.')
-    if (!data.progress) throw new Error('Recipient progress was not returned. Try checking again.')
-    return data.progress
+    if (!response.ok) {
+      if (response.status === 401) requestCreatorAccess()
+      throw new Error(data.error || 'Could not load progress. Enter Creator access and try again.')
+    }
+    return parseSharedStoryProgress(data.progress)
   }
   const personalEntries = entries.filter(entry => entry.kind === 'personal')
   const sharedEntries = entries.filter(entry => entry.kind === 'shared')
@@ -86,7 +127,7 @@ export default function LibraryPage() {
             <a href="#personal-stories-heading">Stories for me ({personalEntries.length})</a>
             <a href="#shared-stories-heading">Gift stories for others ({sharedEntries.length})</a>
           </nav>
-          <p role="note">This collection is saved in this browser. To restore retained gift stories on another device, use Creator access below. Keep this browser private.</p>
+          <p role="note">Saved in this browser. Creator access also finds your saved gift stories.</p>
           <details>
             <summary>Privacy and storage</summary>
             <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
@@ -129,21 +170,26 @@ export default function LibraryPage() {
           </section>}
           {ready && <section aria-labelledby="shared-stories-heading">
             <h2 id="shared-stories-heading">Gift stories for others</h2>
-            <details style={{ marginBottom: '1rem' }}>
+            <details ref={creatorAccess} style={{ marginBottom: '1rem' }}>
               <summary>Creator access</summary>
               <label>Creator access code
-                <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={recovering} onChange={event => { setCreatorCode(event.target.value); setNextPage(null); setRecoveryNotice(''); setRecoveryError('') }} style={{ display: 'block', width: '100%', maxWidth: 400, boxSizing: 'border-box' }} />
+                <input ref={creatorInput} type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={recovering} onChange={event => { setCreatorCode(event.target.value); setProgressByStory({}); setRecoveryNotice(''); setRecoveryError('') }} style={{ display: 'block', width: '100%', maxWidth: 400, boxSizing: 'border-box' }} />
               </label>
               <p>Admin access to all saved gift stories and private sender details. Code not saved.</p>
-              <button type="button" disabled={recovering || !creatorCode.trim()} onClick={() => void recover()}>{recovering ? 'Loading stories...' : 'Load stories from server'}</button>
-              {nextPage ? <button type="button" disabled={recovering} onClick={() => void recover(nextPage)}>Load more stories</button> : null}
               <details>
                 <summary>Recovery details</summary>
                 <p>Original links stay unchanged. Recovered links depend on this admin code. Deleted stories cannot be restored. No AI credits used.</p>
               </details>
-              {recoveryError ? <p role="alert">{recoveryError}</p> : null}
-              {recoveryNotice ? <p role="status">{recoveryNotice}</p> : null}
             </details>
+            <button type="button" className="atelier-button" disabled={recovering}
+              onClick={() => {
+                if (!creatorCode.trim()) { requestCreatorAccess(); return }
+                void recover().catch(() => { /* recoverStories displays the error below. */ })
+              }}>
+              {recovering ? 'Loading progress...' : 'View all story progress'}
+            </button>
+            {recoveryError ? <p role="alert">{recoveryError}</p> : null}
+            {recoveryNotice ? <p role="status">{recoveryNotice}</p> : null}
             {origin && recipientShareDetails(origin, '').localOnly && <p role="note">Local-only address: recipient links from this browser will not work on another device. Use a publicly reachable Muse address to share.</p>}
             {!sharedEntries.length && <p>No gift stories saved in this browser. <Link href="/shared#new">Create a gift story</Link>.</p>}
             {sharedEntries.map(entry => {
@@ -156,7 +202,8 @@ export default function LibraryPage() {
                     disabled={!entry.story.playToken} localOnly={recipient.localOnly} whatsappUrl={recipient.whatsappUrl}
                     previewContent={<GiftStoryPreview brief={entry.story.brief} content={entry.story.content} />} /> : null}
                   <button className="atelier-secondary" onClick={() => remove(entry)}>Remove story</button>
-                  <GiftProgress compact load={() => loadProgress(entry.story.ownerToken)} sceneCount={entry.story.content.scenes.length} adventure={Boolean(entry.story.brief.adventure)} />
+                  <GiftProgress compact snapshot={progressByStory[entry.story.ownerToken.split('.')[0]]}
+                    load={() => loadProgress(entry.story.ownerToken)} sceneCount={entry.story.content.scenes.length} adventure={Boolean(entry.story.brief.adventure)} />
                 </div>
               </article>
             })}

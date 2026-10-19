@@ -286,6 +286,8 @@ async function main() {
   const progressQueries = []
   const collectionQueries = []
   let collectionFailure = false
+  let adventureProgressFailure = false
+  const adventureProgressQueries = []
   let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
@@ -299,6 +301,18 @@ async function main() {
     const location = new URL(String(url))
     assert.equal(location.hostname, 'muse-test.supabase.co')
     const body = options?.body ? JSON.parse(options.body) : null
+    if (location.pathname === '/rest/v1/muse_adventure_requests') {
+      adventureProgressQueries.push(location)
+      assert.equal(location.searchParams.get('story_id'), `eq.${stored.id}`)
+      assert.equal(location.searchParams.get('status'), 'eq.done')
+      assert.equal(location.searchParams.get('select'), 'player_hash,request_id')
+      assert.equal(location.searchParams.get('order'), 'player_hash.asc,request_id.asc')
+      if (adventureProgressFailure) return json({ message: 'private adventure storage failure' }, 503)
+      const offset = Number(location.searchParams.get('offset'))
+      return json(offset === 0
+        ? Array.from({ length: 1000 }, (_, index) => ({ player_hash: `player-${Math.floor(index / 5)}`, request_id: `request-${index}` }))
+        : [{ player_hash: 'player-199', request_id: 'later-one' }, { player_hash: 'player-199', request_id: 'later-two' }])
+    }
     if (location.pathname === '/rest/v1/shared_story_sessions') {
       progressQueries.push(location)
       assert.equal(location.searchParams.get('story_id'), `eq.${stored.id}`)
@@ -428,7 +442,7 @@ async function main() {
     assert.equal(progressQueries.length, 0, 'Recipient cannot trigger the progress query')
     const result = await api({ action: 'progress', token: created.body.ownerToken })
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { progress: { opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1 } })
+    assert.deepEqual(result.body, { progress: { opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length } })
     assert.equal(progressQueries.length, 4)
     progressFailure = true
     const unavailable = await api({ action: 'progress', token: created.body.ownerToken })
@@ -437,6 +451,41 @@ async function main() {
     assert.equal(unavailable.body.progress, undefined, 'Unavailable storage must not look like zero playthroughs')
     progressFailure = false
     assert.equal(runtimeProviderCalls, before, 'Progress never calls the AI provider')
+  })
+  await check('one hosted collection request includes authoritative progress without creating playthroughs or AI calls', async () => {
+    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
+    process.env.MUSE_CREATOR_ACCESS_CODE = 'synthetic-combined-progress-code'
+    try {
+      const calls = runtimeProviderCalls
+      const result = await api({ action: 'library', includeProgress: true }, 'POST', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })
+      assert.equal(result.status, 200)
+      assert.deepEqual(result.body.stories[0].progress, {
+        opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length
+      })
+      assert.equal(runtimeProviderCalls, calls)
+    } finally {
+      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
+      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
+    }
+  })
+  await check('hosted live progress counts successful scenes per playthrough across all result pages, not charged attempts', async () => {
+    const previous = stored.brief
+    const calls = runtimeProviderCalls
+    stored.brief = { ...previous, adventure: { actionBudget: 12 } }
+    try {
+      const result = await api({ action: 'progress', token: created.body.ownerToken })
+      assert.equal(result.status, 200)
+      assert.equal(result.body.progress.furthestScene, 7, 'Seven generated scenes plus the opening, not sum across recipients')
+      assert.equal(result.body.progress.sceneCount, null, 'Live stories do not invent a fixed total')
+      assert.equal(adventureProgressQueries.length, 2)
+      assert.equal(adventureProgressQueries[1].searchParams.get('offset'), '1000')
+      adventureProgressFailure = true
+      const failed = await api({ action: 'progress', token: created.body.ownerToken })
+      assert.equal(failed.status, 503)
+      assert.equal(failed.body.progress, undefined)
+      assert.ok(!JSON.stringify(failed.body).includes('private adventure storage failure'))
+      assert.equal(runtimeProviderCalls, calls)
+    } finally { stored.brief = previous; adventureProgressFailure = false }
   })
   await check('recipient open, clues and wrong guesses never receive private data', async () => {
     const opened = await api({ action: 'open', token: created.body.playToken })

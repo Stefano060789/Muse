@@ -53,6 +53,7 @@ try {
     let cursor = 0, mounted = false, tick, clock = Date.parse('2026-10-15T00:00:00Z')
     const jsx = (type, props) => ({ type, props: props || {} })
     const react = {
+      useRef(initial) { const index = cursor++; return states[index] ||= { current: initial } },
       useState(initial) {
         const index = cursor++
         if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
@@ -77,7 +78,8 @@ try {
       module, exports: module.exports, window: browser, navigator: { clipboard },
       fetch: async (url, options) => {
         requests.push({ url, ...options, body: JSON.parse(options.body) })
-        return { ok: progressResponse.ok, json: async () => progressResponse.data }
+        const response = typeof progressResponse === 'function' ? progressResponse(JSON.parse(options.body)) : progressResponse
+        return { ok: response.ok, json: async () => response.data }
       },
       Date: class extends Date { static now() { return clock } },
       require(name) {
@@ -85,6 +87,7 @@ try {
         if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
         if (name === 'next/head' || name === 'next/link') return { __esModule: true, default: name === 'next/link' ? 'a' : 'head' }
         if (name === '../lib/sharedStorySharing') return sharing
+        if (name === '../lib/sharedStoryProgress') return require(path.join(output, 'sharedStoryProgress.js'))
         if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
         if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
@@ -301,7 +304,7 @@ try {
       assert.deepEqual(panel.props.previewContent.props.content, validatedStory.content)
       assert.ok(!JSON.stringify(panel.props).includes(story.ownerToken), 'Sharing receives only recipient-facing data, never owner access')
       assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
-      assert.ok(text.includes('restore retained gift stories on another device'))
+      assert.ok(text.includes('Creator access also finds your saved gift stories'))
       assert.ok(text.includes('independently of recipient completion'))
       assert.ok(text.includes('View story progress'))
       assert.ok(text.includes('private owner access; do not share them'))
@@ -334,27 +337,44 @@ try {
     const ui = mountLibrary([])
     const password = () => nodes(ui.render()).find(node => node.type === 'input' && node.props.type === 'password')
     try {
-      assert.equal(button(ui.render(), 'Load stories from server').props.disabled, true)
+      assert.equal(button(ui.render(), 'View all story progress').props.disabled, false)
+      button(ui.render(), 'View all story progress').props.onClick()
       assert.equal(ui.requests.length, 0)
       password().props.onChange({ target: { value: 'synthetic-creator-code' } })
       ui.setProgressResponse({ ok: false, data: { error: 'Access denied' } })
-      await button(ui.render(), 'Load stories from server').props.onClick()
+      await button(ui.render(), 'View all story progress').props.onClick()
       await new Promise(resolve => setImmediate(resolve))
-      assert.ok(textOf(ui.render()).includes('Access denied'))
-      ui.setProgressResponse({ ok: true, data: { stories: [shared('recovered.owner')], next: 'next-page' } })
-      button(ui.render(), 'Load stories from server').props.onClick()
+      assert.ok(textOf(ui.render()).includes('Access denied'), textOf(ui.render()))
+      const summary = { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 0, sceneCount: 1 }
+      ui.setProgressResponse(body => ({ ok: true, data: {
+        stories: [{ ...shared(body.after ? 'second.owner' : 'recovered.owner'), progress: summary }],
+        next: body.after ? null : 'next-page'
+      } }))
+      const beforeLoading = ui.requests.length
+      const checkAll = button(ui.render(), 'View all story progress').props.onClick
+      checkAll(); checkAll()
       await new Promise(resolve => setImmediate(resolve))
-      assert.equal(read(ui.store).library.entries.length, 1)
-      assert.ok(button(ui.render(), 'Load more stories'))
+      assert.equal(read(ui.store).library.entries.length, 2)
+      assert.ok(!textOf(ui.render()).includes('Load more stories'))
+      assert.equal(ui.requests.at(-1).body.after, 'next-page', 'All collection pages load automatically')
+      assert.equal(ui.requests.at(-1).body.includeProgress, true)
+      assert.equal(ui.requests.length - beforeLoading, 2, 'Repeated clicks share one paginated request')
+      assert.deepEqual(nodes(ui.render()).find(node => node.type === 'gift-progress').props.snapshot, summary)
       assert.equal(ui.requests.at(-1).body.action, 'library')
       assert.equal(ui.requests.at(-1).headers['x-muse-creator-code'], 'synthetic-creator-code')
       assert.ok(!JSON.stringify([...ui.store.values]).includes('synthetic-creator-code'))
-      assert.ok(textOf(ui.render()).includes('Loaded 1 gift story.'))
       ui.setProgressResponse({ ok: true, data: { stories: 'invalid', next: null } })
-      button(ui.render(), 'Load more stories').props.onClick()
+      button(ui.render(), 'View all story progress').props.onClick()
       await new Promise(resolve => setImmediate(resolve))
       assert.ok(textOf(ui.render()).includes('invalid story collection'))
-      assert.equal(read(ui.store).library.entries.length, 1)
+      assert.equal(read(ui.store).library.entries.length, 2)
+      ui.setProgressResponse(body => ({ ok: true, data: {
+        stories: [{ ...shared('recovered.refreshed'), recovered: true, progress: summary }], next: body.after || 'repeated'
+      } }))
+      button(ui.render(), 'View all story progress').props.onClick()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.ok(textOf(ui.render()).includes('Could not finish loading stories'))
+      assert.equal(read(ui.store).library.entries.length, 2, 'Failed pagination does not partially replace the library')
     } finally { ui.cleanup() }
   })
   check('personal cards keep progress simple and place journey allowances and storage details under disclosure', () => {
@@ -416,13 +436,17 @@ try {
       assert.ok(!JSON.stringify(ui.requests[0]).includes(story.playToken))
       const code = nodes(tree).find(node => node.type === 'input' && node.props.type === 'password')
       code.props.onChange({ target: { value: 'memory-only-code' } })
+      const liveSummary = { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 1, sceneCount: null }
+      ui.setProgressResponse({ ok: true, data: { stories: [{ ...story, progress: liveSummary }], next: null } })
       await progress().props.load()
+      assert.equal(ui.requests[1].body.action, 'library', 'One progress click automatically restores the server collection')
+      assert.equal(ui.requests[1].body.includeProgress, true)
       assert.equal(ui.requests[1].headers['x-muse-creator-code'], 'memory-only-code')
       assert.ok(!JSON.stringify([...ui.store.values]).includes('memory-only-code'))
       ui.setProgressResponse({ ok: false, data: { error: 'Creator access required.' } })
       await assert.rejects(progress().props.load(), /Creator access required/)
       ui.setProgressResponse({ ok: true, data: {} })
-      await assert.rejects(progress().props.load(), /progress was not returned/)
+      await assert.rejects(progress().props.load(), /invalid story collection/)
       assert.equal(read(ui.store).library.entries.length, 1, 'Failed checks do not erase the story')
       const beforeRemove = ui.requests.length
       button(ui.render(), 'Remove story').props.onClick()

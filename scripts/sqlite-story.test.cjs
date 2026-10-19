@@ -163,7 +163,7 @@ async function main() {
     const summary = async () => api({ action: 'progress', token: ownerToken })
     const empty = { opened: 0, inProgress: 0, solved: 0, skipped: 0, furthestScene: null }
     const callsBefore = providerCalls
-    assert.deepEqual((await summary()).body, { progress: empty })
+    assert.deepEqual((await summary()).body, { progress: { ...empty, sceneCount: content.scenes.length } })
     assert.equal((await api({ action: 'progress', token })).status, 404)
     const opened = await Promise.all(Array.from({ length: 3 }, () => api({ action: 'open', token })))
     const sessions = opened.map(result => result.body.sessionToken)
@@ -175,7 +175,7 @@ async function main() {
     assert.equal((await api({ action: 'skip', token, sessionToken: sessions[2], confirmSkip: true })).status, 200)
     await api({ action: 'open', token, sessionToken: sessions[0] })
     const expected = { opened: 3, inProgress: 1, solved: 1, skipped: 1, furthestScene: content.scenes.length - 1 }
-    assert.deepEqual((await summary()).body, { progress: expected })
+    assert.deepEqual((await summary()).body, { progress: { ...expected, sceneCount: content.scenes.length } })
     assert.deepEqual(await storyRepository().progress(fixture.id), expected, 'A fresh repository sees durable progress')
     const serialized = JSON.stringify((await summary()).body)
     for (const secret of [...sessions, brief.solution, brief.message, fixture.owner_hash, fixture.play_hash]) assert.ok(!serialized.includes(secret))
@@ -185,12 +185,52 @@ async function main() {
     delete process.env.MUSE_CREATOR_ACCESS_CODE
     const rotated = await api({ action: 'share', token: ownerToken })
     assert.equal(rotated.status, 200)
-    assert.deepEqual((await summary()).body.progress, expected, 'Rotation preserves historical counts')
+    assert.deepEqual((await summary()).body.progress, { ...expected, sceneCount: content.scenes.length }, 'Rotation preserves historical counts')
     assert.equal(providerCalls, callsBefore)
     inspect(db => db.prepare('UPDATE shared_stories SET expires_at = ? WHERE id = ?').run(new Date(now - 1000).toISOString(), fixture.id))
     assert.equal((await summary()).status, 404)
     await repo.delete(fixture.id)
     assert.equal((await summary()).status, 404)
+  })
+  await check('live progress counts generated scenes per recipient, excludes failed/pending actions and stays read-only', async () => {
+    const repo = storyRepository()
+    const fixture = { ...await repo.findUnexpired(id), id: randomUUID(), brief: { ...brief, adventure: { actionBudget: 12 } } }
+    await repo.insert(fixture)
+    const ownerToken = `${fixture.id}.${created.body.ownerToken.split('.')[1]}`
+    const token = `${fixture.id}.${created.body.playToken.split('.')[1]}`
+    const summary = () => api({ action: 'progress', token: ownerToken })
+    const calls = providerCalls
+    assert.equal((await summary()).body.progress.furthestScene, null)
+    const first = await api({ action: 'open', token })
+    const second = await api({ action: 'open', token })
+    assert.equal((await summary()).body.progress.furthestScene, 0, 'Opening is scene one before any action')
+    inspect(db => {
+      const insertSession = db.prepare('INSERT OR IGNORE INTO muse_adventure_sessions(story_id, player_hash) VALUES (?, ?)')
+      const insert = db.prepare('INSERT INTO muse_adventure_requests(story_id, player_hash, request_id, fingerprint, status, reserved_at, revision) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      for (const [session, statuses] of [[first.body.sessionToken, ['done', 'failed', 'done', 'pending']], [second.body.sessionToken, ['done']]]) {
+        insertSession.run(fixture.id, hash(session))
+        statuses.forEach((status, index) => insert.run(fixture.id, hash(session), randomUUID(), 'synthetic', status, now, index + 1))
+      }
+    })
+    const result = (await summary()).body.progress
+    assert.equal(result.sceneCount, null)
+    assert.equal(result.furthestScene, 2, 'Two successful generated scenes plus opening; do not sum recipients or count failures')
+    assert.equal(result.inProgress, 2)
+    assert.equal(result.solved, 0)
+    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
+    process.env.MUSE_CREATOR_ACCESS_CODE = 'synthetic-auto-progress-code'
+    try {
+      const combined = await api({ action: 'library', includeProgress: true }, handler, '127.0.0.1', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })
+      assert.equal(combined.status, 200)
+      assert.deepEqual(combined.body.stories.find(story => story.ownerToken.startsWith(fixture.id)).progress, result)
+      const { sceneCount, ...expected } = result
+      assert.deepEqual(await repo.progress(fixture.id, true), expected, 'Loading the collection does not mutate recipient progress')
+    } finally {
+      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
+      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
+    }
+    assert.equal(providerCalls, calls)
+    await repo.delete(fixture.id)
   })
   await check('30 guesses per session are durable and solved sessions do not consume more attempts', async () => {
     const opened = await api({ action: 'open', token: created.body.playToken })
@@ -372,7 +412,8 @@ async function main() {
       assert.equal(after.play_hash, before.play_hash)
       // Opening a recipient link is a real playthrough, but listing/recovery
       // itself must not create one.
-      assert.deepEqual((await api({ action: 'progress', token: restored.ownerToken }, handler, '127.0.0.1', auth)).body.progress, await storyRepository().progress(id))
+      assert.deepEqual((await api({ action: 'progress', token: restored.ownerToken }, handler, '127.0.0.1', auth)).body.progress,
+        { ...await storyRepository().progress(id), sceneCount: before.content.scenes.length })
       const { recoveryKey, matchesRecoveryKey } = require(path.join(output, 'lib', 'creatorRecovery.js'))
       assert.equal(matchesRecoveryKey(restored.playToken.split('.')[1], { ...before, play_hash: hash('rotated') }, 'play'), false)
       assert.notEqual(recoveryKey({ ...before, id: randomUUID() }, 'play'), restored.playToken.split('.')[1])

@@ -10,7 +10,7 @@ function flatten(node) {
   if (Array.isArray(node)) return node.flatMap(flatten)
   return typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [node]
 }
-function mount(load, adventure = false, compact = false) {
+function mount(load, adventure = false, compact = false, snapshot) {
   const slots = [], effects = [], cleanups = []
   let cursor = 0, tree
   const jsx = (type, props) => ({ type, props: props || {} })
@@ -26,7 +26,7 @@ function mount(load, adventure = false, compact = false) {
   const mod = { exports: {} }
   new Function('module', 'exports', 'require', source)(mod, mod.exports, id =>
     id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx, Fragment: 'fragment' } : require(id))
-  const render = () => { cursor = 0; tree = mod.exports.default({ load, adventure, compact, sceneCount: 3 }); return tree }
+  const render = () => { cursor = 0; tree = mod.exports.default({ load, adventure, compact, snapshot, sceneCount: 3 }); return tree }
   const flush = async () => { render(); effects.splice(0).forEach(effect => cleanups.push(effect())); await new Promise(resolve => setImmediate(resolve)); render() }
   const nodes = () => flatten(tree).filter(node => typeof node === 'object')
   return { flush, nodes, text: () => flatten(tree).filter(node => typeof node !== 'object').join(' '),
@@ -61,8 +61,18 @@ async function main() {
   await live.flush(); live.button().props.onClick(); await live.flush()
   assert.ok(!live.text().includes('Scene 2 of'), 'Live adventure turns are not measured as prepared scenes')
   assert.match(live.text(), /Finished/)
+  assert.match(live.text(), /2 scenes/)
   assert.ok(!live.text().includes('/3'), 'Unbounded live adventures do not show a misleading fraction')
   live.unmount()
+  const restored = mount(async () => { throw new Error('Should not refetch on render') }, false, true,
+    { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 1, sceneCount: 5 })
+  await restored.flush()
+  assert.match(restored.text(), /2\/5 ·  Not finished/, 'Automatically loaded progress uses the authoritative server scene total')
+  restored.unmount()
+  const liveOpening = mount(async () => ({ opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 0, sceneCount: null }), true)
+  await liveOpening.flush(); liveOpening.button().props.onClick(); await liveOpening.flush()
+  assert.match(liveOpening.text(), /1 scene ·  Not finished/)
+  liveOpening.unmount()
   const compact = mount(async () => summary, false, true)
   await compact.flush()
   assert.match(compact.text(), /View story progress/)

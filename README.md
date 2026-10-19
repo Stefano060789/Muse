@@ -56,12 +56,16 @@ information in a collapsed explanation, not repeated recording-ready copy.
 
 ### Simple start and app installation
 
-**Private-beta server recovery:** Saved stories has an explicit **Load stories
-from server** action under Creator access. The configured deployment-wide
+**Private-beta server recovery:** After entering Creator access, **View all story
+progress** finds server stories and displays their progress in one action.
+Individual **View story progress** buttons also refresh the server collection
+when a Creator code is entered; there is no separate server-loading step.
+The configured deployment-wide
 `MUSE_CREATOR_ACCESS_CODE` grants administrator access to all retained gifts,
 including private sender briefs; it is not a per-user account. Recovery is
-disabled without a valid configured code even in local development. Pages contain
-at most 20 stories and merge into the current browser without removing personal
+disabled without a valid configured code even in local development. Internal pages contain
+at most 20 stories; all pages load automatically and merge into the browser only
+after the entire collection and its progress validate, without removing personal
 stories or duplicating gifts. Original links, sessions, budgets and progress are
 unchanged; no AI call occurs. Recovery derives role-separated HMAC capabilities
 from the administrator code and current stored link hashes, without storing
@@ -86,7 +90,10 @@ removes this browser's entry and keeps recipient links working. Progress checks
 show **2/5 · Not finished**, **Finished** after the ending is unlocked, or
 **0/5 · Not finished** before opening. The fraction measures the furthest scene
 reached across browser playthroughs, not listening time. Live adventures have no
-fixed scene count and show only the finish status. Checks do not poll or generate
+fixed scene count and show **2 scenes · Not finished** instead. The live count
+includes the opening plus successfully generated scenes in the furthest
+playthrough; failed/pending attempts and other playthroughs do not inflate it.
+Scene totals come from the server rather than a stale browser copy. Checks do not poll or generate
 AI content. The optional
 creator access code is memory-only and is required when creator access is gated.
 Expired/deleted server stories may no longer have available progress.
