@@ -53,6 +53,11 @@ check('draft restore validates options without requiring a finished brief', () =
   assert.equal(drafts.parseGiftDraft(value).brief.adventure.choiceMode, 'suggested')
   value.brief.language = 'zh-CN'
   assert.equal(drafts.parseGiftDraft(value).brief.language, 'zh-CN')
+  assert.equal(drafts.parseGiftDraft(draft()).brief.answerInstruction, undefined)
+  value.brief.answerType = 'action'
+  value.brief.answerInstruction = 'At the old gate, describe how you would open it.'
+  assert.equal(drafts.parseGiftDraft(value).brief.answerType, 'action')
+  assert.equal(drafts.parseGiftDraft(value).brief.answerInstruction, value.brief.answerInstruction)
   for (const patch of [{ language: 'xx-YY' }, { durationMinutes: 99 }, { gift: { ...brief.gift, occasion: 'forged' } }, { adventure: { actionBudget: -1, choiceMode: 'free' } }, { solution: 'a'.repeat(201) }]) {
     assert.throws(() => drafts.parseGiftDraft({ ...draft(), brief: { ...brief, ...patch } }))
   }

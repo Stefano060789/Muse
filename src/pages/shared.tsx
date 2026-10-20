@@ -68,7 +68,7 @@ const cardStyle: CSSProperties = { padding: 'clamp(1rem, 4vw, 1.75rem)', border:
 const buttonStyle: CSSProperties = { padding: '0.8rem 1.1rem', minHeight: 48, borderRadius: 999, border: '1px solid #d8cdd6', background: 'transparent', color: '#202c42', cursor: 'pointer', fontSize: '1rem' }
 const primaryStyle: CSSProperties = { ...buttonStyle, background: '#202c42', borderColor: '#202c42', color: '#f7f3ed' }
 const DEFAULT_NARRATION = 'A warm, playful mystery told in the second person, with gentle suspense.'
-const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
+const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', answerType: 'phrase', answerInstruction: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
 const idleUpload: UploadState = { phase: 'idle', progress: 0 }
 const mediaLabel = (kind: SharedMediaKind) => kind === 'video' ? 'video' : 'photo'
 const hasGiftDraftWriting = (brief: SharedStoryBrief) =>
@@ -944,7 +944,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | 'answerType' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
@@ -1146,8 +1146,9 @@ export default function SharedStoryPage() {
                     ))}
                   </details>
                 ) : null}
-                <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
-                  <label style={{ fontWeight: 700 }}>{recipientText.answer}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
+                {(player.adventure || player.sceneIndex + 1 === player.sceneCount) ? <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
+                  {player.answerInstruction ? <p role="note">{player.answerInstruction}</p> : null}
+                  <label style={{ fontWeight: 700 }}>{player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the final action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !recipientDraft.ready || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
@@ -1155,7 +1156,7 @@ export default function SharedStoryPage() {
                   </div>
                   <p>{recipientText.reviewGuess}</p>
                   {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
-                </form>
+                </form> : null}
               </>
             )}
             {!player.solved && !player.skipped ? <details style={cardStyle}>
@@ -1192,6 +1193,16 @@ export default function SharedStoryPage() {
             <p>Private creator preview</p>
             {creator.brief.romance ? <p>{romanceCopy().title(creator.brief.romance)}. Recipients see a content notice and choose whether to open before seeing any story text.</p> : null}
             <h1>{creator.content.title}</h1>
+            <section className="atelier-card" aria-label="Story ready to share">
+              <h2>Your gift story is ready</h2>
+              <p>Review the clues, then share the recipient link when you&apos;re ready.</p>
+              <button type="button" className="atelier-button" onClick={() => {
+                const shareSection = document.getElementById('gift-story-share')
+                if (!shareSection) return
+                shareSection.closest('details')?.setAttribute('open', '')
+                shareSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}>Review and share</button>
+            </section>
             <p>{creator.content.description}</p>
             {creator.content.scenes.map((scene, index) => (
               <article key={index} style={cardStyle} aria-label={`Story scene ${index + 1}`}>
@@ -1237,10 +1248,12 @@ export default function SharedStoryPage() {
               </details>
             ))}
             <details style={cardStyle}>
-              <summary>Private answer and reveal</summary>
+              <summary>Private ending details</summary>
+              <p><strong>Ending action:</strong> {creator.brief.answerType === 'word' ? 'Say a word aloud' : creator.brief.answerType === 'action' ? 'Describe a final action' : 'Say a phrase aloud'}</p>
+              {creator.brief.answerInstruction ? <p><strong>Where/how:</strong> {creator.brief.answerInstruction}</p> : null}
               <p><strong>Answer:</strong> {creator.brief.solution}</p>
               {(creator.brief.alternativeAnswers ?? []).length > 0 ? (
-                <><h3>Approved alternative answers</h3><ul>{creator.brief.alternativeAnswers!.map((answer, index) => <li key={index}>{answer}</li>)}</ul></>
+                <><h3>Other valid answers</h3><ul>{creator.brief.alternativeAnswers!.map((answer, index) => <li key={index}>{answer}</li>)}</ul></>
               ) : null}
               {(creator.brief.assistanceHints ?? []).length > 0 ? (
                 <><h3>Hints, in reveal order</h3><ol>{creator.brief.assistanceHints!.map((hint, index) => <li key={index}>{hint}</li>)}</ol><p>Shown only when requested.</p></>
@@ -1299,10 +1312,10 @@ export default function SharedStoryPage() {
                 <p><small>{new Date(reply.createdAt).toLocaleString()}</small></p>
               </article>)}
             </details> : null}
-            {!creator.brief.message && !ownerMedia ? <article style={cardStyle}>
+            {!creator.brief.message && !ownerMedia ? <article id="gift-story-share" style={cardStyle}>
               <h2>Share story</h2>
               <p role="status">Attach your photo or video above to unlock sharing.</p>
-            </article> : <article style={cardStyle}>
+            </article> : <article id="gift-story-share" style={cardStyle}>
               <h2>Share story</h2>
               <PreSendCheck key={creator.ownerToken} story={creator} hasMedia={Boolean(ownerMedia)} hasVoice={Boolean(ownerVoice)} uploadPending={Boolean(mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading')} onReady={markSendReady} />
               {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && storyHasAccess(creator.expiresAt) ? <>
@@ -1472,17 +1485,37 @@ export default function SharedStoryPage() {
               <details style={cardStyle}>
                 <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Personalize the gift story (optional)</summary>
                 {!brief.gift ? <p>Choose an occasion above to add a personal opening and optional replies.</p> : <>
-                  <label htmlFor="gift-dedication" style={{ display: 'block', marginTop: '1rem', fontWeight: 700 }}>A note on the cover
-                    <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={2} style={fieldStyle} placeholder="A little adventure, just for you." disabled={busy} onChange={event => { updateBrief(current => ({ ...current, gift: { ...current.gift!, dedication: event.target.value } })); setAiConsent(false) }} />
+                  <label htmlFor="gift-dedication" style={{ display: 'block', marginTop: '1rem', fontWeight: 700 }}>A personal note from you
+                    <textarea id="gift-dedication" value={brief.gift.dedication} maxLength={240} rows={3} style={fieldStyle} placeholder="I made this story with Muse so we can share an adventure and feel close, even from far away." disabled={busy} onChange={event => { updateBrief(current => ({ ...current, gift: { ...current.gift!, dedication: event.target.value } })); setAiConsent(false) }} />
                   </label>
-                  <p>Visible before solving. Keep the secret answer and final surprise out of this note.</p>
+                  <p>Shown on the cover before the story. Share why you made it or how you created it. Keep the answer and surprise private.</p>
                   <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={brief.gift.allowReply} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, gift: { ...current.gift!, allowReply: event.target.checked } })); setAiConsent(false) }} /> Let them send a private thank-you after the reveal</label>
                 </>}
                 <GiftVoiceRecorder file={voiceFile} onChange={file => { setVoiceFile(file); setAiConsent(false) }} disabled={busy} onActiveChange={setVoiceRecording} beforeRecord={() => { narrator.stop(); interaction.stopRecording() }} />
               </details>
               <div style={cardStyle}>
                 <h2>The secret answer</h2>
-                {textField('solution', 'Secret answer', 'The exact answer, e.g. behind the blue notebook', 200)}
+                <label style={{ display: 'block', fontWeight: 700 }}>What unlocks the ending?
+                  <select aria-label="Final answer type" value={brief.answerType ?? 'phrase'} disabled={busy} onChange={event => {
+                    const answerType = event.target.value === 'word' || event.target.value === 'action' ? event.target.value : 'phrase'
+                    updateBrief(current => ({ ...current, answerType }))
+                    setAiConsent(false)
+                  }} style={fieldStyle}>
+                    <option value="word">Say a word aloud</option>
+                    <option value="phrase">Say a phrase aloud</option>
+                    <option value="action">Describe a final action</option>
+                  </select>
+                </label>
+                {textField('solution',
+                  brief.answerType === 'word' ? 'Secret word' : brief.answerType === 'action' ? 'Secret final action' : 'Secret phrase',
+                  brief.answerType === 'word' ? 'One word, e.g. starlight' : brief.answerType === 'action' ? 'e.g. place the key beneath the blue lantern' : 'e.g. open the door beneath the blue lantern',
+                  200)}
+                {textField('answerInstruction', 'Where or how should they say or do it?', 'At the observatory door, speak the word to open the hidden room.', 500, true)}
+                <p>The final scene will guide them to this moment. Spoken answers can be dictated; the app checks the words, not whether a physical action was performed.</p>
+                <section aria-labelledby="accepted-answers-heading" style={{ marginBlock: '1rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 12 }}>
+                  <h3 id="accepted-answers-heading" style={{ marginTop: 0 }}>Other valid answers (optional)</h3>
+                  {assistanceField('alternativeAnswers', 'Accepted alternatives', 'Each entry also unlocks the same ending. One per line; up to 5.', 3, 200)}
+                </section>
                 <p>Case, punctuation and spacing ignored. Add alternatives below.</p>
               </div>
               <div style={cardStyle}>
@@ -1506,10 +1539,9 @@ export default function SharedStoryPage() {
                 <p>One file: JPEG/PNG/WebP up to {formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)}; MP4/WebM up to {formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES)}. Uploaded privately after preparation, never sent to AI. No video autoplay.</p>
               </div>
               <details style={cardStyle}>
-                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Style, alternative answers and hints</summary>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Style and hints</summary>
                 <div style={{ marginTop: '1rem' }}>
                   {textField('narration', 'Narration style', DEFAULT_NARRATION, 600, true)}
-                  {assistanceField('alternativeAnswers', 'Accepted alternative answers', 'These also unlock the reveal.', 5, 200)}
                   {assistanceField('assistanceHints', 'Hints', 'Gentle to strong. Shown on request; no scene advance or guesses used.', 3, 600)}
                 </div>
               </details>

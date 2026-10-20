@@ -60,7 +60,17 @@ async function main() {
   }
 
   await check('brief preserves the creator setting, recipient hints and private payoff', () => {
-    assert.deepEqual(parseSharedStoryBrief(brief), { ...brief, assistanceHints: [], alternativeAnswers: [] })
+    assert.deepEqual(parseSharedStoryBrief(brief), { ...brief, answerType: 'phrase', assistanceHints: [], alternativeAnswers: [] })
+  })
+  await check('final answer types and public directions validate and appear only at the ending', () => {
+    const directed = parseSharedStoryBrief({ ...brief, answerType: 'word', solution: 'starlight', alternativeAnswers: ['moonbeam'], answerInstruction: 'At the observatory door, say it aloud.' })
+    assert.equal(directed.answerType, 'word')
+    assert.equal(directed.answerInstruction, 'At the observatory door, say it aloud.')
+    assert.throws(() => parseSharedStoryBrief({ ...brief, answerType: 'word' }), /one word/)
+    assert.throws(() => parseSharedStoryBrief({ ...brief, solution: 'starlight', answerInstruction: 'Say starlight aloud.' }), /must not reveal/)
+    assert.equal(sharedStoryPlayerView(directed, content, { current_scene: 0, solved: false }).answerInstruction, undefined)
+    assert.equal(sharedStoryPlayerView(directed, content, { current_scene: content.scenes.length - 1, solved: false }).answerInstruction, directed.answerInstruction)
+    assert.equal(sharedStoryPlayerView({ ...directed, answerType: 'action' }, content, { current_scene: 0, solved: false }).answerType, 'action')
   })
   await check('optional puzzle help validates bounded creator-only lists', () => {
     const assistanceHints = ['Look beneath the paper cover.', 'Remember the colour of the sea.']
@@ -107,6 +117,20 @@ async function main() {
     assert.notEqual(normalizeSharedAnswer(`not ${brief.solution}`), normalizeSharedAnswer(brief.solution))
     assert.notEqual(normalizeSharedAnswer('notebook'), normalizeSharedAnswer(brief.solution))
     assert.equal(normalizeSharedAnswer('Café — étoile'), 'café étoile')
+  })
+  await check('generator directions explain final spoken/action challenge and accepted alternatives', async () => {
+    global.fetch = providerMock
+    process.env.LLM_PROVIDER = 'OPENAI'
+    process.env.OPENAI_API_KEY = 'test-key'
+    await generateSharedStory({
+      ...brief, answerType: 'action', answerInstruction: 'At the old gate, describe how you would open it.',
+      alternativeAnswers: ['open the moon door']
+    })
+    assert.match(providerRequest.messages[0].content, /specific action/)
+    assert.match(providerRequest.messages[0].content, /cannot verify physical actions/)
+    assert.match(providerRequest.messages[0].content, /Final-scene direction/)
+    assert.match(providerRequest.messages[0].content, /exact creator-approved equivalents/)
+    assert.deepEqual(JSON.parse(providerRequest.messages[1].content).alternativeAnswers, ['open the moon door'])
   })
   await check('unsolved recipient projection omits the answer, brief, hints and message', () => {
     const view = sharedStoryPlayerView(brief, content, { current_scene: 1, solved: false })

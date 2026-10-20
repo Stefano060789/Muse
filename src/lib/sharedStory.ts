@@ -12,6 +12,7 @@ export type SharedStoryGift = {
   allowReply: boolean
 }
 
+export type SharedStoryAnswerType = 'word' | 'phrase' | 'action'
 export type SharedStoryBrief = {
   romance?: StoryRomance
   language?: StoryLanguageCode
@@ -22,6 +23,8 @@ export type SharedStoryBrief = {
   recipientHints: string
   goal: string
   solution: string
+  answerType?: SharedStoryAnswerType
+  answerInstruction?: string
   message: string
   durationMinutes: number
   assistanceHints?: string[]
@@ -58,6 +61,8 @@ export type SharedStoryPlayer = NarrationMetadata & {
   feedback?: string
   message?: string
   gift?: SharedStoryGift
+  answerType: SharedStoryAnswerType
+  answerInstruction?: string
   media?: { kind: SharedMediaKind; mime: SharedMediaMime }
   voice?: { mime: 'audio/wav'; size: number }
   adventure?: import('./sharedAdventure').AdventureView
@@ -97,6 +102,11 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
   if (!SHARED_STORY_DURATIONS.some((duration) => duration === input.durationMinutes)) {
     throw new SharedStoryError('Choose a duration of 5, 10, 15, or 20 minutes.')
   }
+  const answerType = input.answerType === undefined ? 'phrase' : input.answerType
+  if (!['word', 'phrase', 'action'].includes(String(answerType))) {
+    throw new SharedStoryError('Choose whether the recipient should say a word, say a phrase, or describe an action.')
+  }
+  const answerInstruction = input.answerInstruction === undefined ? '' : text(input.answerInstruction, 'Final-scene instruction', 500, true)
   const brief = {
     ...(romance ? { romance } : {}),
     ...(language ? { language } : {}),
@@ -107,6 +117,8 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     recipientHints: text(input.recipientHints, 'Personal hints', 1500, true),
     goal: text(input.goal, 'What the recipient needs to find or solve', 600),
     solution: text(input.solution, 'Secret answer', 200),
+    answerType: answerType as SharedStoryAnswerType,
+    ...(answerInstruction ? { answerInstruction } : {}),
     message: options.allowEmptyMessage && typeof input.message === 'string' && !input.message.trim() ? '' : text(input.message, 'Final message', 2000),
     durationMinutes: Number(input.durationMinutes),
     assistanceHints: privateList(input.assistanceHints, 'Assistance hints', 3, 600),
@@ -152,6 +164,18 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
   }
   if (!normalizeSharedAnswer(brief.solution) || (brief.message && !normalizeSharedAnswer(brief.message))) {
     throw new SharedStoryError('The answer and message must contain letters or numbers.')
+  }
+  const acceptedAnswers = [brief.solution, ...brief.alternativeAnswers]
+  if (brief.answerType === 'word' && acceptedAnswers.some(answer => normalizeSharedAnswer(answer).split(' ').length !== 1)) {
+    throw new SharedStoryError('A word answer and each accepted alternative must contain one word. Choose phrase for longer answers.')
+  }
+  if (brief.answerInstruction) {
+    const instruction = normalizeSharedAnswer(brief.answerInstruction)
+    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints]
+      .map(normalizeSharedAnswer).filter(Boolean)
+    if (privateValues.some(value => (` ${instruction} `).includes(` ${value} `))) {
+      throw new SharedStoryError('The final-scene instruction must not reveal the answer, message, or private hints.')
+    }
   }
   if (brief.gift?.dedication) {
     const dedication = normalizeSharedAnswer(brief.gift.dedication)
@@ -262,6 +286,8 @@ export function sharedStoryPlayerView(
     hintsRemaining: hints.length - revealed,
     ...(localizedFeedback ? { feedback: localizedFeedback } : {}),
     ...(brief.gift ? { gift: brief.gift } : {}),
+    answerType: brief.answerType ?? 'phrase',
+    ...(brief.answerInstruction && sceneIndex === content.scenes.length - 1 ? { answerInstruction: brief.answerInstruction } : {}),
     ...((state.solved || state.skipped) && brief.message ? { message: brief.message } : {}),
     ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {}),
     ...((state.solved || state.skipped) && voice ? { voice: { mime: voice.mime, size: voice.size } } : {})
