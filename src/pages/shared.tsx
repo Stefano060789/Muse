@@ -312,6 +312,21 @@ export default function SharedStoryPage() {
     else setAlternativeAnswersText(value)
     persistGiftDraftNow(current.brief, assistance, alternatives)
   }
+  const openRecipientStory = async (token: string, savedSession: string | null, romanceConfirmed = false) => {
+    const sessionKey = `muse-shared-player:${token}`
+    const openRequest = (sessionToken?: string) => request<OpenResponse>({
+      action: 'open', token, ...(sessionToken ? { sessionToken } : {}), ...(romanceConfirmed ? { romanceConfirmed: true } : {})
+    })
+    try {
+      return await openRequest(savedSession ?? undefined)
+    } catch (error) {
+      if (!savedSession || !(error instanceof Error) || error.message !== 'Player session is invalid. Reopen the story link.') throw error
+      window.localStorage.removeItem(sessionKey)
+      const result = await openRequest()
+      setNotice('Your saved player session could not be restored. A new session has started; earlier progress may not be available.')
+      return result
+    }
+  }
   useEffect(() => { setRomanceConfirmed(false) }, [brief])
   useEffect(() => { setTitleDraft(creator?.content.title ?? '') }, [creator?.ownerToken, creator?.content.title])
   useEffect(() => {
@@ -336,7 +351,7 @@ export default function SharedStoryPage() {
           } catch {
             setNotice('This browser cannot save progress. You can play now, but reopening the link will start a new session.')
           }
-          const result = await request<OpenResponse>({ action: 'open', token: recipientToken, ...(savedSession ? { sessionToken: savedSession } : {}) })
+          const result = await openRecipientStory(recipientToken, savedSession)
           if (!active) return
           if ('romanceNotice' in result) {
             setRomanceNotice(result.romanceNotice)
@@ -485,9 +500,8 @@ export default function SharedStoryPage() {
       try { savedSession = window.localStorage.getItem(`muse-shared-player:${playToken}`) } catch {
         setNotice('This browser cannot save progress. Reopening will require a new opt-in and may start a new session.')
       }
-      const result = await request<PlayerResponse>({
-        action: 'open', token: playToken, romanceConfirmed: true, ...(savedSession ? { sessionToken: savedSession } : {})
-      })
+      const result = await openRecipientStory(playToken, savedSession, true)
+      if ('romanceNotice' in result) throw new Error('Confirm you are 18 or older and choose to open this romance story before continuing.')
       setRomanceAccepted(true)
       setPlayer(result.player)
       setSessionToken(result.sessionToken)

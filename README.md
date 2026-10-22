@@ -1005,7 +1005,9 @@ Copy the **recipient link**, or use **Share on WhatsApp** on a reachable
 hosted installation. Supported browsers also offer **Share with another app**
 through the device share sheet. Creators can choose **Open recipient story** to open the play link directly
 in a new tab with one click. This retains this browser's saved player progress;
-use a private window to test a fresh recipient session.
+use a private window to test a fresh recipient session. If the saved session
+cannot be restored, Muse starts a new one and explains that earlier progress
+may be unavailable; clearing site data also removes the saved session.
 Choose the contact and confirm sending in
 that app; Muse does not automatically send messages. Share payloads include
 only a generic invitation and the recipient capability link, not the

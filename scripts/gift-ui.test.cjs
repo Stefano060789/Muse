@@ -118,6 +118,12 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const fetchMock = async (_url, options) => {
     const request = JSON.parse(options.body)
     requests.push(request)
+    if (request.action === 'open' && player?.romance && request.romanceConfirmed !== true) {
+      return { ok: true, json: async () => ({ romanceNotice: { romance: player.romance, language: player.language } }) }
+    }
+    if (request.action === 'open' && failures.invalidSavedSession && failures.invalidSavedSession === request.sessionToken) {
+      return { ok: false, json: async () => ({ error: 'Player session is invalid. Reopen the story link.' }) }
+    }
     if (request.action === 'open' && failures.open) return { ok: false, json: async () => ({ error: 'Progress temporarily unavailable' }) }
     if (request.action === 'studio-status' || request.action === 'studio-generate') return { ok: true, json: async () => ({ studio: {
       available: true, reason: null, scenes: request.action === 'studio-generate' ? [{ sceneIndex: request.sceneIndex, status: 'ready' }] : []
@@ -131,9 +137,6 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (request.action === 'progress') return { ok: true, json: async () => ({ progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } }) }
     if (request.action === 'voice-start') return { ok: true, json: async () => ({ uploadId: 'test-upload', upload: { method: 'PUT', url: '/api/upload', headers: {} } }) }
     if (request.action === 'voice-finish') return { ok: true, json: async () => ({ voice: { mime: 'audio/wav', size: 32044 } }) }
-    if (request.action === 'open' && player?.romance && request.romanceConfirmed !== true) {
-      return { ok: true, json: async () => ({ romanceNotice: { romance: player.romance, language: player.language } }) }
-    }
     return { ok: true, json: async () => ({ player, sessionToken: 'c'.repeat(64) }) }
   }
   const result = { exports: {} }
@@ -317,6 +320,16 @@ async function main() {
   assert.ok(declined.nodes().some(node => node.props.role === 'status' && label(node) === romanceText.declined))
   const reopened = await mount('#play=romance-fixture', romanticPlayer)
   assert.equal(reopened.button(romanceText.open).props.disabled, true, 'Consent not restored on reopening')
+  const expiredSession = 'd'.repeat(64)
+  const savedPlayerSession = new Map([['muse-shared-player:resume-fixture', expiredSession]])
+  const resumed = await mount('#play=resume-fixture', romanticPlayer, null, { invalidSavedSession: expiredSession }, savedPlayerSession)
+  resumed.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+  await resumed.flush()
+  await resumed.click(romanceText.open)
+  await resumed.flush()
+  assert.deepEqual(resumed.requests.filter(request => request.action === 'open').map(request => request.sessionToken), [expiredSession, expiredSession, undefined])
+  assert.equal(savedPlayerSession.get('muse-shared-player:resume-fixture'), 'c'.repeat(64), 'Recovered session is persisted for the next visit')
+  assert.ok(resumed.nodes().some(node => node.props.role === 'status' && label(node).includes('earlier progress may not be available')))
   console.log('PASS romance gates even cover/narration, requires fresh explicit opt-in and declines without another request')
   const studioPlayer = await mount('#play=studio-fixture', { ...player, solved: false, romance: 'sweet' })
   studioPlayer.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
