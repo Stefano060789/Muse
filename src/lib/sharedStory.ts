@@ -12,7 +12,7 @@ export type SharedStoryGift = {
   allowReply: boolean
 }
 
-export type SharedStoryAnswerType = 'word' | 'phrase' | 'action'
+export type SharedStoryAnswerType = 'clue' | 'word' | 'phrase' | 'action'
 export type SharedStoryBrief = {
   romance?: StoryRomance
   language?: StoryLanguageCode
@@ -103,8 +103,8 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     throw new SharedStoryError('Choose a duration of 5, 10, 15, or 20 minutes.')
   }
   const answerType = input.answerType === undefined ? 'phrase' : input.answerType
-  if (!['word', 'phrase', 'action'].includes(String(answerType))) {
-    throw new SharedStoryError('Choose whether the recipient should say a word, say a phrase, or describe an action.')
+  if (!['clue', 'word', 'phrase', 'action'].includes(String(answerType))) {
+    throw new SharedStoryError('Choose whether the recipient should find a clue, say a word or phrase, or describe an action.')
   }
   const answerInstruction = input.answerInstruction === undefined ? '' : text(input.answerInstruction, 'Final-scene instruction', 500, true)
   const brief = {

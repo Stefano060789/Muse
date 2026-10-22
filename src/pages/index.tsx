@@ -80,6 +80,9 @@ export default function Home() {
             </section>}
             {libraryError && <p role="alert">{libraryError} Your saved stories have not been changed.</p>}
             {continueError && <p role="alert">{continueError}</p>}
+            <Link href="/myself" className="atelier-button atelier-secondary" style={{ display: 'flex', width: '100%', boxSizing: 'border-box', marginTop: '1.5rem' }}>
+              Myself
+            </Link>
             <div className="atelier-actions">
               <Link href="/story?new=1" className="atelier-button">Create a story</Link>
               <Link href="/shared#new" className="atelier-button atelier-secondary">Create a gift story</Link>

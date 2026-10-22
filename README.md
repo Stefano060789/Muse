@@ -80,10 +80,12 @@ The same primary menu appears across Muse: **Home**, **Myself** (`/myself`), **C
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
 Saved stories groups **Stories for me** and **Gift stories for others**, including
-private owner access. Gift-story cards offer **Share gift story**,
+private owner access. Gift-story cards offer **Share**,
 **Remove story**, and **View story progress**. The sharing panel groups native
 device sharing where supported, recipient-link copying and printable QR codes.
 Its local recipient-facing preview never opens a playthrough or records progress.
+Use the device share sheet for available apps such as WhatsApp or Instagram;
+otherwise copy the recipient link and paste it into a message or post.
 Local-only addresses cannot be externally shared or printed as QR codes.
 Removal only
 removes this browser's entry and keeps recipient links working. Progress checks
@@ -148,6 +150,8 @@ Pending uploads, missing reveals and expired stories block sending. The private
 management link remains accessible independently of the checklist. After a
 reveal, recipients have a quiet **Make a story for someone** link that starts a
 blank creation flow without copying the recipient capability or surprise.
+After preparation, owners can edit and save the proposed title; title updates
+are stored with the story for both the creator and recipient.
 
 ### Story languages
 
@@ -162,6 +166,8 @@ restoring a brief preserves its explicit language. No new database migration
 is needed because language is saved inside existing JSON records.
 
 Browser narration/dictation require matching device voice/language support.
+If microphone access is blocked, allow it for the site in browser permissions
+and device privacy settings, reload, and try again; typing remains available.
 These language choices are not a claim of professionally reviewed translations
 or provider story quality. Real multilingual user testing remains a launch gate.
 Run `npm run test:onboarding` for sample, pre-send and installation checks;
@@ -693,11 +699,16 @@ upgrades its schema locally. No production migration is run by the application.
 
 ### Final reveal attachments
 
-The creator form has four steps (who, story and duration, secret answer, final reveal)
+The creator form has three steps (who, story and duration, ending and final reveal)
 with narration style, alternative answers, hints and adventure
 mode chosen visibly with the story settings; narration and private puzzle help
 are under **Advanced options** (defaults: warm playful narration, 5 minutes,
 classic mystery). The final reveal is a message, one photo/video, or both.
+Ending choices are visible cards: find and identify a clue, describe an action,
+or say a word or phrase. Clue/action answers are checked against the creator's
+answer and approved alternatives; Muse can check the text but cannot verify
+that anyone physically performed an action. After the story is prepared, its
+title can be edited without regenerating the story.
 
 - Accepted: one JPEG, PNG or WebP photo up to 5 MB, or one MP4 or WebM
   video up to 20 MB, chosen directly from the device. The browser checks the
@@ -904,13 +915,15 @@ Automatic voice selection
 stays stable across moods, respects the story locale, and prefers voices labelled
 natural/neural/enhanced/premium, then the device default and gentle fallbacks.
 Voice names are hints, not a guarantee of audio quality. Manual voice choices
-take precedence. Preview the selected voice or use **Follow story with recommended
-voice** to reset style and voice while keeping the selected language.
+take precedence. The recommended voice favors natural/enhanced matches and
+known preferred voices instead of automatically trusting a device's default.
+Preview another voice, or use **Use best available voice for each story** to
+clear a manual selection while keeping the selected language.
 Existing saved choices, including the previous Warm default, remain intact.
 
-The default **Follow scene** soundscape detects simple rain, wind,
-water and crowd/cafe cues in the text currently being spoken (English, German and Italian
-keywords); it does not inspect private answers, future scenes or creator briefs.
+Immersive pacing and the default **Follow scene** soundscape are enabled for
+new settings. Auto detects simple rain, wind, water, outdoor and crowd/cafe cues
+in the text currently being spoken (English, German and Italian keywords); it does not inspect private answers, future scenes or creator briefs.
 Unmatched scenes have no background sound. These are local Web Audio synthesis,
 not realistic recorded crowds, music, downloaded assets or paid AI sound effects.
 The crowd option is an abstract filtered murmur with no intelligible voices.

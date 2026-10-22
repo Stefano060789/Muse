@@ -258,6 +258,13 @@ export class SqliteStoryRepository implements StoryRepository {
     })
   }
 
+  async updateContent(id: string, content: StoredStory['content']) {
+    this.transaction(db => {
+      const result = db.prepare('UPDATE shared_stories SET content = ? WHERE id = ?').run(JSON.stringify(content), id)
+      if (!Number(result.changes)) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+    })
+  }
+
   async listRetained(after: string | null, limit: number) {
     return this.transaction(db => {
       const rows = db.prepare('SELECT * FROM shared_stories WHERE (? IS NULL OR id > ?) ORDER BY id LIMIT ?').all(after, after, limit)

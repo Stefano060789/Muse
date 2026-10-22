@@ -184,6 +184,7 @@ export default function SharedStoryPage() {
   const [assistanceHintsText, setAssistanceHintsText] = useState('')
   const [alternativeAnswersText, setAlternativeAnswersText] = useState('')
   const [creator, setCreator] = useState<CreatorStory | null>(null)
+  const [titleDraft, setTitleDraft] = useState('')
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
@@ -312,6 +313,7 @@ export default function SharedStoryPage() {
     persistGiftDraftNow(current.brief, assistance, alternatives)
   }
   useEffect(() => { setRomanceConfirmed(false) }, [brief])
+  useEffect(() => { setTitleDraft(creator?.content.title ?? '') }, [creator?.ownerToken, creator?.content.title])
   useEffect(() => {
     interaction.cancelRecording()
   }, [player?.language, brief.language])
@@ -911,9 +913,13 @@ export default function SharedStoryPage() {
     }
   }
 
-  const creatorAction = async (action: 'share' | 'delete') => {
+  const creatorAction = async (action: 'share' | 'title' | 'delete') => {
     if (!creator) return
     if (action === 'share' && !confirmShareReady()) return
+    if (action === 'title' && (!titleDraft.trim() || titleDraft.trim().length > 120)) {
+      setError('The title must be between 1 and 120 characters.')
+      return
+    }
     setBusy(true)
     setError('')
     narrator.stop()
@@ -922,6 +928,10 @@ export default function SharedStoryPage() {
         const result = await request<{ playToken: string }>({ action, token: creator.ownerToken }, creatorCode)
         const saved = storeCreator({ ...creator, playToken: result.playToken })
         if (saved) setNotice('New recipient link created. Any previous recipient link no longer works.')
+      } else if (action === 'title') {
+        const result = await request<{ content: CreatorStory['content'] }>({ action, token: creator.ownerToken, title: titleDraft.trim() }, creatorCode)
+        storeCreator({ ...creator, content: result.content })
+        setNotice('Story title updated.')
       } else {
         await request({ action, token: creator.ownerToken }, creatorCode)
         setCreator(null)
@@ -1148,7 +1158,7 @@ export default function SharedStoryPage() {
                 ) : null}
                 {(player.adventure || player.sceneIndex + 1 === player.sceneCount) ? <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
                   {player.answerInstruction ? <p role="note">{player.answerInstruction}</p> : null}
-                  <label style={{ fontWeight: 700 }}>{player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the final action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
+                  <label style={{ fontWeight: 700 }}>{player.answerType === 'clue' ? 'What did you find?' : player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !recipientDraft.ready || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
@@ -1192,6 +1202,13 @@ export default function SharedStoryPage() {
           <section>
             <p>Private creator preview</p>
             {creator.brief.romance ? <p>{romanceCopy().title(creator.brief.romance)}. Recipients see a content notice and choose whether to open before seeing any story text.</p> : null}
+            <form onSubmit={event => { event.preventDefault(); void creatorAction('title') }} style={cardStyle} aria-label="Edit story title">
+              <label htmlFor="creator-story-title" style={{ display: 'block', fontWeight: 700 }}>Story title
+                <input id="creator-story-title" value={titleDraft} onChange={event => setTitleDraft(event.target.value)} maxLength={120} required style={fieldStyle} disabled={busy} />
+              </label>
+              <button type="submit" style={buttonStyle} disabled={busy || titleDraft.trim() === creator.content.title}>Save title</button>
+              {error ? <p role="alert">{error}</p> : null}
+            </form>
             <h1>{creator.content.title}</h1>
             <section className="atelier-card" aria-label="Story ready to share">
               <h2>Your gift story is ready</h2>
@@ -1249,7 +1266,7 @@ export default function SharedStoryPage() {
             ))}
             <details style={cardStyle}>
               <summary>Private ending details</summary>
-              <p><strong>Ending action:</strong> {creator.brief.answerType === 'word' ? 'Say a word aloud' : creator.brief.answerType === 'action' ? 'Describe a final action' : 'Say a phrase aloud'}</p>
+              <p><strong>Ending:</strong> {creator.brief.answerType === 'clue' ? 'Find and identify the final clue' : creator.brief.answerType === 'word' ? 'Say a word aloud' : creator.brief.answerType === 'action' ? 'Describe the final action' : 'Say a phrase aloud'}</p>
               {creator.brief.answerInstruction ? <p><strong>Where/how:</strong> {creator.brief.answerInstruction}</p> : null}
               <p><strong>Answer:</strong> {creator.brief.solution}</p>
               {(creator.brief.alternativeAnswers ?? []).length > 0 ? (
@@ -1459,20 +1476,23 @@ export default function SharedStoryPage() {
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>About {duration} minutes</option>)}
                   </select>
                 </label>
-                <label style={{ fontWeight: 700 }}>How should the recipient interact?
-                  <select aria-label="Story interaction" value={brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic'} disabled={busy} onChange={event => {
-                    const mode = event.target.value
-                    updateBrief(current => {
-                      const { adventure, ...rest } = current
-                      return mode === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: mode === 'suggested' ? 'suggested' : 'free' } }
-                    })
-                    setAiConsent(false)
-                  }} style={fieldStyle}>
-                    <option value="classic">Classic clues (no live AI)</option>
-                    <option value="free">Write or speak freely (live AI)</option>
-                    <option value="suggested">Choose from 3-5 actions (live AI)</option>
-                  </select>
-                </label>
+                <fieldset aria-label="Story interaction" disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
+                    <legend style={{ fontWeight: 700 }}>How should the recipient interact?</legend>
+                    {[
+                      ['classic', 'Follow the prepared clues', 'No live AI; every choice follows the same story.'],
+                      ['free', 'Write or speak freely', 'Live AI responds to the recipient’s actions.'],
+                      ['suggested', 'Choose from suggested actions', 'Live AI offers 3–5 actions at each turn.']
+                    ].map(([value, title, description]) => <label key={value} style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', padding: '0.85rem', border: '1px solid #e4dcd4', borderRadius: 12, cursor: 'pointer' }}>
+                      <input type="radio" name="story-interaction" value={value} checked={(brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic') === value} onChange={() => {
+                        updateBrief(current => {
+                          const { adventure, ...rest } = current
+                          return value === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free' } }
+                        })
+                        setAiConsent(false)
+                      }} />
+                      <span><strong>{title}</strong><br />{description}</span>
+                    </label>)}
+                </fieldset>
                 {brief.adventure ? <>
                   <label htmlFor="adventure-budget">Total live AI action budget (all recipients)
                     <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, adventure: { ...current.adventure!, actionBudget: Number(event.target.value) } })); setAiConsent(false) }} style={fieldStyle} />
@@ -1494,24 +1514,29 @@ export default function SharedStoryPage() {
                 <GiftVoiceRecorder file={voiceFile} onChange={file => { setVoiceFile(file); setAiConsent(false) }} disabled={busy} onActiveChange={setVoiceRecording} beforeRecord={() => { narrator.stop(); interaction.stopRecording() }} />
               </details>
               <div style={cardStyle}>
-                <h2>The secret answer</h2>
-                <label style={{ display: 'block', fontWeight: 700 }}>What unlocks the ending?
-                  <select aria-label="Final answer type" value={brief.answerType ?? 'phrase'} disabled={busy} onChange={event => {
-                    const answerType = event.target.value === 'word' || event.target.value === 'action' ? event.target.value : 'phrase'
-                    updateBrief(current => ({ ...current, answerType }))
-                    setAiConsent(false)
-                  }} style={fieldStyle}>
-                    <option value="word">Say a word aloud</option>
-                    <option value="phrase">Say a phrase aloud</option>
-                    <option value="action">Describe a final action</option>
-                  </select>
-                </label>
+                <h2>Choose the ending</h2>
+                <fieldset aria-label="Ending interaction" disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0 }}>
+                  <legend style={{ fontWeight: 700 }}>How should they finish?</legend>
+                  {[
+                    ['clue', 'Find and identify a clue', 'They tell the story what they discovered.'],
+                    ['action', 'Describe an action', 'They describe what they would do; the app checks the words, not a physical action.'],
+                    ['word', 'Say a word aloud', 'A spoken word can be dictated or typed.'],
+                    ['phrase', 'Say a phrase aloud', 'A phrase can be dictated or typed.']
+                  ].map(([value, title, description]) => <label key={value} style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', padding: '0.85rem', border: '1px solid #e4dcd4', borderRadius: 12, cursor: 'pointer' }}>
+                    <input type="radio" name="ending-interaction" value={value} checked={(brief.answerType ?? 'phrase') === value} onChange={() => {
+                      const answerType = value as SharedStoryBrief['answerType']
+                      updateBrief(current => ({ ...current, answerType }))
+                      setAiConsent(false)
+                    }} />
+                    <span><strong>{title}</strong><br />{description}</span>
+                  </label>)}
+                </fieldset>
                 {textField('solution',
-                  brief.answerType === 'word' ? 'Secret word' : brief.answerType === 'action' ? 'Secret final action' : 'Secret phrase',
-                  brief.answerType === 'word' ? 'One word, e.g. starlight' : brief.answerType === 'action' ? 'e.g. place the key beneath the blue lantern' : 'e.g. open the door beneath the blue lantern',
+                  brief.answerType === 'clue' ? 'What should they find?' : brief.answerType === 'word' ? 'The final word' : brief.answerType === 'action' ? 'The action they should describe' : 'The final phrase',
+                  brief.answerType === 'clue' ? 'e.g. a silver key under the blue lantern' : brief.answerType === 'word' ? 'One word, e.g. starlight' : brief.answerType === 'action' ? 'e.g. place the key beneath the blue lantern' : 'e.g. open the door beneath the blue lantern',
                   200)}
-                {textField('answerInstruction', 'Where or how should they say or do it?', 'At the observatory door, speak the word to open the hidden room.', 500, true)}
-                <p>The final scene will guide them to this moment. Spoken answers can be dictated; the app checks the words, not whether a physical action was performed.</p>
+                {textField('answerInstruction', 'What should the final scene guide them to?', brief.answerType === 'clue' ? 'Look beneath the blue lantern and identify what you find.' : 'At the observatory door, describe the action that opens the hidden room.', 500, true)}
+                <p>The final scene will guide them to this moment. They can type or dictate what they found or describe the action. The app checks their words, not whether a physical action was performed.</p>
                 <section aria-labelledby="accepted-answers-heading" style={{ marginBlock: '1rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 12 }}>
                   <h3 id="accepted-answers-heading" style={{ marginTop: 0 }}>Other valid answers (optional)</h3>
                   {assistanceField('alternativeAnswers', 'Accepted alternatives', 'Each entry also unlocks the same ending. One per line; up to 5.', 3, 200)}

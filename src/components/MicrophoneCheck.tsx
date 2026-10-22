@@ -80,7 +80,7 @@ export default function MicrophoneCheck({ beforeTest, stopSignal }: { beforeTest
         stop()
         setMessage(maximum > 0.01
           ? 'Audio input was detected. If dictation still fails, check the dictation language and browser recognition service. The meter cannot verify words or which speaker made the sound.'
-          : 'Little or no audio reached the browser. Check your microphone mute switch, input volume and default microphone in Chrome/Windows settings, then test again.')
+          : 'Little or no audio reached the browser. Check your microphone mute switch, input volume and default microphone in your browser or device settings, then test again.')
       }, 10000)
     } catch (cause) {
       if (generation.current !== id) return
@@ -88,7 +88,7 @@ export default function MicrophoneCheck({ beforeTest, stopSignal }: { beforeTest
       setActive(false)
       setStarting(false)
       const name = cause instanceof Error ? cause.name : ''
-      setError(name === 'NotAllowedError' ? 'Microphone permission was denied. Allow this site and your browser in Windows microphone privacy settings.'
+      setError(name === 'NotAllowedError' ? 'Microphone access is blocked. Allow microphone access for this site in your browser and check your device privacy settings, then try again.'
         : name === 'NotFoundError' ? 'No microphone was found. Connect or enable an input device.'
           : name === 'NotReadableError' ? 'The microphone could not be opened. Check whether another app is using it exclusively.'
             : cause instanceof Error ? cause.message : 'Could not test the microphone.')
@@ -102,6 +102,15 @@ export default function MicrophoneCheck({ beforeTest, stopSignal }: { beforeTest
     <button type="button" onClick={() => void test()}>{active || starting ? 'Stop microphone test' : 'Test microphone for 10 seconds'}</button>
     {active ? <div><label>Input level <meter min={0} max={100} value={level} aria-label="Microphone input level" /> {level}%</label></div> : null}
     {message ? <p role="status">{message}</p> : null}
-    {error ? <p role="alert">{error}</p> : null}
+    {error ? <>
+      <p role="alert">{error}</p>
+      <details><summary>How to allow microphone access</summary>
+        <ul>
+          <li>In your browser, open this site&apos;s permissions from the address-bar site icon and allow Microphone.</li>
+          <li>Check that microphone access is enabled for your browser in your device&apos;s privacy settings.</li>
+          <li>Reload this page, then choose Test microphone again. Dictation may also require speech recognition permission.</li>
+        </ul>
+      </details>
+    </> : null}
   </details>
 }

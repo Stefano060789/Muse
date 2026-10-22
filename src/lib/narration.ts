@@ -52,7 +52,7 @@ export function selectNarrationVoice<T extends VoiceInfo>(voices: T[], language:
     const score = (voice: T) => {
       const preference = NARRATION_PRESETS.warm.voices.findIndex((name) => new RegExp(`\\b${name}\\b`, 'i').test(voice.name))
       const natural = /\b(natural|neural|enhanced|premium)\b/i.test(voice.name)
-      return (natural ? 1000 : 0) + (voice.default ? 200 : 0) + (preference >= 0 ? 100 - preference : 0) + (voice.localService ? 5 : 0)
+      return (natural ? 1000 : 0) + (preference >= 0 ? 200 - preference * 20 : 0) + (voice.localService ? 20 : 0) + (voice.default ? 0 : 1)
     }
     // Name/URI tie-breaks keep the fallback deterministic regardless of getVoices() ordering.
     return score(b) - score(a) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) || (a.voiceURI < b.voiceURI ? -1 : a.voiceURI > b.voiceURI ? 1 : 0)

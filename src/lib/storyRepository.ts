@@ -35,6 +35,7 @@ export interface StoryRepository {
   studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
   findUnexpired(id: string): Promise<StoredStory | null>
+  updateContent(id: string, content: SharedStoryContent): Promise<void>
   delete(id: string): Promise<void>
   rotate(id: string, playHash: string): Promise<void>
   advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string): Promise<PlayerState>
@@ -322,6 +323,12 @@ export function storyRepository(): StoryRepository {
       const { data, error } = await db.from('shared_stories').select('*').eq('id', id).gt('expires_at', new Date().toISOString()).maybeSingle()
       if (error) throw storyStorageError(error)
       return data as StoredStory | null
+    },
+    async updateContent(id, content) {
+      const { data, error } = await db.from('shared_stories').update({ content }).eq('id', id)
+        .select('id').maybeSingle()
+      if (error) throw storyStorageError(error)
+      if (!data) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
     },
     async delete(id) {
       const { error } = await db.from('shared_stories').delete().eq('id', id)

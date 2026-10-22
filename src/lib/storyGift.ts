@@ -33,7 +33,7 @@ export function parseGiftDraft(value: unknown): GiftDraft {
   if (![5, 10, 15, 20].includes(Number(source.durationMinutes))) throw new Error('This draft has an invalid duration.')
   const brief: SharedStoryBrief = { ...fields, durationMinutes: Number(source.durationMinutes) }
   if (source.answerType !== undefined) {
-    if (!['word', 'phrase', 'action'].includes(String(source.answerType))) throw new Error('This draft has an invalid final answer type.')
+    if (!['clue', 'word', 'phrase', 'action'].includes(String(source.answerType))) throw new Error('This draft has an invalid final answer type.')
     brief.answerType = source.answerType as NonNullable<SharedStoryBrief['answerType']>
   }
   if (source.answerInstruction !== undefined) brief.answerInstruction = text(source.answerInstruction, 500)

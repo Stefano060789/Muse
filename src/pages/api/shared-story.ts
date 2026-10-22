@@ -27,7 +27,7 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
-const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'title', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 async function storyProgress(db: StoryRepository, story: StoredStory) {
   return {
@@ -256,6 +256,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         replies: story.brief.gift ? await db.giftReplies(id) : [],
         mediaRequired: !story.brief.message
       })
+    }
+    if (action === 'title') {
+      if (typeof body.title !== 'string') throw new SharedStoryError('Enter a story title.')
+      const title = body.title.trim()
+      if (!title || title.length > 120) throw new SharedStoryError('The title must be between 1 and 120 characters.')
+      const normalizedTitle = normalizeSharedAnswer(title)
+      if (!normalizedTitle) throw new SharedStoryError('The title must include letters or numbers.')
+      const privateValues = [story.brief.solution, story.brief.message, ...(story.brief.alternativeAnswers ?? []), ...(story.brief.assistanceHints ?? [])]
+      if (privateValues.some(value => {
+        const normalized = normalizeSharedAnswer(value)
+        return normalized.length > 0 && normalizedTitle.includes(normalized)
+      })) {
+        throw new SharedStoryError('The title cannot reveal a private answer, hint, or final message.')
+      }
+      const content = { ...story.content, title }
+      await db.updateContent(id, content)
+      return res.status(200).json({ content })
     }
     if (action === 'share') {
       const playKey = secret()

@@ -85,7 +85,7 @@ async function main() {
       assert.equal(NARRATION_PRESETS[style].pitch, 1)
     }
     const systemDefault = { ...voice('Device default', 'en-US'), default: true }
-    assert.equal(selectNarrationVoice([...voices, systemDefault], 'en-US', 'suspenseful'), systemDefault)
+    assert.equal(selectNarrationVoice([...voices, systemDefault], 'en-US', 'suspenseful'), voices[2])
     assert.equal(selectNarrationVoice([...voices, { ...natural, lang: 'en-GB' }], 'en-US', 'warm'), voices[2])
   })
   await check('long narration chunks preserve sentences/text with bounded lengths', () => {
@@ -442,9 +442,11 @@ async function main() {
     assert.equal(storySoundscape('Der Wind weht.', 'auto'), 'wind')
     assert.equal(storySoundscape('Waves cross the sea.', 'auto'), 'water')
     assert.equal(storySoundscape('A bustling marketplace.', 'auto'), 'crowd')
+    assert.equal(storySoundscape('A path through the forest.', 'auto'), 'wind')
     assert.equal(storySoundscape('A private indoor mystery.', 'auto'), 'none')
     assert.equal(storySoundscape('Rain taps the window.', 'none'), 'none')
     assert.equal(storySoundscape('A quiet room.', 'water'), 'water')
+    assert.equal(prefs.ambientVolume, 0.12)
     const opening = narrativeDelivery('A path opens.', 'adventurous', { progress: 0 }, prefs)
     const late = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8 }, prefs)
     const quiet = narrativeDelivery('She whispers softly.', 'adventurous', {}, prefs)
@@ -470,7 +472,7 @@ async function main() {
     try {
       assert.equal(hook.ambientCalls.length, 0)
       await hook.render().speak('Rain taps the window. What is outside?')
-      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.08 * 0.55])
+      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.12 * 0.55])
       assert.equal(hook.spoken[0].volume, 0.9)
       hook.render().pause()
       assert.equal(hook.ambientCalls.at(-1)[0], 'pause')
@@ -809,7 +811,7 @@ async function main() {
     assert.match(html, /aria-label="Pause narration: current story narration"/)
     assert.match(html, /Preview selected style<\/button>/)
     assert.match(html, /<option value="auto" selected="">Follow this story \(recommended\)<\/option>/)
-    assert.match(html, /Follow story with recommended voice/)
+    assert.match(html, /Use best available voice for each story/)
     for (const style of NARRATION_STYLES) assert.ok(html.includes(`<option value="${style}">${style}</option>`))
   })
   await check('story-following reset stops playback without changing language or saved manual preferences on load', async () => {

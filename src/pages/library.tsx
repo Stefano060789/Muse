@@ -200,6 +200,7 @@ export default function LibraryPage() {
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   {recipient ? <ShareGiftStory recipientUrl={recipient.url} shareText={recipient.text} expiresAt={null}
                     disabled={!entry.story.playToken} localOnly={recipient.localOnly} whatsappUrl={recipient.whatsappUrl}
+                    showWhatsapp={false}
                     previewContent={<GiftStoryPreview brief={entry.story.brief} content={entry.story.content} />} /> : null}
                   <button className="atelier-secondary" onClick={() => remove(entry)}>Remove story</button>
                   <GiftProgress compact snapshot={progressByStory[entry.story.ownerToken.split('.')[0]]}

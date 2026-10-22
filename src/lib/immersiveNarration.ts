@@ -6,7 +6,7 @@ export type Soundscape = AmbientSound | 'auto'
 export type ImmersivePreferences = { expressive: boolean; soundscape: Soundscape; voiceVolume: number; ambientVolume: number }
 export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v1'
 export const DEFAULT_IMMERSIVE_PREFERENCES: ImmersivePreferences = {
-  expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.08
+  expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.12
 }
 export const SOUNDSCAPES: Soundscape[] = ['auto', 'none', 'rain', 'wind', 'water', 'crowd']
 
@@ -45,6 +45,7 @@ export function storySoundscape(text: string, selection: Soundscape): AmbientSou
   if (/\b(ocean|sea|waves?|river|stream|mare|onde|fiume|meer|wellen|fluss)\b/.test(visible)) return 'water'
   if (/\b(wind|breeze|vento|brezza|brise)\b/.test(visible)) return 'wind'
   if (/\b(crowd|crowded|bustling|cafe|caf\u00e9|marketplace|folla|mercato|menschenmenge|marktplatz)\b/.test(visible)) return 'crowd'
+  if (/\b(forest|woods|garden|mountain|meadow|outdoors|leaves|trees|wald|garten|berge|bosco|foresta|giardino)\b/.test(visible)) return 'wind'
   return 'none'
 }
 

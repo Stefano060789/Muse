@@ -56,7 +56,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
     <p style={{ marginTop: 0 }}><strong>Narration: {narrator.style}</strong> · {narrator.source}</p>
     <p>{narrator.provider === 'browser' ? 'Device voice (free). Quality depends on the voices Safari or your browser makes available; this is not Studio narration.' : `AI-generated voice by ${narrator.provider === 'google' ? 'Google WaveNet' : 'ElevenLabs'}. Recordings do not depend on iPhone speech voices. Failure never starts a device voice automatically.`}</p>
     {narrator.provider !== 'browser' || narrator.deviceOnly ? <label><input type="checkbox" checked={narrator.deviceOnly} onChange={event => narrator.setDeviceOnly(event.target.checked)} /> Use device voice instead (free)</label> : null}
-    {narrator.provider === 'browser' ? <details><summary>Improve the voice on iPhone</summary><p>Try a different matching voice below. You can also download enhanced voices in iPhone Accessibility voice settings, then reopen Safari. Safari may not expose every downloaded voice. Turn off expressive pacing below if the delivery sounds unnatural; device voices are not a consistent premium listening experience.</p></details> : null}
+    {narrator.provider === 'browser' ? <details><summary>Improve the device voice</summary><p>The recommended device voice is selected automatically and may sound different across browsers. Preview another matching voice below if it sounds unnatural. On iPhone, you can download enhanced voices in Accessibility settings, then reopen Safari; Safari may not expose every downloaded voice. Device voices are not a consistent premium listening experience.</p></details> : null}
     {showCloudConsent && narrator.provider !== 'browser' ? <label><input type="checkbox" checked={narrator.cloudConsent} onChange={event=>narrator.setCloudConsent(event.target.checked)} /> Send spoken text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></label> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>Voice style <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
@@ -68,12 +68,12 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
         {languages.map((language) => <option key={language} value={language}>{language}</option>)}
       </select></label>
       {narrator.provider === 'browser' ? <label style={fieldStyle}>Browser voice <select style={selectStyle} value={matching.some((voice) => voiceKey(voice) === narrator.selectedVoice) ? narrator.selectedVoice : ''} onChange={(event) => narrator.setVoice(event.target.value)}>
-        <option value="">Recommended voice</option>
+        <option value="">Best available voice</option>
         {matching.map((voice) => <option key={voiceKey(voice)} value={voiceKey(voice)}>{voice.name} · {voice.lang}{voice.localService ? ' · local' : ''}</option>)}
       </select></label> : null}
     </div>
     {narrator.provider === 'browser' ? <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device.</p> : <p>Cloud voice follows the selected language. Styles adjust pacing; they are not separate dramatic actors. Background sound settings below apply to device speech only.</p>}
-    <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Follow story with recommended voice</button>
+    <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Use best available voice for each story</button>
     <fieldset style={{ margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 8, minWidth: 0 }}>
       <legend>Immersive audio</legend>
       <label><input type="checkbox" checked={narrator.immersive.expressive} onChange={event => narrator.setImmersivePreference('expressive', event.target.checked)} /> Expressive pacing and tone</label>
@@ -93,7 +93,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
           <input aria-label="Background volume" type="range" min="0" max="0.3" step="0.01" value={narrator.immersive.ambientVolume} onChange={event => narrator.setImmersivePreference('ambientVolume', Number(event.target.value))} />
         </label>
       </div>
-      <p>Sounds are synthetic, local and free. Auto follows scene text. After changing settings, press Play.</p>
+      <p>Immersive pacing is on by default. Auto adds a quiet, synthetic local soundscape when the scene suggests one. Adjust or turn it off any time; press Play again after changing settings.</p>
       {narrator.ambientKind !== 'none' && narrator.busy ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
       {narrator.ambientNotice ? <p role="status">{narrator.ambientNotice}</p> : null}
     </fieldset>

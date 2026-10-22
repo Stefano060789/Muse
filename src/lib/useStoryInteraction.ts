@@ -105,7 +105,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
       if (stoppedIntentionally && event.error === 'aborted') return
       const errors: Record<string, string> = {
         network: 'The browser speech-recognition service could not connect. In the VS Code browser, open this same address in regular Microsoft Edge or Google Chrome and try again. Check your internet connection; you can also type instead.',
-        'not-allowed': 'Microphone access was denied. Allow microphone access for this site in your browser and Windows privacy settings, or type instead.',
+        'not-allowed': 'Microphone access was denied. Allow it for this site in your browser permissions and device privacy settings, reload, then try again—or type instead.',
         'service-not-allowed': 'This browser does not allow its speech-recognition service. Open this page in regular Microsoft Edge or Google Chrome, or type instead.',
         'audio-capture': 'No working microphone was available. Check the selected microphone and Windows microphone settings, or type instead.',
         'no-speech': 'No speech was detected. Use the microphone input test below, check the dictation language, then wait for "Listening - speak now" before speaking. You can also type instead.',

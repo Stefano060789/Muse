@@ -15,7 +15,9 @@ export async function generateSharedStory(brief: SharedStoryBrief): Promise<Shar
         ? 'In the first scene (scenes[0]), provide 3 to 5 distinct, safe, concrete proposed opening actions in choices (each at most 160 characters). Later scenes may omit choices.'
         : 'Prepare a public adventure plan: scenes are flexible locations and clue opportunities, not compulsory steps. Omit choices.')
     : 'Every scene must include exactly three distinct short choices phrased as safe exploratory actions, not secret-answer guesses. Never include a private answer, alternative answer, final message or assistance hint in a choice.'
-  const answerInstruction = brief.answerType === 'word'
+  const answerInstruction = brief.answerType === 'clue'
+    ? 'The recipient finishes by identifying the specific clue, object or place they discovered. The last scene must make clear what they are looking for and invite them to enter or dictate what they found; clues must lead to the exact private solution.'
+    : brief.answerType === 'word'
     ? 'The final challenge requires the recipient to speak one specific word aloud. The last scene must clearly cue when and where to say it, and its clues must point to the exact private solution.'
     : brief.answerType === 'action'
       ? 'The final challenge is a specific action the recipient describes or dictates at the ending. The last scene must clearly cue when and where the action belongs, and clues must point to the exact private solution. The app can match their description but cannot verify physical actions.'

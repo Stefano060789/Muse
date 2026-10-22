@@ -86,6 +86,7 @@ try {
   hook.dictate('recipientName', () => {}, true)
   current.onerror({ error: 'not-allowed' })
   assert.match(states[1].value, /access was denied/)
+  assert.match(states[1].value, /browser permissions and device privacy settings/)
   hook.dictate('recipientName', () => {}, true)
   current.onend()
   assert.match(states[1].value, /No words were received/)

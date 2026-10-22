@@ -77,9 +77,10 @@ async function main() {
   }
   const share = mountShare(props, browserNavigator)
   assert.equal(calls.length, 0, 'Web Share is not called while rendering')
-  share.button('Share gift story').props.onClick()
+  share.button('Share').props.onClick()
   share.render()
-  assert.equal(share.button('Share gift story').props['aria-expanded'], true)
+  assert.equal(share.button('Share').props['aria-expanded'], true)
+  assert.ok(share.nodes().some(node => node.type === 'a' && label(node) === 'Share on WhatsApp'))
   assert.ok(share.nodes().some(node => node.type === 'gift-card'), 'Printable QR uses the existing GiftCard')
   assert.ok(share.nodes().some(node => node.type === 'summary' && label(node) === 'Preview what recipient sees'))
   assert.ok(!share.nodes().some(node => node.type === 'a' && node.props.href === props.recipientUrl), 'Preview does not navigate to the progress-recording recipient route')
@@ -98,14 +99,14 @@ async function main() {
     share: async () => { throw Object.assign(new Error('cancelled'), { name: 'AbortError' }) },
     clipboard: browserNavigator.clipboard
   })
-  cancelled.button('Share gift story').props.onClick()
+  cancelled.button('Share').props.onClick()
   cancelled.render()
   await cancelled.button('Share with another app').props.onClick()
   cancelled.render()
   assert.ok(cancelled.nodes().some(node => node.props.role === 'status' && label(node).includes('Sharing cancelled')))
 
   const blocked = mountShare({ ...props, beforeShare: () => false }, browserNavigator)
-  blocked.button('Share gift story').props.onClick()
+  blocked.button('Share').props.onClick()
   blocked.render()
   await blocked.button('Copy recipient link').props.onClick()
   await blocked.button('Share with another app').props.onClick()
@@ -113,7 +114,7 @@ async function main() {
   console.log('PASS sender pre-share safeguards gate both copy and native sharing')
 
   const unavailable = mountShare(props, { clipboard: { writeText: async () => { throw new Error('denied') } } })
-  unavailable.button('Share gift story').props.onClick()
+  unavailable.button('Share').props.onClick()
   unavailable.render()
   assert.ok(!unavailable.nodes().some(node => label(node) === 'Share with another app'))
   await unavailable.button('Copy recipient link').props.onClick()
@@ -123,7 +124,7 @@ async function main() {
   console.log('PASS unsupported or unavailable sharing falls back to a selectable link and reports clipboard errors')
 
   const local = mountShare({ ...props, localOnly: true }, browserNavigator)
-  local.button('Share gift story').props.onClick()
+  local.button('Share').props.onClick()
   local.render()
   assert.ok(!local.nodes().some(node => label(node) === 'Share with another app'))
   assert.ok(!local.nodes().some(node => node.type === 'gift-card'))
@@ -132,6 +133,11 @@ async function main() {
   local.render()
   assert.ok(local.nodes().some(node => node.props.role === 'status' && label(node).includes('local-only address')))
   console.log('PASS local-only links remain copyable but cannot be externally shared or printed as QR')
+
+  const savedStoryShare = mountShare({ ...props, showWhatsapp: false }, browserNavigator)
+  savedStoryShare.button('Share').props.onClick()
+  savedStoryShare.render()
+  assert.ok(!savedStoryShare.nodes().some(node => node.type === 'a' && label(node) === 'Share on WhatsApp'))
 
   const previewModule = { exports: {} }
   new Function('module', 'exports', 'require', transpile('src/components/GiftStoryPreview.tsx'))(
@@ -165,7 +171,7 @@ async function main() {
     expiresAt: savedGiftFixture.expiresAt,
     previewContent: storyPreview
   }, {})
-  fixturePreviewShare.button('Share gift story').props.onClick()
+  fixturePreviewShare.button('Share').props.onClick()
   fixturePreviewShare.render()
   assert.ok(fixturePreviewShare.nodes().some(node => node.type === 'gift-card'))
   assert.ok(fixturePreviewShare.nodes().some(node => node.type === 'section' && node.props['aria-label'] === 'Recipient presentation preview'))

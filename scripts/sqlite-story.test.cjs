@@ -126,6 +126,10 @@ async function main() {
     const managed = await api({ action: 'manage', token: created.body.ownerToken })
     assert.equal(managed.body.brief.solution, brief.solution)
     assert.equal(managed.body.expiresAt, null, 'API exposes permanent retention without leaking its storage sentinel')
+    const renamed = await api({ action: 'title', token: created.body.ownerToken, title: 'A Story Across the Stars' })
+    assert.equal(renamed.status, 200)
+    assert.equal((await storyRepository().findUnexpired(id)).content.title, 'A Story Across the Stars')
+    await api({ action: 'title', token: created.body.ownerToken, title: content.title })
   })
   await check('owner/play separation, wrong/correct answers, cooldown and persisted progress use actual API', async () => {
     for (const action of ['manage', 'progress', 'delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)
@@ -277,7 +281,7 @@ async function main() {
     assert.equal(results.filter(Boolean).length, 5)
   })
   await check('creator-approved alternatives and progressive hints remain private and persist per player', async () => {
-    const assistedBrief = { ...brief,
+    const assistedBrief = { ...brief, answerType: 'phrase',
       assistanceHints: ['Think about the paper cover.', 'Remember the colour of the sea.', 'Look under the journal.'],
       alternativeAnswers: ['under the azure journal', 'Café — étoile']
     }

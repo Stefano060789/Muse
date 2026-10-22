@@ -8,6 +8,7 @@ export default function ShareGiftStory({
   disabled = false,
   localOnly = false,
   whatsappUrl,
+  showWhatsapp = true,
   beforeShare,
   onShareStart,
   previewContent
@@ -18,6 +19,7 @@ export default function ShareGiftStory({
   disabled?: boolean
   localOnly?: boolean
   whatsappUrl?: string
+  showWhatsapp?: boolean
   beforeShare?: () => boolean
   onShareStart?: () => void
   previewContent?: ReactNode
@@ -61,7 +63,7 @@ export default function ShareGiftStory({
 
   return <section aria-label="Share gift story">
     <button type="button" className="atelier-button" disabled={disabled} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(value => !value)}>
-      Share gift story
+      Share
     </button>
     {open ? <div id={panelId} role="region" aria-label="Gift story sharing options" style={{ marginTop: '0.75rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 16 }}>
       {localOnly ? <p role="note">Local link: works only on this computer. External sharing and printable QR are disabled.</p> : null}
@@ -70,7 +72,7 @@ export default function ShareGiftStory({
           {sharing ? 'Opening sharing...' : 'Share with another app'}
         </button> : null}
         <button type="button" className="atelier-secondary" disabled={disabled || !recipientUrl} onClick={() => void copyRecipientLink()}>Copy recipient link</button>
-        {!localOnly && whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" aria-disabled={disabled}
+        {showWhatsapp && !localOnly && whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" aria-disabled={disabled}
           onClick={event => {
             if (!canProceed()) event.preventDefault()
             else onShareStart?.()
@@ -85,7 +87,7 @@ export default function ShareGiftStory({
         <summary>Preview what recipient sees</summary>
         <div style={{ marginTop: '0.75rem' }}>{previewContent}</div>
       </details> : null}
-      <p>Only the recipient link is shared, not private answers or reveals.</p>
+      <p>Only the recipient link is shared, not private answers or reveals. On phones, Share with another app can open available apps such as WhatsApp or Instagram. Otherwise copy the link and paste it into a message or post.</p>
     </div> : null}
   </section>
 }

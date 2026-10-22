@@ -71,6 +71,8 @@ async function main() {
     assert.equal(sharedStoryPlayerView(directed, content, { current_scene: 0, solved: false }).answerInstruction, undefined)
     assert.equal(sharedStoryPlayerView(directed, content, { current_scene: content.scenes.length - 1, solved: false }).answerInstruction, directed.answerInstruction)
     assert.equal(sharedStoryPlayerView({ ...directed, answerType: 'action' }, content, { current_scene: 0, solved: false }).answerType, 'action')
+    const clue = parseSharedStoryBrief({ ...brief, answerType: 'clue' })
+    assert.equal(sharedStoryPlayerView(clue, content, { current_scene: 0, solved: false }).answerType, 'clue')
   })
   await check('optional puzzle help validates bounded creator-only lists', () => {
     const assistanceHints = ['Look beneath the paper cover.', 'Remember the colour of the sea.']
@@ -131,6 +133,8 @@ async function main() {
     assert.match(providerRequest.messages[0].content, /Final-scene direction/)
     assert.match(providerRequest.messages[0].content, /exact creator-approved equivalents/)
     assert.deepEqual(JSON.parse(providerRequest.messages[1].content).alternativeAnswers, ['open the moon door'])
+    await generateSharedStory({ ...brief, answerType: 'clue', solution: 'silver key' })
+    assert.match(providerRequest.messages[0].content, /identifying the specific clue/)
   })
   await check('unsolved recipient projection omits the answer, brief, hints and message', () => {
     const view = sharedStoryPlayerView(brief, content, { current_scene: 1, solved: false })
@@ -378,6 +382,7 @@ async function main() {
     }
     if (options.method === 'PATCH') {
       stored = { ...stored, ...body }
+      if (location.searchParams.get('select') === 'id') return json({ id: stored.id })
       return new Response(null, { status: 204 })
     }
     if (options.method === 'DELETE') {
@@ -459,6 +464,20 @@ async function main() {
     const managed = await api({ action: 'manage', token: created.body.ownerToken })
     assert.equal(managed.body.brief.message, brief.message)
     assert.equal(managed.body.expiresAt, null, 'Management never leaks the internal infinity sentinel')
+  })
+  await check('owner can edit a safe story title and the recipient projection sees the persisted title', async () => {
+    assert.equal((await api({ action: 'title', token: created.body.playToken, title: 'A New Story' })).status, 404)
+    assert.equal((await api({ action: 'title', token: created.body.ownerToken, title: `Meet me ${brief.message}` })).status, 400)
+    assert.equal((await api({ action: 'title', token: created.body.ownerToken, title: '   ' })).status, 400)
+    assert.equal((await api({ action: 'title', token: created.body.ownerToken, title: '!!!' })).status, 400)
+    const changed = await api({ action: 'title', token: created.body.ownerToken, title: 'A Story Across the Stars' })
+    assert.equal(changed.status, 200)
+    assert.equal(changed.body.content.title, 'A Story Across the Stars')
+    assert.equal(stored.content.title, 'A Story Across the Stars')
+    assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.content.title, 'A Story Across the Stars')
+    const opened = await api({ action: 'open', token: created.body.playToken })
+    assert.equal(opened.body.player.title, 'A Story Across the Stars')
+    await api({ action: 'title', token: created.body.ownerToken, title: content.title })
   })
   await check('hosted progress uses exact bounded counts beyond 1000 rows, is owner-only and surfaces errors', async () => {
     const before = runtimeProviderCalls
