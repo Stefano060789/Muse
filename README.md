@@ -75,6 +75,11 @@ recovered recipient links. Reload the server collection to refresh recovered
 access. Deleted or purged stories and browser-only data cannot be recovered.
 This is private-beta administrator recovery, not general account/cloud sync.
 
+Home separates creation into two visible choices: **My story** is for your own
+interactive adventure; **Gift story** is for writing a private mystery and
+surprise for someone else. The gift creator labels its main writing area
+**Write the story for them**.
+
 The same primary menu appears across Muse: **Home**, **Myself** (`/myself`), **Create a story**
 (`/story?new=1`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
 It sits above decorative artwork, highlights the current area, and uses a
@@ -922,15 +927,18 @@ clear a manual selection while keeping the selected language.
 Existing saved choices, including the previous Warm default, remain intact.
 
 Immersive pacing and the default **Follow scene** soundscape are enabled for
-new settings. Auto detects simple rain, wind, water, outdoor and crowd/cafe cues
-in the text currently being spoken (English, German and Italian keywords); it does not inspect private answers, future scenes or creator briefs.
-Unmatched scenes have no background sound. These are local Web Audio synthesis,
-not realistic recorded crowds, music, downloaded assets or paid AI sound effects.
-The crowd option is an abstract filtered murmur with no intelligible voices.
+new settings. Auto detects simple rain, wind, water, outdoor, crowd/cafe, traffic
+and mystery cues in the text currently being spoken; it does not inspect private
+answers, future scenes or creator briefs. Unmatched scenes have no background
+sound. These are local Web Audio synthesis, not realistic field recordings,
+downloaded assets or paid AI sound effects. The crowd and traffic options are
+abstract filtered textures; the mystery option is a quiet synthetic tonal bed,
+not a composed song.
 Choose a fixed soundscape or Off, and adjust independent voice/background levels.
 The background is softly faded in and reduced beneath speech, never starts
-before a Play gesture, and stops with speech, scene changes, dictation or leaving
-the page. Pausing suspends it. Audio failures are visible and leave text readable.
+before a Play gesture, and works with device narration, cloud narration and
+prepared Studio recordings. It stops with narration, scene changes, dictation or
+leaving the page. Pausing suspends it. Audio failures are visible and leave text readable.
 Settings are remembered separately under `muse.narration.immersive.v1`; changing
 them stops playback before the next listen. Unsupported Web Audio falls back
 explicitly to voice-only. No new account, environment variable or database

@@ -72,7 +72,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
         {matching.map((voice) => <option key={voiceKey(voice)} value={voiceKey(voice)}>{voice.name} · {voice.lang}{voice.localService ? ' · local' : ''}</option>)}
       </select></label> : null}
     </div>
-    {narrator.provider === 'browser' ? <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device.</p> : <p>Cloud voice follows the selected language. Styles adjust pacing; they are not separate dramatic actors. Background sound settings below apply to device speech only.</p>}
+    {narrator.provider === 'browser' ? <p>Voice: {narrator.voice ? `${narrator.voice.name} (${narrator.voice.lang})` : 'none for this language'}. Quality varies by device. The same scene-matched ambience works with prepared recordings.</p> : <p>Cloud voice follows the selected language. Styles adjust pacing; they are not separate dramatic actors. Background sound settings apply to narration and prepared recordings.</p>}
     <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>Use best available voice for each story</button>
     <fieldset style={{ margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 8, minWidth: 0 }}>
       <legend>Immersive audio</legend>
@@ -85,6 +85,8 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
           <option value="wind">Gentle wind</option>
           <option value="water">Flowing water</option>
           <option value="crowd">Soft crowd murmur (synthetic)</option>
+          <option value="traffic">Distant traffic (synthetic)</option>
+          <option value="mystery">Soft mystery tones (synthetic)</option>
         </select></label>
         <label style={fieldStyle}>Voice volume · {Math.round(narrator.immersive.voiceVolume * 100)}%
           <input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={narrator.immersive.voiceVolume} onChange={event => narrator.setImmersivePreference('voiceVolume', Number(event.target.value))} />
@@ -93,7 +95,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
           <input aria-label="Background volume" type="range" min="0" max="0.3" step="0.01" value={narrator.immersive.ambientVolume} onChange={event => narrator.setImmersivePreference('ambientVolume', Number(event.target.value))} />
         </label>
       </div>
-      <p>Immersive pacing is on by default. Auto adds a quiet, synthetic local soundscape when the scene suggests one. Adjust or turn it off any time; press Play again after changing settings.</p>
+      <p>Auto adds a quiet, synthetic local soundscape when the scene suggests one, including alongside prepared recordings. No sound plays until you press Play. Adjust or turn it off any time; press Play again after changing settings.</p>
       {narrator.ambientKind !== 'none' && narrator.busy ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
       {narrator.ambientNotice ? <p role="status">{narrator.ambientNotice}</p> : null}
     </fieldset>

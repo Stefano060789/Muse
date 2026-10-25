@@ -131,7 +131,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   }, [])
   const stop = useCallback(() => {
     release()
-    if (mounted.current) { setStatus('idle'); setActiveText(''); setTextPosition(0); setCloudAudioUrl('') }
+    if (mounted.current) { setStatus('idle'); setActiveText(''); setTextPosition(0); setCloudAudioUrl(''); setAmbientKind('none') }
   }, [release])
   const fail = (message = '') => {
     release()
@@ -140,7 +140,44 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setActiveText('')
     setTextPosition(0)
     setCloudAudioUrl('')
+    setAmbientKind('none')
     if (message) setError(message)
+  }
+  const startAmbientFor = (text: string) => {
+    const preferences = immersiveRef.current
+    const sound = storySoundscape(text, preferences.soundscape)
+    if (sound === 'none' || preferences.ambientVolume <= 0 || preferences.voiceVolume <= 0) {
+      stopAmbient()
+      return
+    }
+    ambience.current?.stop()
+    const engine = new StoryAmbience()
+    ambience.current = engine
+    void engine.start(sound, preferences.ambientVolume * 0.55 * Math.min(1, preferences.voiceVolume / 0.9)).then(() => {
+      if (ambience.current !== engine) { engine.stop(); return }
+      setAmbientKind(sound)
+    }).catch(() => {
+      engine.stop()
+      if (ambience.current !== engine) return
+      ambience.current = null
+      setAmbientKind('none')
+      if (mounted.current) setAmbientNotice('Ambient audio could not start in this browser. Narration continues without background sound.')
+    })
+  }
+  const stopAmbient = () => {
+    ambience.current?.stop()
+    ambience.current = null
+    setAmbientKind('none')
+  }
+  const pauseAmbient = () => {
+    const engine = ambience.current
+    void engine?.pause().catch(() => {
+      if (ambience.current !== engine) return
+      engine.stop()
+      ambience.current = null
+      setAmbientKind('none')
+      if (mounted.current) setAmbientNotice('Ambient audio could not pause and was stopped.')
+    })
   }
 
   useEffect(() => {
@@ -200,21 +237,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         finish(voices.length ? `No browser voice is available for ${language}. Choose an available language or add a voice in your OS settings.` : 'No browser voices are available yet. Wait for voices to load, then try again, or check your OS speech settings.')
         return
       }
-      const sound = storySoundscape(text, immersive.soundscape)
-      if (sound !== 'none' && immersive.ambientVolume > 0 && immersive.voiceVolume > 0) {
-        const engine = new StoryAmbience()
-        ambience.current = engine
-        // Start speech in the tap's call stack: awaiting Web Audio can lose Safari's user activation.
-        void engine.start(sound, immersive.ambientVolume * 0.55 * Math.min(1, immersive.voiceVolume / 0.9)).then(() => {
-          if (!valid() || ambience.current !== engine) { engine.stop(); return }
-          setAmbientKind(sound)
-        }).catch(() => {
-          engine.stop()
-          if (!valid() || ambience.current !== engine) return
-          ambience.current = null
-          setAmbientNotice('Ambient audio could not start in this browser. Narration continues without background sound.')
-        })
-      }
+      // Start in the Play tap's call stack; awaiting Web Audio can lose Safari's user activation.
+      startAmbientFor(text)
       if (!valid()) return
       const chunks = narrationChunks(text)
       const normalizedText = text.trim().replace(/\s+/g, ' ')
@@ -271,6 +295,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       await browser(); return
     }
     setStatus('loading')
+    if (provider !== 'google') startAmbientFor(text)
     const controller = new AbortController()
     request.current = controller
     armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
@@ -443,6 +468,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       player.volume = immersiveRef.current.voiceVolume
       setTextPosition(0)
       setStatus('speaking')
+      startAmbientFor(activeText)
     },
     onCloudTimeUpdate: (player: HTMLAudioElement) => {
       if (!currentCloudPlayer(player) || audio.current !== player || !Number.isFinite(player.duration) || player.duration <= 0) return
@@ -453,10 +479,12 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       if (!currentCloudPlayer(player) || mode.current !== 'audio' || audio.current !== player) return
       paused.current = true
       setStatus('paused')
+      pauseAmbient()
     },
     onCloudEnd: (player: HTMLAudioElement) => { if (currentCloudPlayer(player)) stop() },
     onCloudError: (player: HTMLAudioElement) => { if (currentCloudPlayer(player)) fail('This browser could not play the recording. Load it again or keep reading.') },
     speak, stop, pause, resume, setStyle, setLanguage, setVoice, resetVoice,
+    startAmbientFor, pauseAmbient, stopAmbient,
     immersive, setImmersivePreference, ambientNotice, ambientKind, cloudConsent,
     deviceOnly, setDeviceOnly: (value: boolean) => { stop(); setDeviceOnly(value); setCloudConsent(false) },
     setCloudConsent: (value: boolean) => { stop(); setCloudConsent(value) },

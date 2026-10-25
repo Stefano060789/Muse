@@ -410,8 +410,8 @@ export default function StoryPage() {
           {!story ? (
             <section ref={creationSection} tabIndex={-1} aria-labelledby="creation-title">
               <p className="atelier-eyebrow">A story for you</p>
-              <h1 id="creation-title" className="atelier-title">Create a story</h1>
-              <p className="atelier-subtitle">{['Choose a feeling. Muse will turn it into an interactive story, with you deciding what happens next.', 'A few small details help shape your escape. Keep it simple, or add something personal.', 'Review your choices before Muse begins writing.'][creationStep]}</p>
+              <h1 id="creation-title" className="atelier-title">Create a story for yourself</h1>
+              <p className="atelier-subtitle">{['This story is just for you. Choose a feeling and Muse will create an interactive adventure that you shape as you play.', 'Tell Muse what you need or add personal touches; you will write or speak your choices inside the story.', 'Review your choices before Muse begins writing.'][creationStep]}</p>
               <ol className="atelier-progress" aria-label="Story creation steps">
                 {['Choose a mood', 'Make it yours', 'Review & create'].map((label, index) => <li key={label} aria-current={creationStep === index ? 'step' : undefined}>{index + 1}. {label}</li>)}
               </ol>
@@ -508,6 +508,7 @@ export default function StoryPage() {
                 <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></h2>
                 <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></p>
                 <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} showCloudConsent={false} />
+                <p className="atelier-note">Press Play for narration with quiet local ambience when the scene suggests it. Change the soundscape in Audio settings.</p>
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} />}</h3>

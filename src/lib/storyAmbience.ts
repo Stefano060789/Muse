@@ -1,4 +1,4 @@
-export type AmbientSound = 'none' | 'rain' | 'wind' | 'water' | 'crowd'
+export type AmbientSound = 'none' | 'rain' | 'wind' | 'water' | 'crowd' | 'traffic' | 'mystery'
 
 const FADE_SECONDS = 0.18
 const boundedVolume = (volume: number): number =>
@@ -19,14 +19,14 @@ type Session = {
 
 /**
  * Locally synthesized, softly faded ambience; no context exists until start().
- * Crowd is an abstract soft noise murmur, not speech or recorded realistic humans.
+ * Crowd and traffic are abstract synthetic textures; mystery is a quiet tonal bed.
  */
 export class StoryAmbience {
   private session?: Session
   private volume = 0
 
   async start(kind: AmbientSound, volume: number): Promise<void> {
-    if (!['none', 'rain', 'wind', 'water', 'crowd'].includes(kind)) {
+    if (!['none', 'rain', 'wind', 'water', 'crowd', 'traffic', 'mystery'].includes(kind)) {
       throw new Error(`Unsupported ambience: ${kind}`)
     }
     this.stop()
@@ -167,33 +167,48 @@ export class StoryAmbience {
     for (let index = 0; index < data.length; index++) {
       const noise = Math.random() * 2 - 1
       brown = (brown + noise * 0.02) / 1.02
-      data[index] = kind === 'crowd' ? noise * 0.12 : kind === 'rain' ? noise * 0.22 : brown * 0.8
+      data[index] = kind === 'crowd' ? noise * 0.12
+        : kind === 'traffic' ? brown * 0.12
+          : kind === 'mystery' ? brown * 0.04
+            : kind === 'rain' ? noise * 0.22 : brown * 0.8
     }
     source.buffer = buffer
     source.loop = true
     const filter = own(context.createBiquadFilter())
     // A broad speech-frequency band suggests a murmur without generating voices.
     filter.type = kind === 'rain' || kind === 'crowd' ? 'highpass' : 'lowpass'
-    filter.frequency.value = kind === 'crowd' ? 300 : kind === 'rain' ? 650 : kind === 'wind' ? 550 : 1100
+    filter.frequency.value = kind === 'crowd' ? 300 : kind === 'rain' ? 650 : kind === 'traffic' ? 500 : kind === 'mystery' ? 260 : kind === 'wind' ? 550 : 1100
     filter.Q.value = 0.4
     const smoothing = own(context.createBiquadFilter())
     smoothing.type = 'lowpass'
-    smoothing.frequency.value = kind === 'crowd' ? 2200 : kind === 'rain' ? 6500 : 1800
+    smoothing.frequency.value = kind === 'crowd' ? 2200 : kind === 'rain' ? 6500 : kind === 'traffic' ? 1400 : kind === 'mystery' ? 520 : 1800
     smoothing.Q.value = 0.4
     const texture = own(context.createGain())
-    texture.gain.value = kind === 'crowd' ? 0.45 : 0.65
+    texture.gain.value = kind === 'crowd' ? 0.45 : kind === 'mystery' ? 0.18 : 0.65
     source.connect(filter)
     filter.connect(smoothing)
     smoothing.connect(texture)
     texture.connect(master)
 
-    if (kind !== 'rain') {
+    if (kind === 'mystery') {
+      for (const frequency of [55, 82.4]) {
+        const oscillator = own(context.createOscillator())
+        const tone = own(context.createGain())
+        session.sources.push(oscillator)
+        oscillator.type = 'sine'
+        oscillator.frequency.value = frequency
+        tone.gain.value = 0.025
+        oscillator.connect(tone)
+        tone.connect(master)
+        oscillator.start()
+      }
+    } else if (kind !== 'rain') {
       const oscillator = own(context.createOscillator())
       session.sources.push(oscillator)
       oscillator.type = 'sine'
-      oscillator.frequency.value = kind === 'crowd' ? 0.19 : kind === 'wind' ? 0.08 : 0.13
+      oscillator.frequency.value = kind === 'crowd' ? 0.19 : kind === 'wind' ? 0.08 : kind === 'traffic' ? 0.045 : 0.13
       const depth = own(context.createGain())
-      depth.gain.value = kind === 'crowd' ? 0.08 : 0.12
+      depth.gain.value = kind === 'crowd' ? 0.08 : kind === 'traffic' ? 0.06 : 0.12
       oscillator.connect(depth)
       depth.connect(texture.gain)
       oscillator.start()

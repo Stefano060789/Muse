@@ -8,7 +8,7 @@ export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v1'
 export const DEFAULT_IMMERSIVE_PREFERENCES: ImmersivePreferences = {
   expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.12
 }
-export const SOUNDSCAPES: Soundscape[] = ['auto', 'none', 'rain', 'wind', 'water', 'crowd']
+export const SOUNDSCAPES: Soundscape[] = ['auto', 'none', 'rain', 'wind', 'water', 'crowd', 'traffic', 'mystery']
 
 export function parseImmersivePreferences(raw: string | null): { preferences: ImmersivePreferences; invalid: boolean } {
   const preferences = { ...DEFAULT_IMMERSIVE_PREFERENCES }
@@ -41,10 +41,12 @@ export function storySoundscape(text: string, selection: Soundscape): AmbientSou
   if (selection !== 'auto') return selection
   // Match only the text being narrated, never a private brief or future scene.
   const visible = text.toLowerCase()
-  if (/\b(rain(?:ing|fall|drops)?|drizzle|pioggia|regen)\b/.test(visible)) return 'rain'
+  if (/\b(rain(?:ing|fall(?:ing)?|drops?)?|drizzle|rainfall|pioggia|piove|regen|regnet)\b/.test(visible)) return 'rain'
   if (/\b(ocean|sea|waves?|river|stream|mare|onde|fiume|meer|wellen|fluss)\b/.test(visible)) return 'water'
   if (/\b(wind|breeze|vento|brezza|brise)\b/.test(visible)) return 'wind'
   if (/\b(crowd|crowded|bustling|cafe|caf\u00e9|marketplace|folla|mercato|menschenmenge|marktplatz)\b/.test(visible)) return 'crowd'
+  if (/\b(traffic|cars?|street|road|city|traffico|auto|strada|verkehr|stadtverkehr|autos)\b/.test(visible)) return 'traffic'
+  if (/\b(myster(?:y|ious)|suspense|enigma|mister(?:o|iosa?|iosi)|geheimnisvoll|mysteri\u00f6s|r\u00e4tselhaft)\b/.test(visible)) return 'mystery'
   if (/\b(forest|woods|garden|mountain|meadow|outdoors|leaves|trees|wald|garten|berge|bosco|foresta|giardino)\b/.test(visible)) return 'wind'
   return 'none'
 }

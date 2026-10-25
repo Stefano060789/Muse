@@ -171,6 +171,12 @@ main [role="status"] { line-height: 1.6; }
 }
 .atelier-secondary, main button.atelier-secondary { background: transparent; color: var(--ink); border: 1px solid #b9b8bf; }
 .atelier-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-block: 1.5rem; }
+.atelier-creation-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; margin-block: 1.5rem 0.75rem; }
+.atelier-creation-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 1.1rem; }
+.atelier-creation-choice .atelier-eyebrow, .atelier-creation-choice h2, .atelier-creation-choice p { margin-block: 0; }
+.atelier-creation-choice h2 { color: var(--plum); font-family: var(--serif); font-weight: 500; }
+.atelier-creation-choice p:not(.atelier-eyebrow) { color: var(--muted); line-height: 1.55; }
+.atelier-creation-choice .atelier-button { margin-top: auto; width: 100%; box-sizing: border-box; text-align: center; }
 .atelier-hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(1.5rem, 5vw, 4rem); align-items: center; padding: 2.5rem 0 3rem; }
 .atelier-hero h1 { font-size: clamp(2.7rem, 5.3vw, 4.9rem); margin-block: 0.8rem 1.3rem; }
 .atelier-hero h1 em { color: var(--plum); font-weight: 400; }
@@ -240,6 +246,7 @@ main [role="status"] { line-height: 1.6; }
   .atelier-home .atelier-hero h1 { max-width: 520px; }
   .atelier-home .atelier-hero .atelier-subtitle { font-size: 1rem; }
   .atelier-home .atelier-hero .atelier-actions { margin-block: 1.2rem 0.5rem; }
+  .atelier-creation-choices { grid-template-columns: 1fr; }
   .atelier-form-grid { grid-template-columns: 1fr; }
   .atelier-header nav { gap: 0.8rem; font-size: 0.9rem; }
   .atelier-header { margin-bottom: 1.5rem; }

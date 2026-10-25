@@ -9,6 +9,10 @@ type Props = {
   stopSignal?: boolean
   audioRef: RefObject<HTMLAudioElement>
   beforeListen: () => void
+  ambientText?: string
+  onAmbientStart?: (text: string) => void
+  onAmbientPause?: () => void
+  onAmbientStop?: () => void
   check?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
@@ -16,6 +20,7 @@ type Props = {
 }
 
 export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
+  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop,
   provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const [consent, setConsent] = useState(false)
@@ -25,10 +30,13 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   const pending = useRef<AbortController | null>(null)
   const blobUrl = useRef('')
   const generation = useRef(0)
+  const ambientCallbacks = useRef({ onAmbientStart, onAmbientPause, onAmbientStop })
+  ambientCallbacks.current = { onAmbientStart, onAmbientPause, onAmbientStop }
   useEffect(() => () => {
     generation.current++
     pending.current?.abort()
     audioRef.current?.pause()
+    ambientCallbacks.current.onAmbientStop?.()
     if (blobUrl.current) URL.revokeObjectURL(blobUrl.current)
   }, [audioRef])
   useEffect(() => {
@@ -81,6 +89,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}
+    {!owner && <p className="atelier-note">When this scene suggests it, quiet local ambience accompanies the narration after you press Play. Change the soundscape in Audio and atmosphere settings.</p>}
     {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
@@ -88,7 +97,11 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
       <audio ref={audioRef} src={url} controls preload="metadata" aria-label={`Studio audio for scene ${sceneIndex + 1}`} onPlay={() => {
         if (disabled) { audioRef.current?.pause(); setError('Finish the current story request, upload or recording before playing Studio audio.'); return }
         beforeListen()
-      }} onError={() => setError('This browser could not play Studio audio. Retry loading or read instead.')} style={{ display: 'block', width: '100%', maxWidth: '100%' }} />
+        ambientCallbacks.current.onAmbientStart?.(ambientText)
+      }} onPause={() => ambientCallbacks.current.onAmbientPause?.()}
+        onEnded={() => ambientCallbacks.current.onAmbientStop?.()}
+        onError={() => { ambientCallbacks.current.onAmbientStop?.(); setError('This browser could not play Studio audio. Retry loading or read instead.') }}
+        style={{ display: 'block', width: '100%', maxWidth: '100%' }} />
     </> : null}
   </>
   if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>

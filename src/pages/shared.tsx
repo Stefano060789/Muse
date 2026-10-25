@@ -1145,7 +1145,9 @@ export default function SharedStoryPage() {
                     <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {player.scene.clue}</p>
                   <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
-                    disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
+                          ambientText={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`}
+                          onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
+                          disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
                     load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
                   <details><summary>Device voice (optional, quality varies)</summary>
                     <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
@@ -1206,7 +1208,8 @@ export default function SharedStoryPage() {
             ) : null}
             {player.feedback ? <p role="status">{player.feedback}</p> : null}
             <details style={{ marginTop: '1rem' }}>
-              <summary>Audio settings</summary>
+              <summary>Audio and atmosphere settings</summary>
+              <p>Soft scene-matched ambience plays with device narration and prepared recordings when the scene suggests it. It starts only when you press Play; adjust or turn it off here.</p>
               <p>{recipientText.settingsDisclosure}</p>
               <NarrationControls narrator={narrator} beforeSpeak={interaction.cancelRecording} />
             </details>
@@ -1261,6 +1264,8 @@ export default function SharedStoryPage() {
                   {creator.content.scenes.map((scene, index) => <option key={index} value={index}>Scene {index + 1}: {scene.title}</option>)}
                 </select></label>
                 <StudioNarration key={`${creator.ownerToken}:${Math.min(studioScene, creator.content.scenes.length - 1)}`}
+                  ambientText={`${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].title}. ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].body} ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].clue}`}
+                  onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                   sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
                   disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
                   check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, creatorCode, signal), sceneIndex)}
@@ -1397,8 +1402,8 @@ export default function SharedStoryPage() {
         ) : (
           <section>
             <p className="atelier-eyebrow">A story to give</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift story</h1>
-            <p className="atelier-subtitle">Make a story for someone else. They follow the clues to discover your personal surprise.</p>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift story for someone else</h1>
+            <p className="atelier-subtitle">This story is for someone else. Write your story idea and setting, add personal clues, then choose a surprise to share by private link.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
@@ -1476,7 +1481,8 @@ export default function SharedStoryPage() {
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
-                <h2>2. The story</h2>
+                <h2>2. Write the story for them</h2>
+                <p className="atelier-note">Start with the place and the feeling you want to create. A few sentences are enough; Muse will shape them into scenes and clues.</p>
                 {textField('setting', 'Story idea and setting', 'A hidden letter in a room full of clues...', 3000)}
                 {textField('goal', 'What should they find or solve?', 'Find the hiding place of the letter.', 600)}
                 {textField('recipientHints', selectedOccasion?.question ?? 'Personal touches', selectedOccasion?.placeholder ?? 'Favourite places, shared memories, inside jokes...', 1500, true)}

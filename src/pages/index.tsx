@@ -83,11 +83,20 @@ export default function Home() {
             <Link href="/myself" className="atelier-button atelier-secondary" style={{ display: 'flex', width: '100%', boxSizing: 'border-box', marginTop: '1.5rem' }}>
               Myself
             </Link>
-            <div className="atelier-actions">
-              <Link href="/story?new=1" className="atelier-button">Create a story</Link>
-              <Link href="/shared#new" className="atelier-button atelier-secondary">Create a gift story</Link>
+            <div className="atelier-creation-choices" aria-label="Choose the kind of story to create">
+              <article className="atelier-card atelier-creation-choice">
+                <p className="atelier-eyebrow">Just for you</p>
+                <h2>My story</h2>
+                <p>Choose how you want to feel, then write or speak your choices as Muse builds your personal adventure.</p>
+                <Link href="/story?new=1" className="atelier-button">Create my story</Link>
+              </article>
+              <article className="atelier-card atelier-creation-choice">
+                <p className="atelier-eyebrow">For someone else</p>
+                <h2>Gift story</h2>
+                <p>Write a story idea, add personal clues and a surprise, then share a private link with someone.</p>
+                <Link href="/shared#new" className="atelier-button atelier-secondary">Create a gift story</Link>
+              </article>
             </div>
-            <p className="atelier-note">For yourself: an interactive escape. For someone else: a mystery with a personal surprise.</p>
             <Link href="/demo" className="atelier-sample-link">Try a 2-minute sample</Link>
             <p className="atelier-note">Free, handcrafted, no account needed.</p>
           </div>

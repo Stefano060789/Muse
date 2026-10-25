@@ -14,8 +14,13 @@ function mount(extra = {}) {
   const slots = [], effects = [], cleanups = new Map(), calls = [], revoked = []
   let cursor = 0, tree, serial = 0
   const audioRef = { current: { pause() { calls.push('pause') } } }
+  const ambientEvents = []
   const props = {
     sceneIndex: 1, audioRef, beforeListen() { calls.push('beforeListen') },
+    ambientText: 'Cars pass in a mysterious street.',
+    onAmbientStart(text) { ambientEvents.push(['start', text]) },
+    onAmbientPause() { ambientEvents.push(['pause']) },
+    onAmbientStop() { ambientEvents.push(['stop']) },
     check: async () => { calls.push('check'); return { enabled: true, ready: false } },
     generate: async () => { calls.push('generate'); return { enabled: true, ready: true } },
     load: async () => { calls.push('load'); return new Blob(['synthetic mp3'], { type: 'audio/mpeg' }) },
@@ -54,7 +59,7 @@ function mount(extra = {}) {
   }
   const nodes = () => flatten(tree).filter(value => typeof value === 'object')
   const button = text => nodes().find(node => node.type === 'button' && flatten(node.props.children).includes(text))
-  return { calls, props, revoked, flush, button, nodes, unmount() { cleanups.forEach(cleanup => cleanup()); cleanups.clear() } }
+  return { calls, ambientEvents, props, revoked, flush, button, nodes, unmount() { cleanups.forEach(cleanup => cleanup()); cleanups.clear() } }
 }
 async function main() {
   const controlsSource = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'NarrationControls.tsx'), 'utf8'), {
@@ -85,6 +90,8 @@ async function main() {
   assert.deepEqual(google.calls, [], 'Google mount does not spend or fetch')
   assert.ok(!google.nodes().some(node => node.type === 'h2'), 'Recipient playback has no duplicate narration heading')
   assert.ok(google.nodes().some(node => node.type === 'details' && !node.props.open), 'Provider explanations stay collapsed')
+  assert.ok(google.nodes().some(node => node.type === 'p' && /quiet local ambience/.test(flatten(node).join(' '))),
+    'Recipients are told that scene ambience accompanies explicit playback')
   google.button('Load scene recording').props.onClick()
   await google.flush()
   assert.ok(google.nodes().some(node => node.type === 'audio' && node.props.controls && !node.props.autoPlay))
@@ -146,6 +153,11 @@ async function main() {
   assert.equal(audio.props.autoPlay, undefined)
   assert.equal(audio.props.preload, 'metadata')
   audio.props.onPlay()
+  assert.deepEqual(recipient.ambientEvents.at(-1), ['start', 'Cars pass in a mysterious street.'])
+  audio.props.onPause()
+  assert.deepEqual(recipient.ambientEvents.at(-1), ['pause'])
+  audio.props.onEnded()
+  assert.deepEqual(recipient.ambientEvents.at(-1), ['stop'])
   recipient.props.stopSignal = true
   await recipient.flush()
   assert.ok(recipient.calls.includes('pause'))

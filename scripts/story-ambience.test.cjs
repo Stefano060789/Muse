@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..')
 const output = path.join(__dirname, `.story-ambience-tests-${process.pid}`)
 const saved = { window: global.window, fetch: global.fetch, error: console.error }
 const contexts = []
-const sounds = ['rain', 'wind', 'water', 'crowd']
+const sounds = ['rain', 'wind', 'water', 'crowd', 'traffic', 'mystery']
 let next = {}
 let passed = 0
 let networkCalls = 0
@@ -129,7 +129,7 @@ async function main() {
     await assert.rejects(engine.start('rain', 0.1), /not supported/)
     global.window = { AudioContext: Context }
   })
-  await check('all four sounds synthesize bounded local noise, filtered loops and smooth gain', async () => {
+  await check('all six sounds synthesize bounded local audio, filtered loops and smooth gain', async () => {
     for (const kind of sounds) {
       const engine = new StoryAmbience()
       await engine.start(kind, 100)
@@ -157,6 +157,16 @@ async function main() {
         assert.equal(texture.gain.value, 0.45)
         assert.ok(texture.gain.value - depth.gain.value > 0)
         assert.ok((texture.gain.value + depth.gain.value) * 0.12 * 0.3 < 0.02)
+      }
+      if (kind === 'traffic') {
+        const filters = context.nodes.filter(node => ['highpass', 'lowpass'].includes(node.type))
+        assert.deepEqual(filters.map(node => [node.type, node.frequency.value]), [['lowpass', 500], ['lowpass', 1400]])
+        assert.ok(context.samples.every(value => Math.abs(value) <= 0.12))
+      }
+      if (kind === 'mystery') {
+        assert.equal(context.nodes.filter(node => node.type === 'sine').length, 2)
+        assert.deepEqual(context.nodes.filter(node => node.type === 'sine').map(node => node.frequency.value), [55, 82.4])
+        assert.ok(context.samples.every(value => Math.abs(value) <= 0.04))
       }
       for (const volume of [-10, 0, 0.12, 0.3, 10, NaN, Infinity, -Infinity]) {
         engine.setVolume(volume)
