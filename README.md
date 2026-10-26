@@ -1090,7 +1090,9 @@ progress schema/RPC before using puzzle assistance.
   rate limits, deletion, expiry and local configuration guards.
 - `npm run test:sqlite:production` - actual built Next server SQLite loading
   and progress persistence across a server restart, plus a real HTTP photo
-  upload and solved-only reveal, with external calls blocked.
+  and WAV upload, solved-only reveal and reply persistence, with external calls
+  blocked. Authentication uses in-process synthetic account responses; missing,
+  invalid and other-account credentials are checked for creator and upload access.
 - `npm run test:media` - final photo/video reveal: declarations rejected
   before AI, no media metadata in prompts, upload binding (creator code,
   story, secret, exact type/size, single use), byte signatures, unsolved and

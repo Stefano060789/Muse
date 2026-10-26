@@ -10,7 +10,21 @@ const root = path.resolve(__dirname, '..')
 const directory = fs.mkdtempSync(path.join(__dirname, '.sqlite-production-tests-'))
 const filename = path.join(directory, 'stories.sqlite')
 const preload = path.join(directory, 'offline.cjs')
-fs.writeFileSync(preload, "global.fetch = async () => { throw new Error('External fetch forbidden in production storage smoke') }\n")
+fs.writeFileSync(preload, `
+global.fetch = async (input, options = {}) => {
+  const url = new URL(typeof input === 'string' ? input : input.url || input)
+  // Next can inline the public auth URL at build time; no auth request leaves this process.
+  if (url.pathname === '/auth/v1/user') {
+    const authorization = new Headers(options.headers).get('Authorization')
+    const id = authorization === 'Bearer smoke-owner' ? 'smoke-owner'
+      : authorization === 'Bearer smoke-other' ? 'smoke-other' : null
+    return new Response(JSON.stringify(id ? { id, email: id + '@example.test' } : { message: 'Invalid fixture token' }), {
+      status: id ? 200 : 401, headers: { 'Content-Type': 'application/json' }
+    })
+  }
+  throw new Error('External fetch forbidden in production storage smoke')
+}
+`)
 const hash = value => createHash('sha256').update(value).digest('hex')
 let child
 let logs = ''
@@ -43,8 +57,8 @@ async function main() {
     server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)) })
   })
   const url = `http://127.0.0.1:${port}/api/shared-story`
-  const api = async body => {
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consentVersion: '2026-10-18', ...body }) })
+  const api = async (body, account = 'smoke-owner') => {
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(account ? { Authorization: `Bearer ${account}` } : {}) }, body: JSON.stringify({ consentVersion: '2026-10-18', ...body }) })
     return { status: response.status, body: await response.json() }
   }
   const id = '00000000-0000-0000-0000-000000000000'
@@ -52,7 +66,8 @@ async function main() {
   const token = `${id}.${key}`
   async function start() {
     child = spawn(process.execPath, ['--require', preload, path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-H', '127.0.0.1', '-p', String(port)], {
-      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, MUSE_MEDIA_PATH: path.join(directory, 'media'), VERCEL: '' }, stdio: ['ignore', 'pipe', 'pipe']
+      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, MUSE_MEDIA_PATH: path.join(directory, 'media'), VERCEL: '',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://storage-smoke.invalid', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'storage-smoke-public-fixture' }, stdio: ['ignore', 'pipe', 'pipe']
     })
     child.stdout.on('data', value => { logs += value })
     child.stderr.on('data', value => { logs += value })
@@ -103,21 +118,29 @@ async function main() {
   assert.deepEqual(persisted.body.player.revealedHints, [brief.assistanceHints[0]])
   // Real HTTP upload through the streaming route (body parser disabled) into private local storage.
   const ownerToken = `${id}.${'b'.repeat(64)}`
+  assert.equal((await api({ action: 'manage', token: ownerToken }, null)).status, 401, 'Production creator access requires sign-in')
+  assert.equal((await api({ action: 'manage', token: ownerToken }, 'invalid-fixture')).status, 401, 'Invalid account tokens cannot manage stories')
+  assert.equal((await api({ action: 'manage', token: ownerToken })).status, 200, 'A signed-in holder can claim a legacy story')
+  assert.equal((await api({ action: 'manage', token: ownerToken }, 'smoke-other')).status, 404, 'A different account cannot use the owner capability after claiming')
   const photo = Buffer.alloc(3000, 5)
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(photo)
   const oversized = await api({ action: 'media-start', token: ownerToken, media: { mime: 'image/png', size: 100 } })
-  const rejectedPut = await fetch(new URL(oversized.body.upload.url, url), { method: 'PUT', headers: oversized.body.upload.headers, body: photo })
+  assert.equal(oversized.status, 201, `Media start failed: ${JSON.stringify(oversized.body)}`)
+  const rejectedPut = await fetch(new URL(oversized.body.upload.url, url), { method: 'PUT', headers: { ...oversized.body.upload.headers, Authorization: 'Bearer smoke-owner' }, body: photo })
   assert.equal(rejectedPut.status, 413)
   const started = await api({ action: 'media-start', token: ownerToken, media: { mime: 'image/png', size: photo.length } })
   assert.equal(started.status, 201)
-  const put = await fetch(new URL(started.body.upload.url, url), { method: 'PUT', headers: started.body.upload.headers, body: photo })
+  const uploadUrl = new URL(started.body.upload.url, url)
+  assert.equal((await fetch(uploadUrl, { method: 'PUT', headers: started.body.upload.headers, body: photo })).status, 401, 'Uploads require the signed-in account as well as the upload capability')
+  assert.equal((await fetch(uploadUrl, { method: 'PUT', headers: { ...started.body.upload.headers, Authorization: 'Bearer smoke-other' }, body: photo })).status, 404, 'Another account cannot use the upload capability')
+  const put = await fetch(uploadUrl, { method: 'PUT', headers: { ...started.body.upload.headers, Authorization: 'Bearer smoke-owner' }, body: photo })
   assert.equal(put.status, 200)
   assert.deepEqual((await api({ action: 'media-finish', token: ownerToken, uploadId: started.body.uploadId })).body.media, { kind: 'photo', mime: 'image/png', size: photo.length })
   const voice = wav(1)
   const voiceStarted = await api({ action: 'voice-start', token: ownerToken, voice: { mime: 'audio/wav', size: voice.length } })
   assert.equal(voiceStarted.status, 201)
   const voicePut = await fetch(new URL(voiceStarted.body.upload.url, url), {
-    method: 'PUT', headers: voiceStarted.body.upload.headers, body: voice
+    method: 'PUT', headers: { ...voiceStarted.body.upload.headers, Authorization: 'Bearer smoke-owner' }, body: voice
   })
   assert.equal(voicePut.status, 200)
   assert.deepEqual((await api({ action: 'voice-finish', token: ownerToken, uploadId: voiceStarted.body.uploadId })).body.voice,
@@ -161,7 +184,7 @@ async function main() {
   const persistedGiftPlayer = await api({ action: 'open', token: `${id}.${'c'.repeat(64)}`, sessionToken })
   assert.equal(persistedGiftPlayer.body.player.solved, true)
   assert.deepEqual(persistedGiftPlayer.body.player.voice, { mime: 'audio/wav', size: voice.length })
-  console.log('PASS built Next HTTP SQLite initialization, private hints, restart durability, independent photo/WAV upload, locked/revealed voice access and opted-in reply persistence/manage (external fetch forbidden)')
+  console.log('PASS built Next HTTP SQLite initialization, account-authenticated ownership, private hints, restart durability, independent photo/WAV upload, locked/revealed voice access and opted-in reply persistence/manage (external fetch forbidden)')
 }
 main().catch(error => { console.error(error, logs); process.exitCode = 1 }).finally(async () => {
   await stop()
