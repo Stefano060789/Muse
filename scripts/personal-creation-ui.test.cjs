@@ -35,6 +35,8 @@ async function main() {
   let confirmDeletion = true, deletionSuccess = false, removalFails = false
   const removals = []
   let responseGate
+  let accountRequest
+  let failureStatus = 503, failureSnapshot
   const browserEvents = new Map()
   let cloudProvider = 'browser', cloudConsent = false
   let narrationStops = 0
@@ -64,6 +66,7 @@ async function main() {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link' || id.startsWith('../components/')) return { __esModule: true, default: id }
+    if (id.endsWith('/accountClient')) return { accountFetch: (...args) => accountRequest(...args) }
     if (id.endsWith('/story')) return { loadPersonalStory: () => loadedStory, savePersonalStory() {} }
     if (id.endsWith('/profile')) return {
       loadMuseProfile: () => profile,
@@ -99,7 +102,7 @@ async function main() {
     getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)
   } }
   new Function('module', 'exports', 'require', 'window', 'fetch', 'requestAnimationFrame', compile('src/pages/story.tsx'))(
-    module, module.exports, mockRequire, browser, async (_url, options) => {
+    module, module.exports, mockRequire, browser, accountRequest = async (_url, options) => {
       const body = JSON.parse(options.body)
       requests.push(body)
       if (body.action === 'delete') return { ok: deletionSuccess, json: async () => deletionSuccess ? { deleted: true } : { error: 'Deletion denied' } }
@@ -107,7 +110,7 @@ async function main() {
       if (respondSuccessfully) return { ok: true, json: async () => ({
         story: body.action === 'respond' ? { ...loadedStory, journey: { ...loadedStory.journey, revision: 1 } } : loadedStory
       }) }
-      return { ok: false, json: async () => ({ error: 'Synthetic generation failure; no paid call.' }) }
+      return { ok: false, status: failureStatus, json: async () => ({ error: 'Synthetic generation failure; no paid call.', ...(failureSnapshot ? { snapshot: failureSnapshot, story: null } : {}) }) }
     }, callback => callback()
   )
   const flush = async () => {
@@ -222,6 +225,39 @@ async function main() {
   await click('Create my story →')
   assert.deepEqual(requests.at(-1).profileKeypoints, [], 'Users can exclude default memories before consenting to creation')
   await click('Abandon (no refund)')
+  failureStatus = 429
+  failureSnapshot = { status: 'failed', pending: false }
+  await click('Create my story →')
+  assert.equal(visible()[0].props.disabled, false, 'A confirmed failed opening unlocks creation without manual abandonment')
+  assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Failed opening removes only its preparation marker')
+  assert.equal(JSON.parse(storage.get('muse-personal-creation-draft')).need, 'A changed fictional evening.',
+    'Failed opening preserves the creation draft')
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Abandon (no refund)'))
+  const failedOpeningRequests = requests.length
+  await flush()
+  assert.equal(requests.length, failedOpeningRequests, 'A failed opening is never automatically recreated')
+  storage.set('muse-personal-journey-preparation', JSON.stringify({ id: requests[0].id, capability: requests[0].capability }))
+  slots.length = 0; effects.length = 0; timers.clear()
+  await flush()
+  assert.equal(storage.has('muse-personal-journey-preparation'), false,
+    'Restoring an old failed opening also releases the preparation lock')
+  assert.equal(visible()[0].props.disabled, false)
+  failureSnapshot = undefined
+  for (const status of [401, 404]) {
+    failureStatus = status
+    storage.set('muse-personal-journey-preparation', JSON.stringify({ id: requests[0].id, capability: requests[0].capability }))
+    slots.length = 0; effects.length = 0; timers.clear()
+    await flush()
+    const unavailableRequests = requests.length
+    await flush()
+    assert.equal(requests.length, unavailableRequests, 'Unavailable preparation does not generate a new story')
+    assert.equal(timers.size, 0, `HTTP ${status} stops automatic retry loops`)
+    assert.ok(flatten(tree).some(node => typeof node === 'string' && node.includes('This session could not be restored')))
+    assert.equal(storage.has('muse-personal-journey-preparation'), true, 'Account errors retain the recovery capability')
+    await click('Abandon (no refund)')
+    assert.equal(visible()[0].props.disabled, false)
+  }
+  failureStatus = 503
   loadedStory = {
     id: 'saved-story', title: 'A quiet door', description: 'A small beginning.', mood: 'curious',
     language: 'en-US', generation: 'ai', currentStep: 0, responses: [],

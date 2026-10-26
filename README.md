@@ -108,7 +108,13 @@ in step two; the romance theme is selected with mood in step one. Step three
 includes optional cloud-narration permission, separate from story AI processing.
 Restored journeys check saved progress automatically on opening or returning to
 the tab, without generating story text. Pending checks retry after three seconds;
-failed checks retry after fifteen seconds, stopping when synchronized. No manual
+temporary failures retry after fifteen seconds, stopping when synchronized.
+Sign-in-required or unavailable sessions stop background retries and explain how
+to recover; returning to the tab checks again without generating text.
+A confirmed failed opening releases the unfinished-preparation lock while keeping
+the creation draft. Rate-limit and other safe error messages explain the cause;
+retrying creation is always a manual action and does not refund consumed attempts.
+No manual
 sync button or bottom create/profile actions appear in the reading view.
 **Delete story** is available at the bottom after creation, with confirmation.
 For server journeys it requires the signed-in account and story capability, deletes

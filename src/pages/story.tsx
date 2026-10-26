@@ -43,6 +43,7 @@ export default function StoryPage() {
   const [romance, setRomance] = useState<StoryRomance | undefined>()
   const [romanceConfirmed, setRomanceConfirmed] = useState(false)
   const [reconciled, setReconciled] = useState(false)
+  const [reconciliationBlocked, setReconciliationBlocked] = useState(false)
   const [preparation, setPreparation] = useState<Preparation | null>(null)
   const [storyError, setStoryError] = useState('')
   const [storyNotice, setStoryNotice] = useState('')
@@ -179,6 +180,12 @@ export default function StoryPage() {
     })
     const data = await response.json()
     const saved = data.story ? persistStory(data.story) : false
+    if (data.snapshot?.status === 'failed' && !data.story) {
+      window.localStorage.removeItem(PREPARATION_KEY)
+      setPreparation(null)
+      setReconciled(true)
+    }
+    setReconciliationBlocked(response.status === 401 || response.status === 404)
     if (!response.ok) throw new Error(data.error || 'Could not complete this attempt. Reconcile before continuing.')
     if (data.status === 'failed' || data.snapshot?.status === 'failed') throw new Error('This attempt failed and was consumed. No automatic retry is made.')
     if (data.story && saved) {
@@ -207,17 +214,17 @@ export default function StoryPage() {
   useEffect(() => {
     if (!story?.journey && !preparation) return
     void reconcileRef.current()
-    const refresh = () => { void reconcileRef.current() }
+    const refresh = () => { setReconciliationBlocked(false); void reconcileRef.current() }
     window.addEventListener('focus', refresh)
     window.addEventListener('storage', refresh)
     return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
   }, [story?.id, Boolean(story?.journey), preparation?.id])
 
   useEffect(() => {
-    if ((!story?.journey && !preparation) || deletedOnServer.current === story?.id || isGenerating || (reconciled && !story?.journey?.pending)) return
+    if ((!story?.journey && !preparation) || deletedOnServer.current === story?.id || isGenerating || reconciliationBlocked || (reconciled && !story?.journey?.pending)) return
     const timer = window.setTimeout(() => { void reconcileRef.current() }, storyError ? 15000 : 3000)
     return () => window.clearTimeout(timer)
-  }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, isGenerating, storyError])
+  }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, reconciliationBlocked, isGenerating, storyError])
 
   const savePersonalTouches = () => {
     interaction.cancelRecording()
@@ -235,6 +242,7 @@ export default function StoryPage() {
     try {
       window.localStorage.removeItem(PREPARATION_KEY)
       setPreparation(null)
+      setReconciliationBlocked(false)
       setStoryError('')
     } catch {
       setStoryError('Could not remove the saved preparation. Check browser storage permissions before trying again.')
@@ -267,6 +275,7 @@ export default function StoryPage() {
     requestLock.current = true
     setIsGenerating(true)
     setStoryError('')
+    setReconciliationBlocked(false)
     stopSpeaking()
     stopRecording()
     try {
@@ -398,7 +407,8 @@ export default function StoryPage() {
             <NarrationControls narrator={narrator} beforeSpeak={stopRecording} showCloudConsent={false} />
           </details> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
-            {!reconciled || story?.journey?.pending ? <p role="status">{isGenerating ? 'Checking your saved progress...' : 'Progress is checked automatically. You can keep writing your answer.'}</p> : null}
+            {reconciliationBlocked ? <p role="status">This session could not be restored. Check that you are signed in to the original account. You can discard an unfinished preparation below without deleting saved stories.</p>
+              : !reconciled || story?.journey?.pending ? <p role="status">{isGenerating ? 'Checking your saved progress...' : 'Progress is checked automatically. You can keep writing your answer.'}</p> : null}
             {preparation ? <p>Unfinished preparation. <button disabled={isGenerating} onClick={abandonPreparation}>Abandon (no refund)</button></p> : null}
           </div> : null}
           {!story ? (

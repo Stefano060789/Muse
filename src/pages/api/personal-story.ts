@@ -99,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Personal journey progress reconciliation failed', reconciliationError instanceof Error ? reconciliationError.name : 'Unknown error')
         }
         return res.status(error instanceof SharedStoryError ? error.status : 503).json({
-          error: 'This story attempt could not complete. Its allowance was consumed. Reconcile to see saved progress; no automatic retries or refunds.',
+          error: `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} No automatic retry was made. Your draft and any saved scenes are kept.`,
           ...current
         })
       }

@@ -291,6 +291,8 @@ async function main() {
     const creation = newCreation()
     const blocked = await api(creation, { address: client })
     assert.equal(blocked.status, 429)
+    assert.match(blocked.body.error, /Story generation limit reached/)
+    assert.ok(!blocked.body.error.includes('Its allowance was consumed'))
     assert.equal(blocked.body.snapshot.status, 'failed')
     assert.equal((await api(creation, { address: client })).body.status, 'failed')
     assert.equal(calls, before)
