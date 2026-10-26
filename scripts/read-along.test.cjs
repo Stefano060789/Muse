@@ -54,3 +54,21 @@ assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scen
 assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scene.text, position: 7 })), 'The quiet', 'Pausing or idling never reveals future words')
 assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scene.text, position: scene.text.length })), scene.text, 'Completed listening retains the revealed text')
 console.log('PASS story passage waits for a choice and never flashes unread text in Listen')
+const modeModule = { exports: {} }
+new Function('module', 'exports', 'require', ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'src/components/StoryModeControl.tsx'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX }
+}).outputText)(modeModule, modeModule.exports, name => {
+  if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }
+  throw new Error('Unexpected mode dependency ' + name)
+})
+const changes = []
+const controls = modeModule.exports.default({ mode: null, onChange: value => changes.push(value) })
+assert.ok(visibleText(controls).includes('How would you like to experience this scene?'))
+const buttons = flatten(controls).filter(node => node?.type === 'button')
+assert.deepEqual(buttons.map(node => node.props['aria-label']), ['Read this scene', 'Listen to this scene'])
+assert.ok(visibleText(buttons[0]).includes('No audio'))
+assert.ok(visibleText(buttons[1]).includes('Start the voice'))
+assert.ok(buttons.every(node => node.props['aria-pressed'] === false))
+buttons.forEach(node => node.props.onClick())
+assert.deepEqual(changes, ['read', 'listen'])
+console.log('PASS prominent experience controls describe the immediate Read and Listen actions')

@@ -174,7 +174,8 @@ export default function StoryPage() {
   const scene = useMemo(() => story?.scenes[story.currentStep] || null, [story])
   const sceneTitle = scene?.title.trim().replace(/\s+/g, ' ') || ''
   const sceneBody = scene?.body.trim().replace(/\s+/g, ' ') || ''
-  const sceneQuestion = scene?.question.trim().replace(/\s+/g, ' ') || ''
+  const legacyEnding = Boolean(story?.generation === 'ai' && !story.journey && story.currentStep === story.scenes.length - 1)
+  const sceneQuestion = legacyEnding ? '' : scene?.question.trim().replace(/\s+/g, ' ') || ''
   const narrationText = scene ? `${sceneTitle}. ${sceneBody} ${sceneQuestion}` : ''
   const sceneBodyStart = sceneTitle ? sceneTitle.length + 2 : 0
   const sceneQuestionStart = sceneBodyStart + sceneBody.length + 1
@@ -314,7 +315,35 @@ export default function StoryPage() {
     }
   }
 
-  const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status) : story.responses.length >= story.scenes.length))
+  const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status)
+    : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
+  const readyForClosing = Boolean(story?.journey && !finished && story.journey.revision === story.journey.maxTurns - 1)
+  const writeClosingScene = async () => {
+    if (!story?.journey || !readyForClosing || archiveReading || requestLock.current) return
+    if (!reconciled || story.journey.pending) {
+      setStoryError('Your saved progress is being checked before writing the closing scene.')
+      return
+    }
+    if (!hasExplicitConsent(aiConsent)) {
+      setStoryError('Review Story details and AI permission before asking Muse to write the closing scene.')
+      return
+    }
+    requestLock.current = true
+    setIsGenerating(true); setStoryError('')
+    stopSpeaking(); interaction.cancelRecording()
+    try {
+      setReconciled(false)
+      await requestJourney({
+        action: 'conclude', id: story.id, capability: story.journey.capability,
+        revision: story.journey.revision, requestId: crypto.randomUUID(), consentVersion: MUSE_AI_CONSENT_VERSION
+      })
+    } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Could not write the closing scene. Any saved scenes are kept; no automatic retry was made.')
+    } finally {
+      requestLock.current = false
+      setIsGenerating(false)
+    }
+  }
   const continueChapter = async () => {
     if (!story?.journey || story.journey.status !== 'concluded' || archiveReading || requestLock.current || preparation) return
     if (!hasExplicitConsent(chapterConsent)) {
@@ -616,7 +645,14 @@ export default function StoryPage() {
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
-                {!finished && !archiveReading ? <>
+                {readyForClosing && !archiveReading ? <section aria-label="Chapter closing scene">
+                  <h3>Let Muse write the ending</h3>
+                  <p>Your choices have brought this chapter to its final scene. Muse will bring the story to a close using what has already happened. You do not need to write another answer.</p>
+                  <p>This uses the chapter&apos;s last remaining AI attempt. No extra allowance is added.</p>
+                  <button type="button" className="atelier-button" disabled={isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
+                    {isGenerating ? 'Muse is writing the closing scene...' : 'Write the closing scene'}
+                  </button>
+                </section> : !finished && !archiveReading ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : storyMode !== null ? <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>Each choice uses one AI attempt.</p>
@@ -651,7 +687,7 @@ export default function StoryPage() {
               </section> : null}
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
                 <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : story.journey ? 'Your chapter is complete.' : 'Your story is complete.'}</h2>
-                <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'Take a moment. You can return to this story whenever you like.'}</p>
+                <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'The closing scene is saved above. Choose Read this scene or Listen to this scene to experience the ending. No further answer is needed.'}</p>
                 <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
                 {story.journey?.status === 'concluded' ? <section aria-label="Continue with a new chapter">
                   <button type="button" disabled={isGenerating || Boolean(preparation)} onClick={() => {

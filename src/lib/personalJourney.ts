@@ -139,6 +139,13 @@ export function parseJourneyAction(body: Record<string, unknown>, authoritativeR
   const text = validatePlayerChoiceSelection(replay ? 'free' : mode, availableChoices, body)
   return { requestId, revision: Number(body.revision), text, fingerprint: journeyHash(JSON.stringify([text, body.revision])) }
 }
+export const JOURNEY_CLOSING_ACTION = 'Bring this chapter to a close using the choices and discoveries already made. Do not require another player action.'
+
+export function parseJourneyClosingAction(body: Record<string, unknown>, record: JourneyRecord) {
+  const finalRevision = JOURNEY_TURNS[record.input.duration] - 1
+  if (body.revision !== finalRevision) throw new SharedStoryError('The closing scene is available at the end of this chapter.', 409)
+  return parseJourneyAction({ ...body, text: JOURNEY_CLOSING_ACTION, choiceMode: 'free' })
+}
 export function parseJourneyTurn(value: unknown, concluding: boolean, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyTurn {
   const isSuggested = mode === 'suggested' && !concluding
   const keys = isSuggested ? ['narration', 'state', 'concluded', 'choices'] : ['narration', 'state', 'concluded']
@@ -232,7 +239,7 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
   const system = journeySystem(mode) + '\n' + romanceInstruction(record.input.romance) + '\n' + storyLanguageInstruction(language)
   const isFinal = remaining === 0
   const turnPrompt = isFinal
-    ? 'This is the FINAL paid response. Deliver an actual meaningful conclusion resolving the arc and reflecting the latest action, state and consequences. No unresolved required next action or question. Set concluded:true.'
+    ? 'This is the FINAL paid response. Deliver an actual meaningful conclusion resolving the arc and reflecting the latest action, state and consequences. Write the closing scene yourself: narrate the resolution and its emotional aftermath, rather than asking the player to write or choose the ending. No unresolved required next action or question, no invitation to respond, no cliffhanger requiring continuation. Set concluded:true.'
     : ('There are ' + remaining + ' responses left after this one. ' + (remaining <= 2 ? 'Draw threads together toward the ending.' : 'Develop the flexible arc.') + ' Set concluded:false.' + (mode === 'suggested' ? ' Provide exactly 3 to 5 distinct proposed actions in choices (each at most 160 characters).' : ''))
   const turnJson = isFinal
     ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":true}'

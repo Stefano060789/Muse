@@ -81,7 +81,8 @@ export default function MyStoriesPage() {
           {!ready ? <p role="status">Loading your stories...</p> : !entries.length ? <p>No personal stories here yet. Start your first adventure above, or sync your account stories.</p> : entries.map(entry => {
             const completed = entry.story.journey
               ? ['concluded', 'exhausted'].includes(entry.story.journey.status)
-              : entry.story.responses.length >= entry.story.scenes.length
+              : entry.story.responses.length >= entry.story.scenes.length ||
+                (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
             return <article className="atelier-card" key={entry.id} style={{ marginTop: '1rem' }}>
               <h3>{entry.story.title}</h3>
               {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}

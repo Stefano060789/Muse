@@ -95,11 +95,12 @@ async function main() {
       const forged = await api(personal, { ...respond(story, 'invented'), choiceMode: 'free' })
       assert.equal(forged.status, 400); assert.equal(calls, before)
       for (let i = 0; i < journey.JOURNEY_TURNS[duration]; i++) {
-        const action = respond(story, story.journey.choices[0])
+        const final = i === journey.JOURNEY_TURNS[duration] - 1
+        const action = final ? { ...respond(story, ''), action: 'conclude' } : respond(story, story.journey.choices[0])
         const before = calls
         result = await api(personal, action)
         assert.equal(result.status, 200, JSON.stringify(result.body))
-        assert.equal(lastInput.action, action.text)
+        assert.equal(lastInput.action, final ? journey.JOURNEY_CLOSING_ACTION : action.text)
         assert.equal(calls, before + 1)
         story = result.body.story
         assert.equal(story.mood, 'curious')

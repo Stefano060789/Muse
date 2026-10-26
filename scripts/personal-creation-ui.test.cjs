@@ -114,6 +114,10 @@ async function main() {
       }
       if (body.action === 'delete') return { ok: deletionSuccess, json: async () => deletionSuccess ? { deleted: true } : { error: 'Deletion denied' } }
       if (body.action === 'respond' && responseGate) await responseGate
+      if (body.action === 'conclude') {
+        loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: 3, status: 'concluded' },
+          currentStep: 1, scenes: [...loadedStory.scenes.slice(0, 1), { title: 'The conclusion', body: 'The door closes and the garden is safe.', question: '', choices: [] }] }
+      }
       if (respondSuccessfully) return { ok: true, json: async () => ({
         story: body.action === 'respond' ? { ...loadedStory, journey: { ...loadedStory.journey, revision: 1 } } : loadedStory
       }) }
@@ -372,6 +376,31 @@ async function main() {
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
   assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
   assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
+  const beforeClosingStory = structuredClone(loadedStory)
+  loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: 2 } }
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'))
+  assert.ok(!responseField(), 'The last allowance offers a closing scene, not another writing box')
+  const closingRequests = requests.length
+  await click('Write the closing scene')
+  assert.equal(requests.length, closingRequests, 'Closing still requires the story AI consent')
+  nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await flush()
+  const writeEnding = find('button', 'Write the closing scene')
+  writeEnding.props.onClick()
+  writeEnding.props.onClick()
+  await flush()
+  const closingRequest = requests.findLast(body => body.action === 'conclude')
+  assert.equal(closingRequest.revision, 2)
+  assert.equal(closingRequest.text, undefined, 'No user writing is required to generate the ending')
+  assert.equal(requests.filter(body => body.action === 'conclude').length, 1, 'Double-click cannot reserve two endings')
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your chapter is complete.'))
+  assert.ok(!responseField(), 'The generated ending never asks for another response')
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Write the closing scene'))
+  loadedStory = beforeClosingStory
+  slots.length = 0; effects.length = 0
+  await flush()
   const beforeDelete = requests.length
   confirmDeletion = false
   await click('Delete story')
@@ -403,10 +432,12 @@ async function main() {
   assert.equal(requests.length, beforeLegacyDelete, 'Browser-only legacy stories delete without a server request')
   assert.equal(removals.length, 2)
   assert.equal(storage.has('muse-personal-answer:saved-story'), false, 'Deleting a story removes its unsent answer')
-  loadedStory = { ...loadedStory, responses: ['Enter', 'Follow'], currentStep: 1 }
+  loadedStory = { ...loadedStory, responses: ['Enter'], currentStep: 1 }
   slots.length = 0; effects.length = 0
   await flush()
   assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your story is complete.'))
+  assert.ok(!responseField(), 'A legacy AI final scene is complete without a meaningless extra answer')
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Continue with my answer →'))
   await click('Read again')
   assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Door'))
   const keepsake = nodes().find(node => node.type === '../components/StoryKeepsake')

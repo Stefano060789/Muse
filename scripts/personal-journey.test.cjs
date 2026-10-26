@@ -568,6 +568,53 @@ async function main() {
     assert.equal(calls, beforeConfirmation, 'Inherited romance requires fresh explicit adult/boundary confirmation')
     assert.equal((await api({ ...romanticChild, romanceConfirmed: true })).body.story.romance, 'sweet')
   })
+  await check('one-tap closing writes the final scene without a player answer and preserves normal attempt safety', async () => {
+    let result = await api(newCreation())
+    const closing = () => ({ ...responseBody(result.body), action: 'conclude', text: 'FORGED_ENDING' })
+    const beforeEarly = calls
+    assert.equal((await api(closing())).status, 409, 'Cannot finish early or increase the allowance')
+    assert.equal(calls, beforeEarly)
+    for (let step = 0; step < 2; step++) result = await api(responseBody(result.body))
+    const action = closing()
+    const beforeFinal = calls, budget = dayUsed()
+    assert.equal((await api({ ...action, consentVersion: undefined })).status, 400)
+    assert.equal(calls, beforeFinal)
+    let release, notify
+    hold = new Promise(resolve => { release = resolve })
+    const arrived = new Promise(resolve => { notify = resolve })
+    received = notify
+    const pendingEnding = api(action)
+    await arrived
+    assert.equal((await api(action)).body.snapshot.pending, true)
+    assert.equal(calls, beforeFinal + 1, 'Concurrent closing confirmations reserve only one provider call')
+    release(); hold = null
+    result = await pendingEnding
+    assert.equal(result.status, 200)
+    assert.equal(result.body.snapshot.status, 'concluded')
+    assert.equal(result.body.snapshot.revision, 3)
+    assert.equal(result.body.story.scenes.at(-1).body, conclusion)
+    assert.equal(result.body.story.scenes.at(-1).question, '')
+    assert.deepEqual(result.body.story.scenes.at(-1).choices, [])
+    assert.equal(requests.at(-1).input.action, journey.JOURNEY_CLOSING_ACTION, 'The server supplies the closing instruction, not a forged answer')
+    assert.equal(requests.at(-1).input.responsesRemaining, 0)
+    assert.ok(requests.at(-1).payload.messages[0].content.includes('Write the closing scene yourself'))
+    assert.equal(calls, beforeFinal + 1)
+    assert.equal(dayUsed(), budget + 1, 'Closing uses the existing final response allowance')
+    assert.equal((await api(action)).body.snapshot.status, 'concluded')
+    assert.equal(calls, beforeFinal + 1, 'Replaying the closing request never calls AI twice')
+    assert.equal((await api({ ...action, requestId: randomUUID() })).status, 409)
+    let failed = await api(newCreation())
+    for (let step = 0; step < 2; step++) failed = await api(responseBody(failed.body))
+    const failedAction = { ...responseBody(failed.body), action: 'conclude' }
+    providerMode = 'network'
+    const failure = await api(failedAction)
+    providerMode = 'ok'
+    const afterFailure = calls
+    assert.equal(failure.body.snapshot.status, 'exhausted')
+    assert.notEqual(failure.body.story.scenes.at(-1).body, conclusion, 'Failure does not fabricate an ending')
+    assert.equal((await api(failedAction)).body.status, 'failed')
+    assert.equal(calls, afterFailure, 'Closing failures are consumed without automatic retries')
+  })
   console.log(`\n${passed} personal journey checks passed; ${calls + childCalls} mocked provider calls, zero real AI/hosted database requests.`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => {

@@ -262,19 +262,30 @@ main [role="status"] { line-height: 1.6; }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 .story-mode-control {
-  display: flex;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem;
+  margin: 1.25rem 0;
 }
+.story-mode-prompt { grid-column: 1 / -1; margin: 0; font-weight: 600; }
 .story-mode-control button {
-  border: 1px solid #d9cfc5;
-  border-radius: 999px;
-  padding: 0.65rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 88px;
+  text-align: start;
+  border: 2px solid #a99a8c;
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
   font: inherit;
   cursor: pointer;
   background: #fffaf6;
   color: #2d2926;
 }
+.story-mode-control button strong { font-size: 1.1rem; }
+.story-mode-control button span { font-size: 0.9rem; line-height: 1.5; }
+.story-mode-control button:hover { border-color: #2d2926; }
+.story-mode-control button:focus-visible { outline: 3px solid #95652d; outline-offset: 3px; }
 .story-mode-control button[aria-pressed="true"] {
   background: #2d2926;
   color: #fffaf6;

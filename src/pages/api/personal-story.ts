@@ -11,7 +11,7 @@ import { requireProviderConsent } from '../../lib/providerConsent'
 import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
-  parseJourneyAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
+  parseJourneyAction, parseJourneyClosingAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
 } from '../../lib/personalJourney'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
@@ -87,9 +87,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...common, operation: 'create', requestId: id, input,
           fingerprint: journeyHash(JSON.stringify(input))
         }
-      } else if (body.action === 'respond') {
+      } else if (body.action === 'respond' || body.action === 'conclude') {
         const current = await db.personalJourney({ ...common, operation: 'view' })
-        operation = { ...common, operation: 'reserve', ...parseJourneyAction(body, current.record) }
+        const action = body.action === 'conclude'
+          ? parseJourneyClosingAction(body, current.record) : parseJourneyAction(body, current.record)
+        operation = { ...common, operation: 'reserve', ...action }
       } else throw new SharedStoryError('Unsupported personal journey action.')
       const reserved = await db.personalJourney(operation)
       if (reserved.status !== 'reserved') return res.status(200).json(publicJourney(reserved, capability))

@@ -9,7 +9,8 @@ type PersonalLibraryEntry = Extract<LibraryEntry, { kind: 'personal' }>
 function isComplete(entry: PersonalLibraryEntry) {
   return entry.story.journey
     ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted'
-    : entry.story.responses.length >= entry.story.scenes.length
+    : entry.story.responses.length >= entry.story.scenes.length ||
+      (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
 }
 
 export default function Home() {

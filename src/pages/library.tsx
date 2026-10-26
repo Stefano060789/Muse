@@ -154,7 +154,8 @@ export default function LibraryPage() {
               {(() => {
                 const completed = entry.story.journey
                   ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted'
-                  : entry.story.responses.length >= entry.story.scenes.length
+                  : entry.story.responses.length >= entry.story.scenes.length ||
+                    (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
                 return <>
                   <p>{completed ? 'Completed' : entry.story.journey ? `In progress · Scene ${entry.story.currentStep + 1}` : `In progress · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
                   {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}

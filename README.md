@@ -45,6 +45,8 @@ preparation, progress and management stay under **Share and sender tools**.
 New/reuse buttons are absent from the preview; primary navigation still creates
 a new gift story. Personal and gift scenes offer **Read** and **Listen**.
 Neither mode is selected initially, and each new scene waits for a fresh choice.
+The prominent **Read this scene** and **Listen to this scene** cards explain
+their actions, show the selected mode and have visible keyboard focus.
 Read reveals full text with no audio requests or playback. Listen starts the
 current scene directly and reveals its words as the voice progresses, without
 flashing the full transcript while audio loads, pauses or fails. Prepared shared
@@ -808,6 +810,15 @@ need-based inference. Select approximately **5/10/15/20 minutes**, allowing
 at most **3/6/9/12 AI response attempts** respectively. These are
 participation/reading estimates, not timers. The opening plus compact 3–5-point
 plan is generated in one call; each submitted response uses one call.
+When one attempt remains, the personal reader replaces the answer box and
+suggested choices with **Write the closing scene**. One explicit click asks AI
+to resolve the chapter from its existing choices and state, without another
+written answer. This uses that same final allowance, requires story processing
+consent and follows the normal atomic reservation/replay/failure rules; it
+never runs automatically. The ending has no response controls and can be read,
+listened to, kept as it is, or followed by a separately confirmed new chapter.
+Older three-scene AI saves likewise stop asking for an answer once their
+already-generated final scene is reached.
 The last successful response at the cap must return a validated conclusion,
 not another required action. Failed final attempts exhaust the allowance
 without fabricating an ending or charging another call.
