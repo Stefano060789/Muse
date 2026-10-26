@@ -40,13 +40,18 @@ The full product definition lives in four documents:
 ## Gifts inside Shared Story
 
 Gift-story previews and recipient pages prioritize the story. Sender scenes are
-visible immediately; sharing safeguards, answer/reveal, uploads, narration
+hidden until Read or Listen is chosen; sharing safeguards, answer/reveal, uploads, narration
 preparation, progress and management stay under **Share and sender tools**.
 New/reuse buttons are absent from the preview; primary navigation still creates
 a new gift story. Personal and gift scenes offer **Read** and **Listen**.
-Read is the quiet default: full text, with no audio requests or playback.
-Listen exposes explicit playback and progressive text, without autoplay or
-automatic paid generation. Switching to Read stops voice and ambience.
+Neither mode is selected initially, and each new scene waits for a fresh choice.
+Read reveals full text with no audio requests or playback. Listen starts the
+current scene directly and reveals its words as the voice progresses, without
+flashing the full transcript while audio loads, pauses or fails. Prepared shared
+recordings are loaded and played, never generated automatically. Live shared
+turns use device speech. Personal cloud narration still requires explicit
+provider consent before sending text or spending an allowance. Switching to
+Read stops voice and ambience and reveals the full text.
 Settings, hints, keepsakes,
 privacy explanations and the full footer are collapsed; required romance and
 AI-processing consent remain explicit. No create-your-own promotion appears
@@ -54,7 +59,7 @@ after the reveal. Recipient dictation uses the story language, and editing
 cancels late transcripts. Pending live-adventure turns check progress
 automatically with read-only open requests (three seconds while pending,
 fifteen after an error), never automatic paid retries.
-Prepared recipient audio keeps explicit Load/Play controls and shows provider
+Prepared recipient audio starts from Listen, retains native playback controls and shows provider
 information in a collapsed explanation, not repeated recording-ready copy.
 
 ### Simple start and app installation
@@ -160,7 +165,8 @@ the clues). Creation text boxes expand to fit their example text and writing.
 Prepared Studio scene recordings are the main creator listening option, with
 scene-matched local ambience in sender and recipient previews; free device speech and its settings are an explicit
 collapsed alternative. Preparing audio still requires fresh consent and the
-configured paid narration allowance, never autoplay or automatic fallback.
+configured paid narration allowance. Listen plays saved recordings only, never
+automatically prepares paid audio or switches to a device fallback.
 Live-adventure scenes cannot use prepared recordings.
 
 ### My stories and archive
@@ -277,9 +283,9 @@ adventure turns or final reveals. The creator chooses a scene, checks
 availability and separately consents before preparing its title, body and clue
 with Google Cloud when the Google provider is selected, or ElevenLabs in the
 legacy configuration. No generation runs on page load. Recipients can only load an
-existing recording for a reached scene. **Load Studio audio** fetches private
-bytes; the recipient then taps the native player's **Play**, avoiding an
-autoplay assumption after Safari's asynchronous fetch. Replays use the cache,
+existing recording for a reached scene. **Listen** fetches private bytes and
+starts playback directly. Native **Play** and reload controls remain available
+if Safari blocks playback after the asynchronous fetch. Replays use the cache,
 not the provider. Replacement and unmount revoke client blob URLs; a file
 already downloaded cannot be recalled.
 
@@ -1069,8 +1075,10 @@ recipients listen with voices available on their own devices.
 ### Optional puzzle assistance
 
 Recipient links open a focused story player directly, without a sign-in step.
-Choose Read or Listen; audio starts only after tapping Play. Listen mode
-keeps the transcript available in a disclosure. Exploratory action choices
+Choose Read to reveal the scene, or Listen to start its narration and progressive
+transcript directly. If browser autoplay restrictions block playback after loading,
+an explicit error offers native Play or Read; no device fallback starts silently.
+Exploratory action choices
 advance through the same linear clue trail (not branching or paid AI
 continuations). The final secret answer remains typed or dictated, never
 listed as a selectable choice. New AI stories include three safe actions

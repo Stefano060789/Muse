@@ -13,7 +13,7 @@ function flatten(node) {
 function mount(extra = {}) {
   const slots = [], effects = [], cleanups = new Map(), calls = [], revoked = []
   let cursor = 0, tree, serial = 0
-  const audioRef = { current: { pause() { calls.push('pause') } } }
+  const audioRef = { current: { pause() { calls.push('pause') }, play() { calls.push('play'); return Promise.resolve() } } }
   const ambientEvents = []
   const props = {
     sceneIndex: 1, audioRef, beforeListen() { calls.push('beforeListen') },
@@ -62,6 +62,25 @@ function mount(extra = {}) {
   return { calls, ambientEvents, props, revoked, flush, button, nodes, unmount() { cleanups.forEach(cleanup => cleanup()); cleanups.clear() } }
 }
 async function main() {
+  const selected = mount({ playRequest: 1 })
+  await selected.flush()
+  assert.equal(selected.calls.filter(call => call === 'load').length, 1)
+  assert.equal(selected.calls.filter(call => call === 'play').length, 1, 'Listen loads and plays a saved recording with no second click')
+  assert.ok(!selected.calls.includes('generate'))
+  await selected.flush()
+  assert.equal(selected.calls.filter(call => call === 'play').length, 1, 'Rerenders never restart playback')
+  selected.unmount()
+  const denied = mount({ playRequest: 1, audioRef: { current: { pause() {}, play() { return Promise.reject(new Error('NotAllowedError')) } } } })
+  await denied.flush()
+  assert.ok(denied.nodes().some(node => node.props.role === 'alert' && flatten(node).some(text => typeof text === 'string' && text.includes('Press Play'))), 'Browser playback blocking offers an explicit native retry')
+  assert.ok(denied.nodes().some(node => node.type === 'audio'), 'A blocked autoplay keeps the loaded recording available')
+  denied.unmount()
+  const missing = mount({ owner: true, playRequest: 1 })
+  await missing.flush()
+  assert.ok(missing.calls.includes('check'))
+  assert.ok(!missing.calls.includes('load') && !missing.calls.includes('generate'), 'Listen never generates an unprepared scene')
+  assert.ok(missing.nodes().some(node => node.props.role === 'alert'))
+  missing.unmount()
   const controlsSource = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'NarrationControls.tsx'), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX }
   }).outputText

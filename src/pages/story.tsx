@@ -58,7 +58,10 @@ export default function StoryPage() {
   const [draftError, setDraftError] = useState('')
   const [rereading, setRereading] = useState(false)
   const [archiveReading, setArchiveReading] = useState(false)
-  const [storyMode, setStoryMode] = useState<StoryMode>('read')
+  const [experience, setExperience] = useState<{ key: string; mode: StoryMode } | null>(null)
+  const experienceKey = JSON.stringify([story?.id, story?.currentStep, archiveReading, rereading])
+  const storyMode = experience?.key === experienceKey ? experience.mode : null
+  const setStoryMode = (mode: StoryMode) => setExperience({ key: experienceKey, mode })
   const [chapterFormOpen, setChapterFormOpen] = useState(false)
   const [chapterConsent, setChapterConsent] = useState(false)
   const [chapterDuration, setChapterDuration] = useState(10)
@@ -452,14 +455,31 @@ export default function StoryPage() {
   const startDictation = () => interaction.dictate('response', value => {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
-  const sceneListening = storyMode === 'listen' && narrator.activeText === narrationText && (narrator.speaking || narrator.paused)
+  const pendingListen = useRef('')
+  useEffect(() => { setStoryMode(null); pendingListen.current = '' }, [story?.id, story?.currentStep, archiveReading, rereading])
+  useEffect(() => {
+    if (!pendingListen.current || !narrator.cloudConsent || storyMode !== 'listen') return
+    const text = pendingListen.current
+    pendingListen.current = ''
+    void narrator.speak(text, undefined, { autoPlay: true })
+  }, [narrator.cloudConsent, storyMode])
+  const scenePosition = narrator.activeText === narrationText ? narrator.textPosition : -1
+  const changeStoryMode = (mode: StoryMode) => {
+    narrator.stop(); stopRecording(); setStoryMode(mode)
+    pendingListen.current = ''
+    if (mode === 'listen') {
+      const text = archiveReading || rereading ? `${story?.scenes[0].title}. ${story?.scenes[0].body}` : narrationText
+      if (narrator.provider !== 'browser' && !narrator.cloudConsent) { pendingListen.current = text; return }
+      void narrator.speak(text, undefined, { autoPlay: true })
+    }
+  }
   const savedScenes = story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
     {story.scenes.map((savedScene, index) => {
       const text = `${savedScene.title}. ${savedScene.body}`
       const active = storyMode === 'listen' && narrator.activeText === text && (narrator.speaking || narrator.paused)
       return <article key={index} className="atelier-card">
-        <h3><StoryPassage text={savedScene.title} narrationText={text} position={narrator.textPosition} active={active} /></h3>
-        <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage text={savedScene.body} narrationText={text} position={narrator.textPosition} active={active} /></p>
+        <h3><StoryPassage mode={storyMode} text={savedScene.title} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></h3>
+        <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage mode={storyMode} text={savedScene.body} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></p>
         {storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
       </article>
     })}
@@ -564,7 +584,7 @@ export default function StoryPage() {
             <section className="atelier-reading">
               <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
               {story.chapter ? <p>Chapter {story.chapter.number} <button type="button" onClick={openPreviousChapter}>Read previous chapter</button></p> : null}
-              <StoryModeControl mode={storyMode} onChange={mode => { narrator.stop(); stopRecording(); setStoryMode(mode) }} />
+              <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
               {storyMode === 'listen' ? <details>
                 <summary>Audio settings</summary>
                 <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
@@ -579,24 +599,25 @@ export default function StoryPage() {
                 </ExplicitConsent>
               ) : null}
               </details>
-              {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>
+              {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>Enable optional narration</summary>
+                <p>Allow narration to start listening, or choose Read. No paid narration is requested without your permission.</p>
                 <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                   Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}
               {!archiveReading && !rereading ? <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
-                <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={sceneListening} /></h2>
-                <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={sceneListening} /></p>
+                <h2 style={{ margin: '0.5rem 0 1rem' }}>{storyMode !== null ? <ReadAlongText text={sceneTitle} startAt={0} position={scenePosition} active={storyMode === 'listen'} /> : null}</h2>
+                <p className="atelier-prose">{storyMode !== null ? <ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</p>
                 {storyMode === 'listen' ? <>
-                <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} showCloudConsent={false} />
+                {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label="Replay this scene" beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
                 {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
                 {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
                 {!finished && !archiveReading ? <>
-                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={sceneListening} />}</h3>
+                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : storyMode !== null ? <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>Each choice uses one AI attempt.</p>
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>

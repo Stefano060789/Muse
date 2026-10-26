@@ -62,7 +62,8 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     clearTimeout(id) { activeTimers.delete(id) }, scrollTo() {}, confirm() { return true }
   }
   let narrationStops = 0
-  const narrator = { stop() { narrationStops++ }, startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 } }
+  const narrationCalls = []
+  const narrator = { stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() }, startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 } }
   let dictationLanguage
   const customRequire = id => {
     if (id === 'react') return react
@@ -173,7 +174,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const field = id => { const node = nodes().find(node => node.props.id === id); assert.ok(node, 'Missing field: ' + id); return node }
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
-  return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, savedStories, browser,
+  return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, savedStories, browser, narrationCalls,
     dispatch(name) { listeners.get(name)?.() },
     dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
@@ -346,14 +347,16 @@ async function main() {
   await studioPlayer.click(romance.romanceCopy().open)
   await studioPlayer.click(language.recipientCopy().openStory)
   const recipientMode = studioPlayer.nodes().find(node => node.type === '../components/StoryModeControl')
-  assert.equal(recipientMode.props.mode, 'read')
+  assert.equal(recipientMode.props.mode, null)
+  assert.ok(studioPlayer.nodes().filter(node => node.type === '../components/StoryPassage').every(node => node.props.mode === null), 'Shared passages start hidden until an experience is selected')
   assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/StudioNarration'), 'Read mode never loads audio controls')
   const requestsBeforeListen = studioPlayer.requests.length
   recipientMode.props.onChange('listen')
   await studioPlayer.flush()
-  assert.equal(studioPlayer.requests.length, requestsBeforeListen, 'Listen selection makes no paid or playback requests')
+  assert.equal(studioPlayer.requests.length, requestsBeforeListen, 'Page delegates prepared playback to Studio without generating paid audio')
   const recipientStudio = studioPlayer.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(recipientStudio)
+  assert.equal(recipientStudio.props.playRequest, 1, 'Listen requests immediate prepared playback, not a second load/play click')
   assert.equal(typeof recipientStudio.props.onReadAlong, 'function', 'Prepared audio reports progressive text position')
   recipientStudio.props.onReadAlong(12, true)
   await studioPlayer.flush()
@@ -389,6 +392,19 @@ async function main() {
   const pendingPlayer = { ...player, gift: undefined, solved: false, adventure: {
     pending: true, actionsRemaining: 10, budgetRemaining: 20, budget: 30, revision: 0, choiceMode: 'free'
   } }
+  const livePlayer = { ...pendingPlayer, adventure: { ...pendingPlayer.adventure, pending: false } }
+  const live = await mount('#play=listen-fixture', livePlayer)
+  live.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await live.flush()
+  assert.equal(live.narrationCalls.length, 1, 'Live shared adventures start device narration directly on Listen')
+  assert.equal(live.narrationCalls[0][0], `${livePlayer.scene.body} ${livePlayer.scene.clue}`)
+  assert.deepEqual(live.narrationCalls[0][2], { autoPlay: true })
+  live.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await live.flush()
+  livePlayer.adventure.revision++
+  live.render()
+  assert.equal(live.nodes().find(node => node.type === '../components/StoryModeControl').props.mode, null, 'A new live turn is gated synchronously, before effects, so Read cannot flash the next scene')
+  live.unmount()
   const failures = {}
   const pendingAdventure = await mount('#play=pending-fixture', pendingPlayer, null, failures)
   assert.ok(!pendingAdventure.nodes().some(node => node.type === 'button' && label(node) === language.recipientCopy().refreshProgress))

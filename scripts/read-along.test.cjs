@@ -36,3 +36,21 @@ assert.equal(visibleText(read({ text: 'The quiet door opens', startAt: 0, positi
 assert.equal(visibleText(read({ text: '你好世界', startAt: 0, position: 1, active: true })), '你好',
   'Languages without spaces reveal characters progressively instead of showing the full sentence at once')
 console.log('PASS progressive read-along reveals words as narration advances')
+const passageModule = { exports: {} }
+const passageCode = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'src/components/StoryPassage.tsx'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
+}).outputText
+new Function('module', 'exports', 'require', passageCode)(passageModule, passageModule.exports, name => {
+  if (name === './ReadAlongText') return { __esModule: true, default: read }
+  if (name === 'react/jsx-runtime') return { jsx: (type, props) => typeof type === 'function' ? type(props) : ({ type, props }) }
+  throw new Error('Unexpected passage dependency ' + name)
+})
+const passage = passageModule.exports.default
+const scene = { text: 'The quiet door opens', narrationText: '', position: 0, active: false }
+assert.equal(visibleText(passage({ ...scene, mode: null })), '', 'No story text before choosing Read or Listen')
+assert.equal(visibleText(passage({ ...scene, mode: 'read' })), scene.text, 'Read reveals all text immediately')
+assert.equal(visibleText(passage({ ...scene, mode: 'listen' })), '', 'Listen never flashes the full text while audio loads or fails')
+assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scene.text, position: 7, active: true })), 'The quiet')
+assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scene.text, position: 7 })), 'The quiet', 'Pausing or idling never reveals future words')
+assert.equal(visibleText(passage({ ...scene, mode: 'listen', narrationText: scene.text, position: scene.text.length })), scene.text, 'Completed listening retains the revealed text')
+console.log('PASS story passage waits for a choice and never flashes unread text in Listen')

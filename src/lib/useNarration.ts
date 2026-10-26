@@ -219,7 +219,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     } catch { setPreferenceNotice(STORAGE_WRITE_NOTICE) }
   }
 
-  const speak = async (text: string, playbackContext: NarrationContext = context) => {
+  const speak = async (text: string, playbackContext: NarrationContext = context, options: { autoPlay?: boolean } = {}) => {
     stop()
     setError('')
     setNotice('')
@@ -231,7 +231,11 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setTextPosition(0)
     setStatus('loading')
     const valid = () => mounted.current && active.current === id
-    const finish = (message = '') => { if (valid()) fail(message) }
+    const finish = (message = '') => {
+      if (!valid()) return
+      fail(message)
+      if (!message) { setActiveText(text); setTextPosition(text.length) }
+    }
     const browser = async () => {
       if (!valid()) return
       if (!supported) { finish('Browser narration is not supported here. You can still read the story.'); return }
@@ -325,7 +329,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       clearTimer()
       request.current = null
       url.current = URL.createObjectURL(blob)
-      if (provider === 'google') {
+      if (provider === 'google' && !options.autoPlay) {
         setCloudAudioUrl(url.current)
         setStatus('idle')
         return
@@ -333,6 +337,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       const player = new Audio(url.current)
       audio.current = player
       player.volume = immersiveRef.current.voiceVolume
+      if (provider === 'google') startAmbientFor(text)
       player.ontimeupdate = () => {
         if (valid() && Number.isFinite(player.duration) && player.duration > 0) {
           setTextPosition(Math.floor(text.length * Math.min(1, Math.max(0, player.currentTime / player.duration))))

@@ -14,7 +14,7 @@ export type RevealMedia = {
   url?: string
 }
 
-export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style, language, listening = true }: {
+export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style, language, listening = true, mode }: {
   message?: string
   media?: RevealMedia | null
   narrator: Narrator
@@ -24,6 +24,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   style?: CSSProperties
   language?: Parameters<typeof recipientCopy>[0]
   listening?: boolean
+  mode?: 'read' | 'listen' | null
 }) {
   // When an expired private URL is refreshed, playback resumes where it stopped.
   const resumeAt = useRef(0)
@@ -32,7 +33,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   const copy = recipientCopy(language)
   return <section aria-label={`Your revealed ${label}`} style={style}>
     <h2>{copy.surprise}</h2>
-    {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><StoryPassage text={text} narrationText={narrator.activeText} position={narrator.textPosition} active={listening && (narrator.speaking || narrator.paused)} /></p>}
+    {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><StoryPassage mode={mode} text={text} narrationText={narrator.activeText} position={narrator.textPosition} active={listening && (narrator.speaking || narrator.paused)} /></p>}
     {media?.state === 'loading' && <p role="status">{language ? copy.revealLoading : `Loading your surprise ${label}…`}</p>}
     {media?.state === 'error' && <p role="alert">
       {language ? copy.revealError : `The ${label} could not be loaded.`} {onRetryMedia && <button type="button" onClick={onRetryMedia}>{copy.retry}</button>}

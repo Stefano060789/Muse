@@ -1,4 +1,4 @@
-export type StoryMode = 'read' | 'listen'
+export type StoryMode = 'read' | 'listen' | null
 
 export default function StoryModeControl({ mode, onChange }: { mode: StoryMode; onChange: (mode: StoryMode) => void }) {
   return <div role="group" aria-label="Story experience" lang="en" dir="ltr" className="story-mode-control">

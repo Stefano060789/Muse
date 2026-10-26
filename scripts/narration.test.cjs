@@ -421,6 +421,47 @@ async function main() {
       process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     }
   })
+  await check('a consented Listen action starts Google audio directly and retains only spoken text through completion', async () => {
+    const savedAudio = global.Audio, create = URL.createObjectURL, revoke = URL.revokeObjectURL
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
+    const players = []
+    let fetches = 0
+    global.fetch = async () => {
+      fetches++
+      return new Response('synthetic audio', { headers: { 'Content-Type': 'audio/mpeg' } })
+    }
+    global.Audio = class {
+      constructor() { this.duration = 10; this.currentTime = 0; this.plays = 0; players.push(this) }
+      play() { this.plays++; return Promise.resolve() }
+      pause() {}
+    }
+    URL.createObjectURL = () => 'blob:direct-google'
+    URL.revokeObjectURL = () => {}
+    const hook = mount({ narrationLanguage: 'en-US' }, voices)
+    try {
+      await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
+      assert.equal(fetches, 0, 'Listen cannot bypass cloud consent')
+      hook.render().setCloudConsent(true)
+      await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
+      assert.equal(players[0].plays, 1, 'One Listen tap starts loaded audio without native Play')
+      assert.equal(hook.render().textPosition, 0)
+      assert.equal(hook.render().speaking, true)
+      players[0].currentTime = 5
+      players[0].ontimeupdate()
+      assert.equal(hook.render().textPosition, 7)
+      players[0].onended()
+      assert.equal(hook.render().activeText, 'The rain falls.')
+      assert.equal(hook.render().textPosition, 'The rain falls.'.length)
+      assert.equal(hook.render().status, 'idle')
+      hook.render().stop()
+      assert.equal(hook.render().activeText, '')
+      assert.equal(hook.spoken.length, 0, 'No unrequested device fallback')
+    } finally {
+      hook.dispose(); global.Audio = savedAudio
+      URL.createObjectURL = create; URL.revokeObjectURL = revoke
+      process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    }
+  })
   const { NARRATION_PREFERENCES_KEY, parseNarrationPreferences, serializeNarrationPreferences } = narration
   function memoryStorage(initial = {}, { failRead = false, failWrite = false } = {}) {
     const data = new Map(Object.entries(initial)), writes = []

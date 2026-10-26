@@ -41,6 +41,7 @@ async function main() {
   const browserEvents = new Map()
   let cloudProvider = 'browser', cloudConsent = false
   let narrationStops = 0
+  const narrationCalls = []
   const react = {
     useState(initial) {
       const i = cursor++
@@ -84,7 +85,8 @@ async function main() {
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
-      stop() { narrationStops++ }, provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
+      stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() },
+      provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
     }), NarrationButton: 'narration' }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => { selectedDictationLanguage = language; return ({
       recordingTarget: interactionRecordingTarget, ready: true, error: '',
@@ -303,6 +305,18 @@ async function main() {
   const beforeResume = requests.length
   await flush()
   assert.equal(requests[beforeResume].action, 'resume', 'Restored journeys automatically reconcile without a paid call')
+  const activeMode = () => nodes().find(node => node.type === '../components/StoryModeControl')
+  assert.equal(activeMode().props.mode, null)
+  assert.ok(!nodes().some(node => node.type === '../components/ReadAlongText'), 'Active personal scenes do not mount the full narrative before a choice')
+  activeMode().props.onChange('read')
+  await flush()
+  assert.ok(nodes().some(node => node.type === '../components/ReadAlongText' && node.props.text === 'A light glows.' && node.props.active === false))
+  const beforeActiveListen = narrationCalls.length
+  activeMode().props.onChange('listen')
+  await flush()
+  assert.equal(narrationCalls.length, beforeActiveListen + 1, 'Listen immediately starts the active personal scene')
+  assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
+  assert.ok(nodes().some(node => node.type === '../components/ReadAlongText' && node.props.text === 'A light glows.' && node.props.active && node.props.position === -1), 'Loading narration never prints the full scene')
   assert.equal(selectedDictationLanguage, 'ar-SA', 'Dictation follows the saved story language')
   const responseField = () => nodes().find(node => node.props['aria-label'] === 'Editable response')
   assert.equal(responseField().props.disabled, false)
@@ -461,18 +475,39 @@ async function main() {
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Archived story'))
   assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Garden'), 'Archive includes every saved scene')
   const modeControl = nodes().find(node => node.type === '../components/StoryModeControl')
-  assert.equal(modeControl.props.mode, 'read', 'Scenes default to quiet reading')
+  assert.equal(modeControl.props.mode, null, 'Scenes wait for Read or Listen instead of revealing the story by default')
+  assert.ok(nodes().filter(node => node.type === '../components/StoryPassage').every(node => node.props.mode === null))
   assert.ok(!nodes().some(node => node.type === '../components/NarrationControls'), 'Read mode has no audio settings')
+  const beforeArchiveListen = narrationCalls.length
   modeControl.props.onChange('listen')
   await flush()
+  assert.equal(narrationCalls.length, beforeArchiveListen + 1, 'Listen starts narration directly with no second scene button')
+  assert.equal(narrationCalls.at(-1)[0], 'The Door. A light glows.')
+  assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
   assert.ok(nodes().some(node => node.type === '../components/NarrationControls'), 'Listen mode exposes audio settings')
   assert.equal(requests.length, beforeArchiveReading + 1, 'Changing experience never generates story text or audio')
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
   await flush()
+  assert.ok(nodes().filter(node => node.type === '../components/StoryPassage').every(node => node.props.mode === 'read'), 'Read explicitly reveals saved scenes')
   assert.ok(!nodes().some(node => node.props['aria-label'] === 'Editable response'), 'Archive hides unfinished-story response controls')
   assert.ok(!nodes().some(node => node.type === '../components/ExplicitConsent'), 'Archive never offers story-generation consent')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Continue with a new chapter'), 'Even a completed chapter is read-only inside Archive')
   assert.ok(nodes().some(node => node.props.href === '/my-stories'), 'Archive reading points continuation back to My stories')
+  cloudProvider = 'google'
+  cloudConsent = false
+  await flush()
+  const beforeCloudListen = narrationCalls.length
+  nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await flush()
+  assert.equal(narrationCalls.length, beforeCloudListen, 'Selecting Listen cannot silently consent to paid narration')
+  const cloudPermission = nodes().find(node => node.type === '../components/ExplicitConsent')
+  assert.ok(cloudPermission && cloudPermission.props.checked === false)
+  cloudPermission.props.onChange(true)
+  await flush()
+  assert.equal(narrationCalls.length, beforeCloudListen + 1, 'Giving the required cloud permission completes the pending Listen action without another Play click')
+  assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
+  nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await flush()
   browser.location = { search: '?new=1' }
   slots.length = 0; effects.length = 0
   const beforeNewStory = requests.length

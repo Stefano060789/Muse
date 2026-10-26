@@ -19,10 +19,11 @@ type Props = {
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
   provider?: 'google' | 'elevenlabs'
+  playRequest?: number
 }
 
 export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
-  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9,
+  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9, playRequest = 0,
   provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const [consent, setConsent] = useState(false)
@@ -32,6 +33,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   const pending = useRef<AbortController | null>(null)
   const blobUrl = useRef('')
   const generation = useRef(0)
+  const playWhenLoaded = useRef(false)
   const ambientCallbacks = useRef({ onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong })
   ambientCallbacks.current = { onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong }
   useEffect(() => () => {
@@ -48,8 +50,17 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = voiceVolume
   }, [voiceVolume, url, audioRef])
+  useEffect(() => {
+    if (!url || !playWhenLoaded.current || disabled || stopSignal) return
+    playWhenLoaded.current = false
+    const player = audioRef.current
+    const current = generation.current
+    if (player) void player.play().catch(() => {
+      if (current === generation.current) setError('Playback could not start automatically. Press Play to listen, or choose Read.')
+    })
+  }, [url, disabled, stopSignal, audioRef])
 
-  const run = async (action: 'check' | 'generate' | 'load') => {
+  const run = async (action: 'check' | 'generate' | 'load', play = false) => {
     if (pending.current || busy || disabled || (action === 'generate' && !consent)) return
     const current = ++generation.current
     const controller = new AbortController()
@@ -65,12 +76,19 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         if (current === generation.current) { setStatus(result); setConsent(false) }
       } else if (action === 'load') {
         beforeListen()
+        if (play && owner && check) {
+          const available = await check(sceneIndex, controller.signal)
+          if (current !== generation.current) return
+          setStatus(available)
+          if (!available.ready) throw new Error('This scene has no prepared recording. Prepare one below or explicitly choose the device voice.')
+        }
         const blob = await load(sceneIndex, controller.signal)
         if (current !== generation.current) return
         if (!blob.size || !blob.type.startsWith('audio/')) throw new Error('Studio returned an invalid audio file.')
         audioRef.current?.pause()
         if (blobUrl.current) URL.revokeObjectURL(blobUrl.current)
         blobUrl.current = URL.createObjectURL(blob)
+        playWhenLoaded.current = play
         setUrl(blobUrl.current)
       }
     } catch (cause) {
@@ -83,8 +101,14 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
     }
   }
 
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    if (playRequest > 0) void runRef.current('load', true)
+  }, [playRequest])
+
   const content = <>
-    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'Studio voice recording'} · No device speech or autoplay.</p> : null}
+    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'Studio voice recording'} · Listen plays saved audio; it never generates a paid recording automatically.</p> : null}
     {owner ? <>
       <details><summary>Recording privacy and cost</summary><p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this scene and clue, excluding the private answer and reveal. New recordings use the paid narration allowance; replay reuses them. Live AI turns are not included.</p></details>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
@@ -115,7 +139,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   </>
   if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>
     {content}
-    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Playback starts only when you press Play; it never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
+    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Listen starts playback; if your browser blocks it, press Play. It never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
   </section>
   return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>{content}</section>
 }

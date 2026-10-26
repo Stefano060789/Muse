@@ -245,7 +245,11 @@ export default function SharedStoryPage() {
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const studioAudio = useRef<HTMLAudioElement>(null)
   const [studioScene, setStudioScene] = useState(0)
-  const [storyMode, setStoryMode] = useState<StoryMode>('read')
+  const [experience, setExperience] = useState<{ key: string; mode: StoryMode } | null>(null)
+  const experienceKey = JSON.stringify([playToken, player?.sceneIndex, player?.adventure?.revision, player?.solved, player?.skipped, creator?.ownerToken, studioScene])
+  const storyMode = experience?.key === experienceKey ? experience.mode : null
+  const setStoryMode = (mode: StoryMode) => setExperience({ key: experienceKey, mode })
+  const [studioPlayRequest, setStudioPlayRequest] = useState(0)
   const [studioReadAlong, setStudioReadAlong] = useState({ text: '', position: 0, active: false })
   const objectUrls = useRef<string[]>([])
   const lastMediaRefresh = useRef(0)
@@ -275,10 +279,25 @@ export default function SharedStoryPage() {
     interaction.stopRecording()
     setStudioReadAlong({ text: '', position: 0, active: false })
     setStoryMode(mode)
+    if (mode === 'listen') {
+      if (player?.solved || player?.skipped) {
+        if (player.message) void narrator.speak(player.message, { progress: 1, ending: true }, { autoPlay: true })
+      } else if (player?.adventure) {
+        void narrator.speak(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`, undefined, { autoPlay: true })
+      } else if (creator?.brief.adventure) {
+        void narrator.speak(sharedStoryPreviewText(creator.content), undefined, { autoPlay: true })
+      } else setStudioPlayRequest(value => value + 1)
+    }
   }
-  const passage = (text: string) => <StoryPassage text={text}
-    narrationText={narrator.speaking || narrator.paused ? narrator.activeText : studioReadAlong.text}
-    position={narrator.speaking || narrator.paused ? narrator.textPosition : studioReadAlong.position}
+  useEffect(() => {
+    narrator.stop(); studioAudio.current?.pause()
+    setStoryMode(null)
+    setStudioPlayRequest(0)
+    setStudioReadAlong({ text: '', position: 0, active: false })
+  }, [playToken, player?.sceneIndex, player?.adventure?.revision, player?.solved, player?.skipped, creator?.ownerToken, studioScene])
+  const passage = (text: string) => <StoryPassage text={text} mode={storyMode}
+    narrationText={narrator.activeText || studioReadAlong.text}
+    position={narrator.activeText ? narrator.textPosition : studioReadAlong.position}
     active={storyMode === 'listen' && (narrator.speaking || narrator.paused || studioReadAlong.active)} />
   const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
   const confirmShareReady = () => {
@@ -1098,7 +1117,7 @@ export default function SharedStoryPage() {
               <article style={cardStyle}>
                 <p><strong>{player.skipped ? recipientText.skipped : recipientText.solved}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
-                  listening={storyMode === 'listen'}
+                  mode={storyMode} listening={storyMode === 'listen'}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
                   onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} language={player.language} />
                 {player.voice ? <section aria-label="A voice message for you">
@@ -1107,7 +1126,7 @@ export default function SharedStoryPage() {
                   {voiceError ? <p role="alert">{voiceError}</p> : null}
                   <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? recipientText.reloadVoice : recipientText.loadVoice}</button>
                 </section> : null}
-                {player.adventure?.turn ? <><h3>{recipientText.yourJourney}</h3><p>{player.adventure.turn.narration}</p><p>{player.adventure.turn.state.progress}</p></> : null}
+                {player.adventure?.turn ? <><h3>{recipientText.yourJourney}</h3><p>{passage(player.adventure.turn.narration)}</p><p>{passage(player.adventure.turn.state.progress)}</p></> : null}
                 <details style={{ marginTop: '1rem' }}>
                   <summary>Keep this story</summary>
                   {player.adventure ? <p>Your keepsake contains the available scenes and latest adventure turn, not a transcript of every live action.</p> : null}
@@ -1163,6 +1182,7 @@ export default function SharedStoryPage() {
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
                   {storyMode === 'listen' ? <>
                   <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
+                          playRequest={studioPlayRequest}
                           ambientText={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`}
                           onReadAlong={(position, active) => setStudioReadAlong({ text: `${player.scene.title}. ${player.scene.body} ${player.scene.clue}`, position, active })}
                           voiceVolume={narrator.immersive.voiceVolume}
@@ -1268,6 +1288,7 @@ export default function SharedStoryPage() {
                   {creator.content.scenes.map((scene, index) => <option key={index} value={index}>Scene {index + 1}: {scene.title}</option>)}
                 </select></label>
                 <StudioNarration key={`${creator.ownerToken}:${Math.min(studioScene, creator.content.scenes.length - 1)}`}
+                  playRequest={studioPlayRequest}
                   ambientText={`${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].title}. ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].body} ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].clue}`}
                   onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                   onReadAlong={(position, active) => {
@@ -1292,7 +1313,7 @@ export default function SharedStoryPage() {
             </article> : null}
             <details open style={cardStyle} aria-label="Read prepared story">
             <summary>Read the story · {creator.content.scenes.length} scenes</summary>
-            <p>{creator.content.description}</p>
+            {storyMode === 'read' ? <p>{creator.content.description}</p> : null}
             {creator.content.scenes.map((scene, index) => (
               <article key={index} style={cardStyle} aria-label={`Story scene ${index + 1}`}>
                 <h2>{passage(scene.title)}</h2>
