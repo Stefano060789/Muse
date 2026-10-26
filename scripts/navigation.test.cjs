@@ -27,10 +27,10 @@ function load(relative) {
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Myself', 'Create a story', 'Create a gift story', 'Saved stories']
+const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Account']
 for (const [pathname, selected] of [
-  ['/', 'Home'], ['/story', 'Create a story'], ['/myself', 'Myself'],
-  ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Saved stories'],
+  ['/', 'Home'], ['/story', 'My stories'], ['/my-stories', 'My stories'], ['/myself', 'Myself'],
+  ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Archive'],
   ['/demo', null], ['/billing', null], ['/privacy', null], ['/creator', null]
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
@@ -45,11 +45,9 @@ assert.ok(recipient.includes('Muse home'))
 assert.ok(!recipient.includes('<nav'), 'Recipients have a quiet brand-only header')
 let created = 0, prevented = 0
 const tree = Navigation({ pathname: '/shared', onCreateGift: () => created++ })
-const personalLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/story?new=1')
-personalLink.props.onClick({ button: 0, preventDefault() { prevented++ } })
-assert.deepEqual(navigations, ['/story?new=1'], 'Creation navigation reloads the current story route into explicit creation')
-personalLink.props.onClick({ button: 0, ctrlKey: true, preventDefault() { throw new Error('Modified navigation should not be intercepted') } })
-assert.equal(navigations.length, 1, 'Modified clicks retain normal browser navigation')
+const personalLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/my-stories')
+assert.ok(personalLink, 'Personal navigation opens the hub, not a blank creation flow')
+assert.equal(personalLink.props.onClick, undefined, 'Normal and modified clicks use standard link navigation')
 prevented = 0
 const giftLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/shared#new')
 giftLink.props.onClick({ preventDefault() { prevented++ } })
@@ -62,7 +60,11 @@ for (const pathname of ['/', '/story', '/library', '/billing', '/privacy', '/cre
   }))
   assert.equal((html.match(/aria-label="Main navigation"/g) || []).length, 1, pathname)
   assert.ok(html.indexOf('<header') < html.indexOf('<main'), 'Navigation precedes page content')
-  if (pathname !== '/') assert.ok(html.indexOf('<header') < html.indexOf('<img'), 'Navigation precedes decoration')
+  if (!['/', '/story'].includes(pathname)) assert.ok(html.indexOf('<header') < html.indexOf('<img'), 'Navigation precedes decoration')
+  if (pathname === '/story') {
+    assert.ok(!html.includes('muse-page-illustration'), 'Personal reading has no decorative banner')
+    assert.ok(/<details[^>]*><summary>Help, privacy and about Muse<\/summary>/.test(html), 'Personal reading keeps the footer collapsed')
+  }
 }
 for (const pathname of ['/shared', '/couples']) {
   const html = render(React.createElement(App, {
@@ -72,4 +74,4 @@ for (const pathname of ['/shared', '/couples']) {
   assert.equal((html.match(/aria-label="Main navigation"/g) || []).length, 1, 'Gift routes must not get duplicate menus')
   assert.ok(/<details[^>]*><summary>Help, privacy and about Muse<\/summary>/.test(html), 'Gift pages keep the full footer collapsed')
 }
-console.log('PASS five-item navigation with Myself before creation, selected routes, private exclusions and recipient simplicity')
+console.log('PASS My stories hub and Archive navigation, selected routes, private exclusions and recipient simplicity')

@@ -2,6 +2,7 @@ import { useRef, type CSSProperties } from 'react'
 import NarrationControls, { NarrationButton } from './NarrationControls'
 import type { SharedMediaKind } from '../lib/sharedStoryMedia'
 import { recipientCopy } from '../lib/storyLanguage'
+import StoryPassage from './StoryPassage'
 
 type Narrator = Parameters<typeof NarrationControls>[0]['narrator']
 
@@ -13,7 +14,7 @@ export type RevealMedia = {
   url?: string
 }
 
-export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style, language }: {
+export default function SharedStoryReveal({ message, media, narrator, beforeSpeak, onMediaError, onRetryMedia, style, language, listening = true }: {
   message?: string
   media?: RevealMedia | null
   narrator: Narrator
@@ -22,6 +23,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   onRetryMedia?: () => void
   style?: CSSProperties
   language?: Parameters<typeof recipientCopy>[0]
+  listening?: boolean
 }) {
   // When an expired private URL is refreshed, playback resumes where it stopped.
   const resumeAt = useRef(0)
@@ -30,7 +32,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
   const copy = recipientCopy(language)
   return <section aria-label={`Your revealed ${label}`} style={style}>
     <h2>{copy.surprise}</h2>
-    {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{text}</p>}
+    {text && <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><StoryPassage text={text} narrationText={narrator.activeText} position={narrator.textPosition} active={listening && (narrator.speaking || narrator.paused)} /></p>}
     {media?.state === 'loading' && <p role="status">{language ? copy.revealLoading : `Loading your surprise ${label}…`}</p>}
     {media?.state === 'error' && <p role="alert">
       {language ? copy.revealError : `The ${label} could not be loaded.`} {onRetryMedia && <button type="button" onClick={onRetryMedia}>{copy.retry}</button>}
@@ -43,7 +45,7 @@ export default function SharedStoryReveal({ message, media, narrator, beforeSpea
         onLoadedMetadata={event => { if (resumeAt.current > 0 && resumeAt.current < event.currentTarget.duration) event.currentTarget.currentTime = resumeAt.current }}
         aria-label={language ? copy.surpriseVideo : "The creator's surprise video"}
         style={{ display: 'block', width: '100%', maxHeight: '70vh', borderRadius: 12, margin: '12px 0', background: '#000' }} />)}
-    {text && <details><summary>Read aloud with device voice (optional)</summary>
+    {text && listening && <details><summary>Read aloud with device voice (optional)</summary>
       <p>This uses your device voice, not the prepared scene recording.</p>
       <NarrationButton narrator={narrator} text={text} label={language ? copy.playMessage : 'Play the final message'} beforeSpeak={beforeSpeak} context={{ progress: 1, ending: true }} />
     </details>}

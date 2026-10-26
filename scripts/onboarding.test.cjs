@@ -163,6 +163,8 @@ check('pre-send requires complete preview, answer and attachment checks and rese
   assert.equal(JSON.stringify(preview.nodes()).includes('Private reveal'), false)
   preview.find('button', 'Next scene').props.onClick(); preview.render(props)
   preview.find('button', 'I reviewed the clues').props.onClick(); preview.render(props)
+  assert.ok(preview.nodes().some(node => node.type === 'a' && node.props.href === '/library#shared-stories-heading'),
+    'Review completion offers a direct route to saved gift stories')
   for (const input of preview.nodes().filter(node => node.type === 'input')) input.props.onChange({ target: { checked: true } })
   preview.render(props)
   assert.equal(ready, true)
@@ -263,10 +265,10 @@ check('home exposes two clear creation paths, demo and saved stories', () => {
   global.window = { addEventListener() {}, removeEventListener() {} }
   try {
     home.render()
-    for (const href of ['/story?new=1', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
-    assert.ok(home.nodes().some(node => node.props.href === '/story?new=1' && text(node) === 'Create my story'))
+    for (const href of ['/my-stories', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
+    assert.ok(home.nodes().some(node => node.props.href === '/my-stories' && text(node) === 'Open My stories'))
     assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create a gift story'))
-    assert.ok(home.nodes().some(node => node.type === 'h2' && text(node) === 'My story'))
+    assert.ok(home.nodes().some(node => node.type === 'h2' && text(node) === 'My stories'))
     assert.ok(home.nodes().some(node => node.type === 'h2' && text(node) === 'Gift story'))
     assert.ok(home.nodes().some(node => /Write a story idea, add personal clues/.test(text(node))), 'Gift creation describes what to write and who it is for')
     assert.ok(home.nodes().some(node => /Choose how you want to feel/.test(text(node))), 'Personal creation explains its writing and play flow')
@@ -277,7 +279,7 @@ check('home exposes two clear creation paths, demo and saved stories', () => {
     assert.equal(home.nodes().some(node => node.type === 'textarea'), false, 'Personal touches no longer clutter Home')
     const more = home.nodes().find(node => node.type === 'details')
     assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
-    for (const href of ['/story?new=1', '/shared#new', '/demo']) {
+    for (const href of ['/my-stories', '/shared#new', '/demo']) {
       assert.ok(home.nodes().some(node => node.props.href === href && !flatten(more).includes(node)), 'Primary paths stay outside collapsed details')
     }
   } finally {

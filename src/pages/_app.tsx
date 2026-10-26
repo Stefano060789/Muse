@@ -66,12 +66,12 @@ export default function App({ Component, pageProps, router }: AppProps) {
       <AppInstallSupport />
       <div className="muse-world">
         {!['/shared', '/couples'].includes(router.pathname) ? <>
-          <SiteNavigation pathname={router.pathname} />
-          {router.pathname !== '/' ? <PageIllustration pathname={router.pathname} /> : null}
+          <SiteNavigation pathname={router.pathname === '/story' && router.query?.read === '1' ? '/library' : router.pathname} />
+          {!['/', '/story'].includes(router.pathname) ? <PageIllustration pathname={router.pathname} /> : null}
         </> : null}
         <Component {...pageProps} />
       </div>
-      {['/shared', '/couples'].includes(router.pathname) ? <details style={{ maxWidth: 850, margin: '1rem auto', padding: '0 1.5rem' }}>
+      {['/shared', '/couples', '/story'].includes(router.pathname) ? <details style={{ maxWidth: 850, margin: '1rem auto', padding: '0 1.5rem' }}>
         <summary>Help, privacy and about Muse</summary>
         <SiteFooter />
       </details> : <SiteFooter />}

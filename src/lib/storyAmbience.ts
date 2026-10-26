@@ -55,8 +55,11 @@ export class StoryAmbience {
     this.session = session
     try {
       this.synthesize(session, kind)
+      // Unlock Web Audio inside the Play gesture, not in the queued microtask.
+      const resumed = session.context.resume()
+      void resumed.catch(() => undefined) // Cancellation can remove the queued observer.
       await this.enqueue(session, 0, async () => {
-        await this.interruptible(session, session.context.resume())
+        await this.interruptible(session, resumed)
         if (this.current(session, 0)) this.fade(session, this.volume)
       })
     } catch (error) {
@@ -171,6 +174,13 @@ export class StoryAmbience {
         : kind === 'traffic' ? brown * 0.12
           : kind === 'mystery' ? brown * 0.04
             : kind === 'rain' ? noise * 0.22 : brown * 0.8
+    }
+    if (kind === 'rain' || kind === 'wind' || kind === 'water') {
+      const rms = Math.sqrt(data.reduce((sum, sample) => sum + sample * sample, 0) / data.length)
+      if (rms > 0) {
+        const scale = 0.25 / rms
+        for (let index = 0; index < data.length; index++) data[index] = Math.max(-0.75, Math.min(0.75, data[index] * scale))
+      }
     }
     source.buffer = buffer
     source.loop = true

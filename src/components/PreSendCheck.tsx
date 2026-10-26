@@ -45,7 +45,7 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
           <button type="button" style={{ padding: '0.75rem', minHeight: 44 }} onClick={() => { setPreviewed(true); setPreview(false) }}>I reviewed the clues</button>}
       </div>
     </section> : null}
-    {previewed ? <p role="status">Clue preview reviewed.</p> : null}
+    {previewed ? <p role="status">Clue preview reviewed. <a href="/library#shared-stories-heading">Go to archive</a></p> : null}
     <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={answerChecked} onChange={event => setAnswerChecked(event.target.checked)} /> The clues lead to my intended answer, and I checked its wording and accepted alternatives.</label>
     <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={attachmentsChecked} onChange={event => setAttachmentsChecked(event.target.checked)} /> I checked the final message{hasMedia ? ', attached photo/video' : ''}{hasVoice ? ', and voice recording' : ''}. Nothing I want to send is still waiting to upload.</label>
     {uploadPending ? <p role="status">Finish or remove the selected upload before sharing.</p> : null}

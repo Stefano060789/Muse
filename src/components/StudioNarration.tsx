@@ -13,6 +13,8 @@ type Props = {
   onAmbientStart?: (text: string) => void
   onAmbientPause?: () => void
   onAmbientStop?: () => void
+  onReadAlong?: (position: number, active: boolean) => void
+  voiceVolume?: number
   check?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
@@ -20,7 +22,7 @@ type Props = {
 }
 
 export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
-  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop,
+  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9,
   provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const [consent, setConsent] = useState(false)
@@ -30,18 +32,22 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   const pending = useRef<AbortController | null>(null)
   const blobUrl = useRef('')
   const generation = useRef(0)
-  const ambientCallbacks = useRef({ onAmbientStart, onAmbientPause, onAmbientStop })
-  ambientCallbacks.current = { onAmbientStart, onAmbientPause, onAmbientStop }
+  const ambientCallbacks = useRef({ onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong })
+  ambientCallbacks.current = { onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong }
   useEffect(() => () => {
     generation.current++
     pending.current?.abort()
     audioRef.current?.pause()
     ambientCallbacks.current.onAmbientStop?.()
+    ambientCallbacks.current.onReadAlong?.(0, false)
     if (blobUrl.current) URL.revokeObjectURL(blobUrl.current)
   }, [audioRef])
   useEffect(() => {
     if (stopSignal || disabled) audioRef.current?.pause()
   }, [stopSignal, disabled, audioRef])
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = voiceVolume
+  }, [voiceVolume, url, audioRef])
 
   const run = async (action: 'check' | 'generate' | 'load') => {
     if (pending.current || busy || disabled || (action === 'generate' && !consent)) return
@@ -78,10 +84,9 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   }
 
   const content = <>
-    {owner && provider === 'google' ? <h2>Listen to this scene</h2> : null}
-    {owner ? <p>{provider === 'google' ? 'AI-generated narration by Google WaveNet. Play the saved recording on iPhone or desktop; no device speech is used.' : 'A prepared recording, separate from the free device voice. No autoplay and no automatic switch to device speech.'}</p> : null}
+    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'Studio voice recording'} · No device speech or autoplay.</p> : null}
     {owner ? <>
-      <p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this prepared scene and clue only, not the private answer or final reveal. Each uncached generation uses the operator&apos;s paid budget; replay reuses the recording. Live AI turns are not included.</p>
+      <details><summary>Recording privacy and cost</summary><p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this scene and clue, excluding the private answer and reveal. New recordings use the paid narration allowance; replay reuses them. Live AI turns are not included.</p></details>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
       {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
       {status?.enabled && !status.ready && !status.blocked ? <>
@@ -89,7 +94,6 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}
-    {!owner && <p className="atelier-note">Simple text cues may select a quiet synthetic local ambience for this scene; this is not composed music. It starts with playback. Change the soundscape in Audio and atmosphere settings.</p>}
     {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
@@ -98,19 +102,20 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         if (disabled) { audioRef.current?.pause(); setError('Finish the current story request, upload or recording before playing Studio audio.'); return }
         beforeListen()
         ambientCallbacks.current.onAmbientStart?.(ambientText)
+        ambientCallbacks.current.onReadAlong?.(Math.floor(ambientText.length * (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0 ? audioRef.current.currentTime / audioRef.current.duration : 0)), true)
       }} onPause={() => ambientCallbacks.current.onAmbientPause?.()}
-        onEnded={() => ambientCallbacks.current.onAmbientStop?.()}
-        onError={() => { ambientCallbacks.current.onAmbientStop?.(); setError('This browser could not play Studio audio. Retry loading or read instead.') }}
+        onTimeUpdate={event => {
+          const player = event.currentTarget
+          if (Number.isFinite(player.duration) && player.duration > 0) ambientCallbacks.current.onReadAlong?.(Math.floor(ambientText.length * Math.min(1, Math.max(0, player.currentTime / player.duration))), true)
+        }}
+        onEnded={() => { ambientCallbacks.current.onAmbientStop?.(); ambientCallbacks.current.onReadAlong?.(ambientText.length, false) }}
+        onError={() => { ambientCallbacks.current.onAmbientStop?.(); ambientCallbacks.current.onReadAlong?.(0, false); setError('This browser could not play Studio audio. Retry loading or read instead.') }}
         style={{ display: 'block', width: '100%', maxWidth: '100%' }} />
     </> : null}
   </>
   if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>
     {content}
-    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Playback starts only when you press Play; it never switches to a device voice automatically.</p></details>
+    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Playback starts only when you press Play; it never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
   </section>
-  if (provider === 'google') return <section aria-label="Studio narration" className="atelier-card" style={{ margin: '1rem 0' }}>{content}</section>
-  return <details aria-label="Studio narration" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d8cdd6', borderRadius: 16, maxWidth: '100%', minWidth: 0 }}>
-    <summary>Studio audio · {owner ? 'optional' : 'if prepared'}</summary>
-    {content}
-  </details>
+  return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>{content}</section>
 }

@@ -6,6 +6,8 @@ import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import ReadAlongText from '../components/ReadAlongText'
+import StoryModeControl, { type StoryMode } from '../components/StoryModeControl'
+import StoryPassage from '../components/StoryPassage'
 import HoldToSpeakButton from '../components/HoldToSpeakButton'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
@@ -55,6 +57,8 @@ export default function StoryPage() {
   const [draftNotice, setDraftNotice] = useState('')
   const [draftError, setDraftError] = useState('')
   const [rereading, setRereading] = useState(false)
+  const [archiveReading, setArchiveReading] = useState(false)
+  const [storyMode, setStoryMode] = useState<StoryMode>('read')
   const [answerLoaded, setAnswerLoaded] = useState<string | null>(null)
   const draftWritable = useRef(true)
   const answerWritable = useRef(true)
@@ -84,6 +88,7 @@ export default function StoryPage() {
 
   useEffect(() => {
     try {
+      setArchiveReading(new URLSearchParams(window.location?.search || '').get('read') === '1')
       setStory(new URLSearchParams(window.location?.search || '').get('new') === '1' ? null : loadPersonalStory())
       const profile = loadMuseProfile()
       setProfileReady(Boolean(profile))
@@ -302,7 +307,7 @@ export default function StoryPage() {
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status) : story.responses.length >= story.scenes.length))
 
   const choose = async (choice: string) => {
-    if (!story || requestLock.current || finished) return
+    if (!story || requestLock.current || finished || archiveReading) return
     if (story.journey && (!reconciled || story.journey.pending)) {
       setStoryError('Your saved progress is being checked automatically before sending. Your answer is kept.')
       return
@@ -390,6 +395,18 @@ export default function StoryPage() {
   const startDictation = () => interaction.dictate('response', value => {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
+  const sceneListening = storyMode === 'listen' && narrator.activeText === narrationText && (narrator.speaking || narrator.paused)
+  const savedScenes = story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
+    {story.scenes.map((savedScene, index) => {
+      const text = `${savedScene.title}. ${savedScene.body}`
+      const active = storyMode === 'listen' && narrator.activeText === text && (narrator.speaking || narrator.paused)
+      return <article key={index} className="atelier-card">
+        <h3><StoryPassage text={savedScene.title} narrationText={text} position={narrator.textPosition} active={active} /></h3>
+        <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage text={savedScene.body} narrationText={text} position={narrator.textPosition} active={active} /></p>
+        {storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
+      </article>
+    })}
+  </div> : null
 
   return (
     <>
@@ -401,11 +418,8 @@ export default function StoryPage() {
           {draftError ? <p role="alert">{draftError}</p> : null}
           {draftNotice && (!story || responseDraft) ? <p role="status">{draftNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
+          <p><Link href={archiveReading ? '/library' : '/my-stories'}>{archiveReading ? 'Back to archive' : 'Back to My stories'}</Link></p>
           {!story ? <p>Sign in to save personal stories to your account. <Link href="/account">Go to your Muse account</Link>.</p> : null}
-          {story ? <details style={{ marginBottom: '1rem' }}>
-            <summary>Audio settings</summary>
-            <NarrationControls narrator={narrator} beforeSpeak={stopRecording} showCloudConsent={false} />
-          </details> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
             {reconciliationBlocked ? <p role="status">This session could not be restored. Check that you are signed in to the original account. You can discard an unfinished preparation below without deleting saved stories.</p>
               : !reconciled || story?.journey?.pending ? <p role="status">{isGenerating ? 'Checking your saved progress...' : 'Progress is checked automatically. You can keep writing your answer.'}</p> : null}
@@ -491,31 +505,40 @@ export default function StoryPage() {
             </section>
           ) : (
             <section className="atelier-reading">
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '0.75rem', opacity: 0.65 }}>My Story · {story.mood}</p>
+              <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
+              <StoryModeControl mode={storyMode} onChange={mode => { narrator.stop(); stopRecording(); setStoryMode(mode) }} />
+              {storyMode === 'listen' ? <details>
+                <summary>Audio settings</summary>
+                <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
+              </details> : null}
+              <details className="story-options"><summary>Story details and AI permission</summary>
+              <p>{story.description}</p>
               {story.romance ? <p>{romanceCopy(story.language).title(story.romance)}</p> : null}
-              <h1 lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ fontSize: 'clamp(2.5rem, 7vw, 4.5rem)', lineHeight: 1.05, margin: '0.5rem 0 1rem' }}>{story.title}</h1>
-              <p lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 650, fontSize: '1.15rem', lineHeight: 1.7 }}>{story.description}</p>
-              <div style={{ height: 6, borderRadius: 999, background: '#e2d8ce', margin: '2rem 0 1.5rem' }}><div style={{ height: '100%', borderRadius: 999, background: '#2d2926', width: `${(story.journey ? story.journey.revision / story.journey.maxTurns : (story.currentStep + 1) / story.scenes.length) * 100}%` }} /></div>
-              {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished ? (
+              <p>{story.journey ? `${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
+              {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished && !archiveReading ? (
                 <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                   I understand that my story settings, need and each response I choose to send are shared with Muse&apos;s configured AI provider to create this story. My latest five saved memories were included unless I left them out during creation. The story is stored on Muse&apos;s server until I delete it. This consent applies to this story only.
                 </ExplicitConsent>
               ) : null}
-              {narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>
+              </details>
+              {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details style={{ marginBottom: '1rem' }}>
                 <summary>Enable optional narration</summary>
                 <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                   Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}
-              <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
-                <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.7rem', opacity: 0.65 }}>{story.journey ? `About ${story.journey.duration} minutes · ${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
-                <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></h2>
-                <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} /></p>
+              {!archiveReading && !rereading ? <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
+                <h2 style={{ margin: '0.5rem 0 1rem' }}><ReadAlongText text={sceneTitle} startAt={0} position={narrator.textPosition} active={sceneListening} /></h2>
+                <p className="atelier-prose"><ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={narrator.textPosition} active={sceneListening} /></p>
+                {storyMode === 'listen' ? <>
                 <NarrationButton narrator={narrator} text={narrationText} beforeSpeak={stopRecording} showCloudConsent={false} />
-                <p className="atelier-note">Press Play for narration with quiet local ambience when the scene suggests it. Change the soundscape in Audio settings.</p>
+                {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+                {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+                {narrator.error ? <p role="alert">{narrator.error}</p> : null}
+                </> : null}
                 {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
-                {!finished ? <>
-                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={narrator.speaking || narrator.paused} />}</h3>
+                {!finished && !archiveReading ? <>
+                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={narrator.textPosition} active={sceneListening} />}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>Each choice uses one AI attempt.</p>
                   <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
@@ -538,16 +561,24 @@ export default function StoryPage() {
                 <div style={{ display: 'grid', gap: '0.7rem' }}>{scene?.choices.map((choice) => <button key={choice} disabled={isGenerating || finished} onClick={() => choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', cursor: 'pointer', font: 'inherit' }}>{choice} →</button>)}</div>
                 </> : null}
                 </> : null}
-              </article>
-              {finished ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
+              </article> : null}
+              {archiveReading ? <section aria-label="Archived story">
+                <h2>Saved scenes</h2>
+                {savedScenes}
+                {storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
+                {storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+                {storyMode === 'listen' && narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+                <p><Link href="/my-stories">Back to My stories</Link></p>
+              </section> : null}
+              {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
                 <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : 'Your story is complete.'}</h2>
                 <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'Take a moment. You can return to this story whenever you like.'}</p>
                 <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
                 <StoryKeepsake story={{ title: story.title, creatorName: 'Muse', recipientName: 'you', scenes: story.scenes }} />
                 <p className="atelier-note">The keepsake includes available story text, not your private answers, personal touches or access links.</p>
-                {rereading ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
-                  {story.scenes.map((savedScene, index) => <article key={index}><h3>{savedScene.title}</h3><p className="atelier-prose">{savedScene.body}</p></article>)}
-                </div> : null}
+                {rereading ? savedScenes : null}
+                {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
+                {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
               </section> : null}
               <div style={{ marginTop: '2rem' }}>
                 <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>

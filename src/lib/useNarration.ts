@@ -116,6 +116,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     if (audio.current) {
       audio.current.onended = null
       audio.current.onerror = null
+      audio.current.ontimeupdate = null
       audio.current.pause()
       audio.current = null
     }
@@ -154,7 +155,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     ambience.current?.stop()
     const engine = new StoryAmbience()
     ambience.current = engine
-    void engine.start(sound, preferences.ambientVolume * 0.55 * Math.min(1, preferences.voiceVolume / 0.9)).then(() => {
+    void engine.start(sound, preferences.ambientVolume * Math.min(1, preferences.voiceVolume / 0.9)).then(() => {
       if (ambience.current !== engine) { engine.stop(); return }
       setAmbientKind(sound)
     }).catch(() => {
@@ -243,6 +244,12 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       if (!valid()) return
       const chunks = narrationChunks(text)
       const normalizedText = text.trim().replace(/\s+/g, ' ')
+      const originalPositions: number[] = []
+      for (const word of text.matchAll(/\S+/g)) {
+        if (originalPositions.length) originalPositions.push(word.index! - 1)
+        for (let offset = 0; offset < word[0].length; offset++) originalPositions.push(word.index! + offset)
+      }
+      const reveal = (position: number) => setTextPosition(originalPositions[position] ?? text.length)
       let index = 0
       let searchFrom = 0
       const next = () => {
@@ -267,16 +274,16 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         current.onstart = () => {
           if (valid() && !paused.current) {
             setStatus('speaking')
-            setTextPosition(chunkStart)
+            reveal(chunkStart)
           }
         }
         current.onboundary = event => {
           if (!valid() || utterance.current !== current || !Number.isFinite(event.charIndex)) return
-          setTextPosition(Math.min(text.length, chunkStart + event.charIndex))
+          reveal(chunkStart + event.charIndex)
         }
         current.onend = () => {
           if (valid() && utterance.current === current) {
-            setTextPosition(Math.min(text.length, chunkStart + chunk.length))
+            reveal(chunkStart + chunk.length)
             next()
           }
         }
@@ -325,6 +332,12 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       }
       const player = new Audio(url.current)
       audio.current = player
+      player.volume = immersiveRef.current.voiceVolume
+      player.ontimeupdate = () => {
+        if (valid() && Number.isFinite(player.duration) && player.duration > 0) {
+          setTextPosition(Math.floor(text.length * Math.min(1, Math.max(0, player.currentTime / player.duration))))
+        }
+      }
       player.onended = () => finish()
       player.onerror = () => finish('Provider audio playback failed. Try browser mode or keep reading.')
       armTimer(20000, () => finish('Provider audio did not start. Please retry or use browser narration.'))
@@ -467,7 +480,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       mode.current = 'audio'
       paused.current = false
       player.volume = immersiveRef.current.voiceVolume
-      setTextPosition(0)
+      if (Number.isFinite(player.duration) && player.duration > 0) setTextPosition(Math.floor(activeText.length * Math.min(1, Math.max(0, player.currentTime / player.duration))))
       setStatus('speaking')
       startAmbientFor(activeText)
     },

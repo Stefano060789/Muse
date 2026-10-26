@@ -43,8 +43,11 @@ Gift-story previews and recipient pages prioritize the story. Sender scenes are
 visible immediately; sharing safeguards, answer/reveal, uploads, narration
 preparation, progress and management stay under **Share and sender tools**.
 New/reuse buttons are absent from the preview; primary navigation still creates
-a new gift story. Recipients see story text and prepared audio together without
-read/listen mode toggles or decorative banners. Settings, hints, keepsakes,
+a new gift story. Personal and gift scenes offer **Read** and **Listen**.
+Read is the quiet default: full text, with no audio requests or playback.
+Listen exposes explicit playback and progressive text, without autoplay or
+automatic paid generation. Switching to Read stops voice and ambience.
+Settings, hints, keepsakes,
 privacy explanations and the full footer are collapsed; required romance and
 AI-processing consent remain explicit. No create-your-own promotion appears
 after the reveal. Recipient dictation uses the story language, and editing
@@ -151,6 +154,25 @@ reveal, recipients have a quiet **Make a story for someone** link that starts a
 blank creation flow without copying the recipient capability or surprise.
 After preparation, owners can edit and save the proposed title; title updates
 are stored with the story for both the creator and recipient.
+The ready screen shows full scenes in Read mode, shows title-save confirmation beside
+the title field, and links directly to saved gift stories (also after reviewing
+the clues). Creation text boxes expand to fit their example text and writing.
+Prepared Studio scene recordings are the main creator listening option, with
+scene-matched local ambience in sender and recipient previews; free device speech and its settings are an explicit
+collapsed alternative. Preparing audio still requires fresh consent and the
+configured paid narration allowance, never autoplay or automatic fallback.
+Live-adventure scenes cannot use prepared recordings.
+
+### My stories and archive
+
+The **My stories** navigation opens `/my-stories`, with a new-story action and
+personal stories to resume. Account stories sync on opening when signed in, with
+an explicit sync action for retrying. Completed stories can be reread; generating
+a new chapter from a completed story is not yet supported.
+**Archive** (`/library`) keeps the saved collection and gift management tools.
+Personal entries open a reading-only view of saved scenes, with no response
+submission controls. Starting or continuing personal adventures belongs in
+My stories. Existing `/story` and `/story?new=1` links remain supported.
 
 ### Story languages
 
@@ -934,6 +956,14 @@ The background is softly faded in and reduced beneath speech, never starts
 before a Play gesture, and works with device narration, cloud narration and
 prepared Studio recordings. It stops with narration, scene changes, dictation or
 leaving the page. Pausing suspends it. Audio failures are visible and leave text readable.
+Rain, wind and water sources have normalized, bounded levels so the default
+background setting is not attenuated into near-silence. Web Audio is unlocked
+in the Play gesture for browsers that require user activation. Existing saved
+Off or zero-volume choices remain respected; select **Follow scene** or a fixed
+soundscape in **Audio settings** to change them. No matching cue means no sound.
+Listening reveals text progressively using browser speech boundary events or
+elapsed recording time. Recording alignment is approximate, not word-level
+timestamps. Read mode immediately restores the full text.
 Settings are remembered separately under `muse.narration.immersive.v1`; changing
 them stops playback before the next listen. Unsupported Web Audio falls back
 explicitly to voice-only. No new account, environment variable or database

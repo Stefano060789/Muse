@@ -11,6 +11,8 @@ import HoldToSpeakButton from '../components/HoldToSpeakButton'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
+import StoryModeControl, { type StoryMode } from '../components/StoryModeControl'
+import StoryPassage from '../components/StoryPassage'
 import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryReveal'
 import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
@@ -187,6 +189,7 @@ export default function SharedStoryPage() {
   const [alternativeAnswersText, setAlternativeAnswersText] = useState('')
   const [creator, setCreator] = useState<CreatorStory | null>(null)
   const [titleDraft, setTitleDraft] = useState('')
+  const [titleFeedback, setTitleFeedback] = useState<{ message: string; failed: boolean } | null>(null)
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
@@ -242,6 +245,8 @@ export default function SharedStoryPage() {
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const studioAudio = useRef<HTMLAudioElement>(null)
   const [studioScene, setStudioScene] = useState(0)
+  const [storyMode, setStoryMode] = useState<StoryMode>('read')
+  const [studioReadAlong, setStudioReadAlong] = useState({ text: '', position: 0, active: false })
   const objectUrls = useRef<string[]>([])
   const lastMediaRefresh = useRef(0)
   const narrator = useNarration(player || creator?.content || {}, undefined, {
@@ -253,6 +258,28 @@ export default function SharedStoryPage() {
   }, { browserOnly: true })
   const interaction = useStoryInteraction(() => { studioAudio.current?.pause(); narrator.stop() }, player?.language || creator?.brief.language || brief.language || 'en-US')
   const beforeStudio = () => { narrator.stop(); interaction.stopRecording(); storedVoiceAudio.current?.pause() }
+  const beforeDeviceListen = () => {
+    studioAudio.current?.pause()
+    storedVoiceAudio.current?.pause()
+    setStudioReadAlong({ text: '', position: 0, active: false })
+    interaction.stopRecording()
+  }
+  useEffect(() => {
+    studioAudio.current?.pause()
+    setStudioReadAlong({ text: '', position: 0, active: false })
+  }, [narrator.style, narrator.language, narrator.selectedVoice, narrator.immersive.soundscape, narrator.immersive.ambientVolume, narrator.immersive.voiceVolume, narrator.immersive.expressive])
+  const changeStoryMode = (mode: StoryMode) => {
+    studioAudio.current?.pause()
+    storedVoiceAudio.current?.pause()
+    narrator.stop()
+    interaction.stopRecording()
+    setStudioReadAlong({ text: '', position: 0, active: false })
+    setStoryMode(mode)
+  }
+  const passage = (text: string) => <StoryPassage text={text}
+    narrationText={narrator.speaking || narrator.paused ? narrator.activeText : studioReadAlong.text}
+    position={narrator.speaking || narrator.paused ? narrator.textPosition : studioReadAlong.position}
+    active={storyMode === 'listen' && (narrator.speaking || narrator.paused || studioReadAlong.active)} />
   const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
   const confirmShareReady = () => {
     if (creator && sendReady === creator.ownerToken && storyHasAccess(creator.expiresAt) && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
@@ -328,6 +355,7 @@ export default function SharedStoryPage() {
   }
   useEffect(() => { setRomanceConfirmed(false) }, [brief])
   useEffect(() => { setTitleDraft(creator?.content.title ?? '') }, [creator?.ownerToken, creator?.content.title])
+  useEffect(() => { setTitleFeedback(null) }, [creator?.ownerToken])
   useEffect(() => {
     interaction.cancelRecording()
   }, [player?.language, brief.language])
@@ -926,14 +954,15 @@ export default function SharedStoryPage() {
   }
 
   const creatorAction = async (action: 'share' | 'title' | 'delete') => {
-    if (!creator) return
+    if (!creator || busy) return
     if (action === 'share' && !confirmShareReady()) return
     if (action === 'title' && (!titleDraft.trim() || titleDraft.trim().length > 120)) {
-      setError('The title must be between 1 and 120 characters.')
+      setTitleFeedback({ message: 'The title must be between 1 and 120 characters.', failed: true })
       return
     }
     setBusy(true)
     setError('')
+    if (action === 'title') setTitleFeedback(null)
     narrator.stop()
     try {
       if (action === 'share') {
@@ -942,8 +971,9 @@ export default function SharedStoryPage() {
         if (saved) setNotice('New recipient link created. Any previous recipient link no longer works.')
       } else if (action === 'title') {
         const result = await request<{ content: CreatorStory['content'] }>({ action, token: creator.ownerToken, title: titleDraft.trim() })
-        storeCreator({ ...creator, content: result.content })
-        setNotice('Story title updated.')
+        const saved = storeCreator({ ...creator, content: result.content })
+        setTitleDraft(result.content.title)
+        setTitleFeedback({ message: saved ? 'Title saved.' : 'Title saved to your account, but this browser could not update its saved copy.', failed: !saved })
       } else {
         await request({ action, token: creator.ownerToken })
         setCreator(null)
@@ -960,7 +990,9 @@ export default function SharedStoryPage() {
         }
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not update the story.')
+      const message = error instanceof Error ? error.message : 'Could not update the story.'
+      if (action === 'title') setTitleFeedback({ message, failed: true })
+      else setError(message)
     } finally {
       setBusy(false)
     }
@@ -970,7 +1002,7 @@ export default function SharedStoryPage() {
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
-        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={key === 'setting' || key === 'message' ? 4 : 2} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
+        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={Math.max(key === 'setting' || key === 'message' ? 4 : 2, Math.ceil(placeholder.length / 24))} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
       <HoldToSpeakButton label={`Hold to dictate ${label}`} releaseLabel={`Release to stop ${label}`} recording={interaction.recordingTarget === key} disabled={busy} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
       {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
     </div>
@@ -992,7 +1024,7 @@ export default function SharedStoryPage() {
     )
   }
 
-  const audioButton = (text: string) => <NarrationButton narrator={narrator} text={text} label="Use device voice (quality varies)" beforeSpeak={interaction.stopRecording} />
+  const audioButton = (text: string) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label="Use device voice (quality varies)" beforeSpeak={beforeDeviceListen} /> : null
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
@@ -1016,10 +1048,9 @@ export default function SharedStoryPage() {
         {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {!playToken && !creator ? <p style={cardStyle}>Create and manage gift stories with your <Link href="/account">Muse account</Link>. Recipients can open their story link without an account.</p> : null}
-        {!playToken && !showGiftCover && !(romanceNotice && !romanceAccepted) ? <details style={{ marginBottom: '1rem' }}>
-          <summary>Audio and microphone settings</summary>
+        {!playToken && !creator && !showGiftCover && !(romanceNotice && !romanceAccepted) ? <details style={{ marginBottom: '1rem' }}>
+          <summary>Microphone settings</summary>
           {playToken ? <p lang={recipientLanguage.code} dir={recipientLanguage.dir}>{recipientText.settingsDisclosure}</p> : null}
-          <NarrationControls narrator={narrator} beforeSpeak={interaction.stopRecording} />
           <section aria-label="Voice input settings">
           <p>Dictation fills editable text, not a saved recording. It may use your browser&apos;s online speech service.</p>
           <p>Voice input follows the story language.</p>
@@ -1047,11 +1078,6 @@ export default function SharedStoryPage() {
           </section>
         ) : playToken ? player ? (
           <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
-            <details lang="en" dir="ltr" style={{ marginBottom: '1rem' }}>
-              <summary>About this private story</summary>
-              <p>The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. <Link href="/privacy">Privacy</Link></p>
-              <p>Voice input follows this story&apos;s language and may use your browser&apos;s online speech service.</p>
-            </details>
             {showGiftCover ? <article aria-label="Your gift story" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
               <p className="atelier-eyebrow">{recipientText.madeForYou}</p>
               <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 9vw, 3.5rem)', overflowWrap: 'anywhere' }}>{recipientText.forYou(player.recipientName)}</h1>
@@ -1061,14 +1087,18 @@ export default function SharedStoryPage() {
               <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>{recipientText.openStory}</button>
               <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>
             </article> : <>
-            <p>{recipientText.storyFrom(player.creatorName, player.recipientName)}</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2rem, 7vw, 3rem)', overflowWrap: 'anywhere' }}>{player.title}</h1>
-            <p style={{ lineHeight: 1.7 }}>{player.description}</p>
-            <p>{recipientText.duration(player.durationMinutes)}</p>
+            <h1 className="story-reading-title">{player.title}</h1>
+            <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
+            {storyMode === 'listen' ? <>
+              <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
+              {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+              {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+            </> : null}
             {player.solved || player.skipped ? (
               <article style={cardStyle}>
                 <p><strong>{player.skipped ? recipientText.skipped : recipientText.solved}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
+                  listening={storyMode === 'listen'}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
                   onRetryMedia={player.media ? () => void loadRevealMedia(player.media!.kind) : undefined} language={player.language} />
                 {player.voice ? <section aria-label="A voice message for you">
@@ -1097,12 +1127,12 @@ export default function SharedStoryPage() {
             ) : (
               <>
               {player.adventure ? <article style={cardStyle}>
-                <h2>{player.adventure.turn ? recipientText.adventureContinues : player.scene.title}</h2>
-                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.adventure.turn?.narration || player.scene.body}</p>
-                <details><summary>Device voice (optional, quality varies)</summary>
+                <h2>{player.adventure.turn ? recipientText.adventureContinues : passage(player.scene.title)}</h2>
+                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.adventure.turn?.narration || player.scene.body)}</p>
+                {storyMode === 'listen' ? <details open><summary>Device voice (optional, quality varies)</summary>
                   <p>Prepared cloud recordings do not cover live adventure turns. This option uses your phone&apos;s voice, not Google narration.</p>
-                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={interaction.stopRecording} />
-                </details>
+                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} />
+                </details> : null}
                 <details style={{ margin: '1rem 0' }}><summary>{recipientText.yourJourney}</summary>
                 <p>{recipientText.adventureBudget(player.adventure.actionsRemaining, player.adventure.budgetRemaining, player.adventure.budget)}</p>
                 <p>{recipientText.actionCost}</p>
@@ -1128,17 +1158,21 @@ export default function SharedStoryPage() {
                 {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
               </article> : <article style={cardStyle}>
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
-                  <h2>{player.scene.title}</h2>
-                    <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{player.scene.body}</p>
-                    <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {player.scene.clue}</p>
+                  <h2>{passage(player.scene.title)}</h2>
+                    <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
+                    <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
+                  {storyMode === 'listen' ? <>
                   <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
                           ambientText={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`}
+                          onReadAlong={(position, active) => setStudioReadAlong({ text: `${player.scene.title}. ${player.scene.body} ${player.scene.clue}`, position, active })}
+                          voiceVolume={narrator.immersive.voiceVolume}
                           onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                           disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
                     load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
                   <details><summary>Device voice (optional, quality varies)</summary>
-                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={interaction.stopRecording} />
+                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} />
                   </details>
+                  </> : null}
                   {player.sceneIndex + 1 < player.sceneCount ? <>
                     <h3>{recipientText.next}</h3>
                     <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -1151,9 +1185,9 @@ export default function SharedStoryPage() {
                     <summary>{recipientText.earlier} ({player.discoveries.length})</summary>
                     {player.discoveries.map((scene, index) => (
                       <article key={index}>
-                        <h3>{scene.title}</h3>
-                        <p style={{ lineHeight: 1.8 }}>{scene.body}</p>
-                        <p><strong>{recipientText.clue}:</strong> {scene.clue}</p>
+                        <h3>{passage(scene.title)}</h3>
+                        <p style={{ lineHeight: 1.8 }}>{passage(scene.body)}</p>
+                        <p><strong>{recipientText.clue}:</strong> {passage(scene.clue)}</p>
                         {audioButton(`${scene.body} ${scene.clue}`)}
                       </article>
                     ))}
@@ -1194,45 +1228,80 @@ export default function SharedStoryPage() {
               </details>
             ) : null}
             {player.feedback ? <p role="status">{player.feedback}</p> : null}
-            <details style={{ marginTop: '1rem' }}>
-              <summary>Audio and atmosphere settings</summary>
-              <p>Soft scene-matched ambience plays with device narration and prepared recordings when the scene suggests it. It starts only when you press Play; adjust or turn it off here.</p>
+            <details lang="en" dir="ltr" style={{ marginTop: '1rem' }}>
+              <summary>About this private story</summary>
+              <p>{recipientText.storyFrom(player.creatorName, player.recipientName)}</p>
+              <p>{player.description}</p>
+              <p>The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. <Link href="/privacy">Privacy</Link></p>
               <p>{recipientText.settingsDisclosure}</p>
-              <NarrationControls narrator={narrator} beforeSpeak={interaction.cancelRecording} />
             </details>
             </>}
           </section>
         ) : <p>Could not open the story. Check the link or ask its creator for a new one.</p> : creator ? (
           <section>
-            <p>Private creator preview</p>
+            <p className="atelier-eyebrow">Private creator preview</p>
+            <h1>{creator.content.title}</h1>
             {creator.brief.romance ? <p>{romanceCopy().title(creator.brief.romance)}. Recipients see a content notice and choose whether to open before seeing any story text.</p> : null}
             <form onSubmit={event => { event.preventDefault(); void creatorAction('title') }} style={cardStyle} aria-label="Edit story title">
               <label htmlFor="creator-story-title" style={{ display: 'block', fontWeight: 700 }}>Story title
-                <input id="creator-story-title" value={titleDraft} onChange={event => setTitleDraft(event.target.value)} maxLength={120} required style={fieldStyle} disabled={busy} />
+                <input id="creator-story-title" value={titleDraft} onChange={event => { setTitleDraft(event.target.value); setTitleFeedback(null) }} maxLength={120} required aria-describedby={titleFeedback ? 'title-save-feedback' : undefined} style={fieldStyle} disabled={busy} />
               </label>
               <button type="submit" style={buttonStyle} disabled={busy || titleDraft.trim() === creator.content.title}>Save title</button>
-              {error ? <p role="alert">{error}</p> : null}
+              {titleFeedback ? <p id="title-save-feedback" role={titleFeedback.failed ? 'alert' : 'status'}>{titleFeedback.message}</p> : null}
             </form>
-            <h1>{creator.content.title}</h1>
             <section className="atelier-card" aria-label="Story ready to share">
-              <h2>Your gift story is ready</h2>
-              <p>Review the clues, then share the recipient link when you&apos;re ready.</p>
+              <p>For {creator.brief.recipientName} · About {creator.brief.durationMinutes} minutes</p>
               <button type="button" className="atelier-button" onClick={() => {
                 const shareSection = document.getElementById('gift-story-share')
                 if (!shareSection) return
                 shareSection.closest('details')?.setAttribute('open', '')
                 shareSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}>Review and share</button>
+              <p><Link href="/library#shared-stories-heading">Go to archive</Link></p>
             </section>
+            <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
+            {storyMode === 'listen' ? <article style={cardStyle} aria-label="Listen before sending">
+              <h2>Listen before sending</h2>
+              {!creator.brief.adventure ? <>
+                <p>Prepare a consistent-quality recording for each scene. Recipients can replay it without generating audio again.</p>
+                <label>Preview scene<select value={Math.min(studioScene, creator.content.scenes.length - 1)} onChange={event => { studioAudio.current?.pause(); narrator.stop(); setStudioScene(Number(event.target.value)) }} style={fieldStyle}>
+                  {creator.content.scenes.map((scene, index) => <option key={index} value={index}>Scene {index + 1}: {scene.title}</option>)}
+                </select></label>
+                <StudioNarration key={`${creator.ownerToken}:${Math.min(studioScene, creator.content.scenes.length - 1)}`}
+                  ambientText={`${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].title}. ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].body} ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].clue}`}
+                  onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
+                  onReadAlong={(position, active) => {
+                    const scene = creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)]
+                    setStudioReadAlong({ text: `${scene.title}. ${scene.body} ${scene.clue}`, position, active })
+                  }}
+                  sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
+                  voiceVolume={narrator.immersive.voiceVolume}
+                  disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
+                  check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, signal), sceneIndex)}
+                  generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, signal), sceneIndex)}
+                  load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: creator.ownerToken, preview: true, sceneIndex }, signal)} />
+              </> : <p>Live AI scenes cannot use prepared Studio recordings. Free device speech is available below; its quality depends on your device.</p>}
+              <details>
+                <summary>Use free device voice instead</summary>
+                <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen with device voice (quality varies)" beforeSpeak={beforeDeviceListen} />
+                <details><summary>Device voice and background settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
+              </details>
+              <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
+              {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+              {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+            </article> : null}
+            <details open style={cardStyle} aria-label="Read prepared story">
+            <summary>Read the story · {creator.content.scenes.length} scenes</summary>
             <p>{creator.content.description}</p>
             {creator.content.scenes.map((scene, index) => (
               <article key={index} style={cardStyle} aria-label={`Story scene ${index + 1}`}>
-                <h2>{scene.title}</h2>
-                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{scene.body}</p>
-                <p><strong>Clue:</strong> {scene.clue}</p>
-                <details><summary>Listen to this scene</summary>{audioButton(`${scene.body} ${scene.clue}`)}</details>
+                <h2>{passage(scene.title)}</h2>
+                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(scene.body)}</p>
+                <p><strong>Clue:</strong> {passage(scene.clue)}</p>
+                {storyMode === 'listen' ? <details><summary>Listen to this scene</summary>{audioButton(`${scene.body} ${scene.clue}`)}</details> : null}
               </article>
             ))}
+            </details>
             <details style={{ marginTop: '1rem' }} aria-label="Sender tools">
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Share and sender tools</summary>
             <details><summary>Keep this story</summary>
@@ -1242,24 +1311,6 @@ export default function SharedStoryPage() {
             <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
             <p>{creator.expiresAt === null ? 'Recipient access has no automatic expiry.' : `Recipient access expires ${new Date(creator.expiresAt).toLocaleString()}.`} The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
             {creator.brief.adventure ? <p>{creator.brief.adventure.choiceMode === 'suggested' ? '3-5 suggested actions per turn' : 'Free written or spoken actions'}. Up to 12 per playthrough; {creator.brief.adventure.actionBudget} total AI attempts, including failures.</p> : null}
-            <article style={cardStyle}>
-              <h2>Listen before sending</h2>
-              <p>Scenes and clues only; private answers and reveals excluded. No recipient progress is changed.</p>
-              <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen to the whole story" beforeSpeak={interaction.stopRecording} />
-              {!creator.brief.adventure ? <>
-                <label>Studio preview scene<select value={Math.min(studioScene, creator.content.scenes.length - 1)} onChange={event => setStudioScene(Number(event.target.value))} style={fieldStyle}>
-                  {creator.content.scenes.map((scene, index) => <option key={index} value={index}>Scene {index + 1}: {scene.title}</option>)}
-                </select></label>
-                <StudioNarration key={`${creator.ownerToken}:${Math.min(studioScene, creator.content.scenes.length - 1)}`}
-                  ambientText={`${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].title}. ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].body} ${creator.content.scenes[Math.min(studioScene, creator.content.scenes.length - 1)].clue}`}
-                  onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
-                  sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
-                  disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
-                  check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, signal), sceneIndex)}
-                  generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, signal), sceneIndex)}
-                  load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: creator.ownerToken, preview: true, sceneIndex }, signal)} />
-              </> : <p>Studio recordings cover prepared stories only. Live AI turns use the separate device voice.</p>}
-            </article>
             {creator.content.scenes.map((scene, index) => (
               <details key={index} style={cardStyle}>
                 <summary style={{ cursor: 'pointer' }}>Scene {index + 1}: {scene.title}</summary>
@@ -1284,7 +1335,7 @@ export default function SharedStoryPage() {
               {creator.brief.message ? <>
                 <h3>Final message</h3>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{creator.brief.message}</p>
-                <NarrationButton narrator={narrator} text={creator.brief.message} label="Preview the final message" beforeSpeak={interaction.stopRecording} context={{ progress: 1, ending: true }} />
+                <NarrationButton narrator={narrator} text={creator.brief.message} label="Preview the final message" beforeSpeak={beforeDeviceListen} context={{ progress: 1, ending: true }} />
               </> : <p>Photo or video reveal only.</p>}
               <section aria-label="Final photo or video" style={{ marginTop: '1rem' }}>
                 <h3>Final photo or video</h3>
@@ -1436,7 +1487,7 @@ export default function SharedStoryPage() {
               {['For someone', 'The story', 'The surprise'].map((label, index) => <li key={label} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>)}
             </ol>
             <p className="atelier-eyebrow" aria-live="polite">Step {creatorStep + 1} of 3: {['Who it is for', 'Shape the story', 'Your surprise'][creatorStep]}</p>
-            <form ref={creatorForm} onSubmit={generate}>
+            <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
                 <h2>1. Who is it for?</h2>

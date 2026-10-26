@@ -111,6 +111,7 @@ main button:hover:not(:disabled) { box-shadow: 0 3px 12px #202c4215; border-colo
 main details { border-bottom: 1px solid var(--line); padding-bottom: 0.75rem; }
 main summary { padding-block: 0.65rem; min-height: 44px; line-height: 1.5; }
 main label { line-height: 1.6; }
+.gift-story-form textarea { field-sizing: content; min-height: 5.5rem; line-height: 1.6; resize: vertical; }
 main [role="alert"] { border-inline-start: 3px solid #a14329; padding-inline-start: 1rem; }
 main [role="status"] { line-height: 1.6; }
 
@@ -260,3 +261,26 @@ main [role="status"] { line-height: 1.6; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.story-mode-control {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.story-mode-control button {
+  border: 1px solid #d9cfc5;
+  border-radius: 999px;
+  padding: 0.65rem 1.25rem;
+  font: inherit;
+  cursor: pointer;
+  background: #fffaf6;
+  color: #2d2926;
+}
+.story-mode-control button[aria-pressed="true"] {
+  background: #2d2926;
+  color: #fffaf6;
+}
+.story-reading-title {
+  font-size: clamp(1.3rem, 4vw, 2rem);
+  line-height: 1.2;
+}
+.story-options { margin: 1rem 0; }

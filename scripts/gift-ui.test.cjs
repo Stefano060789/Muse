@@ -25,7 +25,7 @@ function flatten(node) {
 function label(node) { return flatten(node.props?.children).filter(value => typeof value === 'string' || typeof value === 'number').join('') }
 async function mount(hash, player = null, owner = null, failures = {}, values = new Map()) {
   let cursor = 0, tree, requestCount = 0
-  const slots = [], pending = [], requests = [], timers = [], timerDelays = [], activeTimers = new Set()
+  const slots = [], pending = [], requests = [], timers = [], timerDelays = [], activeTimers = new Set(), savedStories = []
   const listeners = new Map()
   const jsx = (type, props) => ({ type, props: props || {} })
   const react = {
@@ -62,7 +62,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     clearTimeout(id) { activeTimers.delete(id) }, scrollTo() {}, confirm() { return true }
   }
   let narrationStops = 0
-  const narrator = { stop() { narrationStops++ }, error: '', preferences: {} }
+  const narrator = { stop() { narrationStops++ }, startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 } }
   let dictationLanguage
   const customRequire = id => {
     if (id === 'react') return react
@@ -104,7 +104,10 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (id.endsWith('/storyRomance')) return romance
     if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
-    if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory() {} }
+    if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory(story) {
+      if (failures.library) throw new Error('Browser library is full')
+      savedStories.push(story)
+    } }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => {
       dictationLanguage = language
       return { stopRecording() {}, cancelRecording() {}, recordingTarget: null, error: '' }
@@ -135,6 +138,11 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
       return { ok: requestCount > 1, json: async () => requestCount > 1 ? { sent: true } : { error: 'Test reply failure' } }
     }
     if (request.action === 'manage') return { ok: true, json: async () => ({ ...owner, voice: { mime: 'audio/wav', size: 32044 }, replies: [{ message: 'A voluntary thanks', createdAt: '2026-10-15T00:00:00.000Z' }], media: null }) }
+    if (request.action === 'title') {
+      if (failures.title) return { ok: false, json: async () => ({ error: 'Test title save failure' }) }
+      owner.content = { ...owner.content, title: request.title }
+      return { ok: true, json: async () => ({ content: owner.content }) }
+    }
     if (request.action === 'progress') return { ok: true, json: async () => ({ progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } }) }
     if (request.action === 'voice-start') return { ok: true, json: async () => ({ uploadId: 'test-upload', upload: { method: 'PUT', url: '/api/upload', headers: {} } }) }
     if (request.action === 'voice-finish') return { ok: true, json: async () => ({ voice: { mime: 'audio/wav', size: 32044 } }) }
@@ -165,7 +173,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const field = id => { const node = nodes().find(node => node.props.id === id); assert.ok(node, 'Missing field: ' + id); return node }
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
-  return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, browser,
+  return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, savedStories, browser,
     dispatch(name) { listeners.get(name)?.() },
     dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
@@ -337,9 +345,22 @@ async function main() {
   await studioPlayer.flush()
   await studioPlayer.click(romance.romanceCopy().open)
   await studioPlayer.click(language.recipientCopy().openStory)
+  const recipientMode = studioPlayer.nodes().find(node => node.type === '../components/StoryModeControl')
+  assert.equal(recipientMode.props.mode, 'read')
+  assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/StudioNarration'), 'Read mode never loads audio controls')
+  const requestsBeforeListen = studioPlayer.requests.length
+  recipientMode.props.onChange('listen')
+  await studioPlayer.flush()
+  assert.equal(studioPlayer.requests.length, requestsBeforeListen, 'Listen selection makes no paid or playback requests')
   const recipientStudio = studioPlayer.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(recipientStudio)
-  assert.ok(!studioPlayer.nodes().some(node => node.props['aria-label'] === 'Story experience'), 'Story text stays visible without mode toggles')
+  assert.equal(typeof recipientStudio.props.onReadAlong, 'function', 'Prepared audio reports progressive text position')
+  recipientStudio.props.onReadAlong(12, true)
+  await studioPlayer.flush()
+  assert.ok(studioPlayer.nodes().some(node => node.type === '../components/StoryPassage' && node.props.active && node.props.position === 12))
+  studioPlayer.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await studioPlayer.flush()
+  assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/StoryPassage' && node.props.active), 'Switching to reading reveals all scene text')
   assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/PageIllustration'), 'Recipient story has no decorative banner')
   const disclosure = studioPlayer.nodes().find(node => node.type === 'details' && label(node).startsWith('About this private story'))
   assert.ok(disclosure && !disclosure.props.open)
@@ -419,8 +440,55 @@ async function main() {
   assert.ok(!owner.nodes().some(node => node.type === 'button' && ['Create new story', 'Reuse this brief'].includes(label(node))))
   const sceneArticle = owner.nodes().find(node => node.props['aria-label'] === 'Story scene 1')
   assert.ok(sceneArticle && !flatten(tools).includes(sceneArticle), 'The story is visible outside sender tools')
+  const readingPanel = owner.nodes().find(node => node.props['aria-label'] === 'Read prepared story')
+  assert.ok(readingPanel && readingPanel.props.open && flatten(readingPanel).includes(sceneArticle),
+    'Read mode prints the full story without another click')
+  assert.ok(owner.nodes().some(node => node.props.href === '/library#shared-stories-heading'),
+    'Ready screen links directly to saved gift stories')
+  assert.equal(owner.button('Save title').props.disabled, true, 'Unchanged title does not offer a redundant save')
+  owner.field('creator-story-title').props.onChange({ target: { value: '  A new gift title  ' } })
+  await owner.flush()
+  const submitTitle = async view => {
+    const form = view.nodes().find(node => node.props['aria-label'] === 'Edit story title')
+    form.props.onSubmit({ preventDefault() {} }); await view.flush()
+  }
+  await submitTitle(owner)
+  assert.equal(owner.requests.at(-1).title, 'A new gift title')
+  assert.equal(owner.field('creator-story-title').props.value, 'A new gift title')
+  assert.ok(owner.nodes().some(node => node.type === 'h1' && label(node) === 'A new gift title'))
+  assert.equal(owner.savedStories.at(-1).content.title, 'A new gift title', 'Saved library copy receives the changed title')
+  assert.ok(owner.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'status' && label(node) === 'Title saved.'),
+    'Successful save is announced beside the button')
+  assert.equal(owner.button('Save title').props.disabled, true)
+  const failedTitle = await mount('#manage=failed', null, {
+    brief: { message: 'A surprise', durationMinutes: 5 }, content: { title: 'Original', scenes: [player.scene] }
+  }, { title: true })
+  failedTitle.field('creator-story-title').props.onChange({ target: { value: 'Keep my edit' } })
+  await failedTitle.flush()
+  await submitTitle(failedTitle)
+  assert.equal(failedTitle.field('creator-story-title').props.value, 'Keep my edit', 'Failed save retains editable title')
+  assert.ok(failedTitle.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'alert'))
+  assert.ok(failedTitle.nodes().some(node => node.type === 'h1' && label(node) === 'Original'), 'Failed save never changes the saved heading')
+  const failedLibrary = await mount('#manage=storage-failed', null, {
+    brief: { message: 'A surprise', durationMinutes: 5 }, content: { title: 'Original', scenes: [player.scene] }
+  }, { library: true })
+  failedLibrary.field('creator-story-title').props.onChange({ target: { value: 'Remote title' } })
+  await failedLibrary.flush()
+  await submitTitle(failedLibrary)
+  assert.ok(failedLibrary.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'alert' && label(node).includes('saved to your account')),
+    'A failed local cache update is not presented as full success or as a failed remote save')
+  console.log('PASS title saving confirms success beside the form, updates heading/library, and retains edits on failure')
+  owner.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await owner.flush()
   const ownerStudio = owner.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(ownerStudio)
+  assert.ok(!flatten(tools).includes(ownerStudio), 'Prepared narration is visible before expanding sender tools')
+  assert.equal(typeof ownerStudio.props.onAmbientStart, 'function', 'Sender preview includes the same ambience as recipient playback')
+  let studioPauses = 0
+  ownerStudio.props.audioRef.current = { pause() { studioPauses++ } }
+  const deviceFallback = owner.nodes().find(node => node.props.label === 'Listen with device voice (quality varies)')
+  deviceFallback.props.beforeSpeak()
+  assert.equal(studioPauses, 1, 'Choosing device speech first stops any prepared audio')
   assert.deepEqual(await ownerStudio.props.check(0, new AbortController().signal), { enabled: true, ready: false, blocked: false })
   assert.equal((await ownerStudio.props.generate(0, new AbortController().signal)).ready, true)
   assert.deepEqual(owner.requests.at(-1), { action: 'studio-generate', token: 'fixture', sceneIndex: 0, consentVersion: 'test' })

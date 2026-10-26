@@ -389,11 +389,31 @@ async function main() {
   await flush()
   assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your story is complete.'))
   await click('Read again')
-  assert.ok(nodes().some(node => node.type === 'h3' && label(node) === 'The Door'))
+  assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Door'))
   const keepsake = nodes().find(node => node.type === '../components/StoryKeepsake')
   assert.deepEqual(Object.keys(keepsake.props.story).sort(), ['creatorName', 'recipientName', 'scenes', 'title'],
     'Keepsakes receive text only, not answers or capabilities')
   assert.ok(!JSON.stringify(keepsake.props.story).includes('test-capability'))
+  loadedStory = { ...loadedStory, responses: [], currentStep: 0 }
+  browser.location = { search: '?read=1' }
+  slots.length = 0; effects.length = 0
+  const beforeArchiveReading = requests.length
+  await flush()
+  assert.equal(requests.length, beforeArchiveReading, 'Reading the archive never generates a legacy continuation')
+  assert.ok(nodes().some(node => node.props['aria-label'] === 'Archived story'))
+  assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Garden'), 'Archive includes every saved scene')
+  const modeControl = nodes().find(node => node.type === '../components/StoryModeControl')
+  assert.equal(modeControl.props.mode, 'read', 'Scenes default to quiet reading')
+  assert.ok(!nodes().some(node => node.type === '../components/NarrationControls'), 'Read mode has no audio settings')
+  modeControl.props.onChange('listen')
+  await flush()
+  assert.ok(nodes().some(node => node.type === '../components/NarrationControls'), 'Listen mode exposes audio settings')
+  assert.equal(requests.length, beforeArchiveReading, 'Changing experience never generates story text or audio')
+  nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await flush()
+  assert.ok(!nodes().some(node => node.props['aria-label'] === 'Editable response'), 'Archive hides unfinished-story response controls')
+  assert.ok(!nodes().some(node => node.type === '../components/ExplicitConsent'), 'Archive never offers story-generation consent')
+  assert.ok(nodes().some(node => node.props.href === '/my-stories'), 'Archive reading points continuation back to My stories')
   browser.location = { search: '?new=1' }
   slots.length = 0; effects.length = 0
   const beforeNewStory = requests.length

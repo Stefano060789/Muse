@@ -141,7 +141,8 @@ async function main() {
   assert.ok(!generationFailure.button('Prepare this scene\'s Studio audio'), 'Generation errors require a fresh status check rather than another attempt')
   generationFailure.unmount()
 
-  const recipient = mount()
+  const readAlong = []
+  const recipient = mount({ onReadAlong: (position, active) => readAlong.push([position, active]) })
   await recipient.flush()
   assert.deepEqual(recipient.calls, [])
   assert.ok(!recipient.button('Check Studio availability'))
@@ -153,10 +154,14 @@ async function main() {
   assert.equal(audio.props.autoPlay, undefined)
   assert.equal(audio.props.preload, 'metadata')
   audio.props.onPlay()
+  assert.deepEqual(readAlong.at(-1), [0, true])
+  audio.props.onTimeUpdate({ currentTarget: { duration: 20, currentTime: 10 } })
+  assert.deepEqual(readAlong.at(-1), [Math.floor(recipient.props.ambientText.length / 2), true])
   assert.deepEqual(recipient.ambientEvents.at(-1), ['start', 'Cars pass in a mysterious street.'])
   audio.props.onPause()
   assert.deepEqual(recipient.ambientEvents.at(-1), ['pause'])
   audio.props.onEnded()
+  assert.deepEqual(readAlong.at(-1), [recipient.props.ambientText.length, false])
   assert.deepEqual(recipient.ambientEvents.at(-1), ['stop'])
   recipient.props.stopSignal = true
   await recipient.flush()

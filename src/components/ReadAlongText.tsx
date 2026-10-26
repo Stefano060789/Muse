@@ -9,6 +9,7 @@ export default function ReadAlongText({
   position: number
   active: boolean
 }) {
+  if (!active) return <>{text}</>
   const tokens = []
   const pattern = /\s+|\S+/g
   const containsCjk = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/u.test(text)

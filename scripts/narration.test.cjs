@@ -245,6 +245,19 @@ async function main() {
       assert.equal(hook.render().loading, false)
     } finally { hook.dispose() }
   })
+  await check('browser word boundaries map back to original paragraphs and repeated whitespace', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    const hook = mount({ narrationLanguage: 'en-US' }, voices)
+    const text = '  Rain falls.\n\nA   quiet garden waits.'
+    try {
+      await hook.render().speak(text)
+      hook.spoken[0].onboundary({ charIndex: 5 })
+      assert.equal(hook.render().textPosition, text.indexOf('falls'))
+      hook.spoken[0].onend()
+      hook.spoken[1].onboundary({ charIndex: 2 })
+      assert.equal(hook.render().textPosition, text.indexOf('quiet'))
+    } finally { hook.dispose() }
+  })
   await check('Safari tap starts full-preview speech synchronously even while ambient startup is pending', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     let resolveAmbient
@@ -489,7 +502,7 @@ async function main() {
     try {
       assert.equal(hook.ambientCalls.length, 0)
       await hook.render().speak('Rain taps the window. What is outside?')
-      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.12 * 0.55])
+      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.12])
       assert.equal(hook.spoken[0].volume, 0.9)
       hook.render().pause()
       assert.equal(hook.ambientCalls.at(-1)[0], 'pause')
@@ -510,7 +523,7 @@ async function main() {
       hook.render().setImmersivePreference('voiceVolume', 0.05)
       hook.render().setImmersivePreference('ambientVolume', 0.3)
       await hook.render().speak('A soft scene.')
-      assert.ok(hook.ambientCalls.filter(x => x[0] === 'start').at(-1)[2] < 0.01, 'quiet voice also lowers the background')
+      assert.equal(hook.ambientCalls.filter(x => x[0] === 'start').at(-1)[2], 0.3 * (0.05 / 0.9), 'quiet voice proportionally lowers the background')
       hook.render().setImmersivePreference('voiceVolume', 0)
       const starts = hook.ambientCalls.filter(x => x[0] === 'start').length
       await hook.render().speak('Muted rain.')
@@ -764,6 +777,10 @@ async function main() {
       assert.equal(hook.ambientCalls.at(-1)[1], 'traffic', 'Provider narration also starts the scene ambience on the Play action')
       assert.equal(hook.render().speaking, true)
       assert.equal(hook.render().canPause, true)
+      players[0].duration = 10
+      players[0].currentTime = 5
+      players[0].ontimeupdate()
+      assert.equal(hook.render().textPosition, Math.floor('Cars pass along the street.'.length / 2), 'ElevenLabs audio advances read-along from playback time')
       assert.deepEqual(clock.pending, [60000])
       clock.advance(20000)
       hook.render().pause()

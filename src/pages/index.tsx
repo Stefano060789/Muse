@@ -86,9 +86,9 @@ export default function Home() {
             <div className="atelier-creation-choices" aria-label="Choose the kind of story to create">
               <article className="atelier-card atelier-creation-choice">
                 <p className="atelier-eyebrow">Just for you</p>
-                <h2>My story</h2>
+                <h2>My stories</h2>
                 <p>Choose how you want to feel, then write or speak your choices as Muse builds your personal adventure.</p>
-                <Link href="/story?new=1" className="atelier-button">Create my story</Link>
+                <Link href="/my-stories" className="atelier-button">Open My stories</Link>
               </article>
               <article className="atelier-card atelier-creation-choice">
                 <p className="atelier-eyebrow">For someone else</p>
@@ -106,7 +106,7 @@ export default function Home() {
           </figure>
         </section>
         <aside className="atelier-home-more" aria-label="More about Muse">
-          <p className="atelier-note">Already started? <Link href="/library">Find your saved stories and gift stories</Link>.</p>
+          <p className="atelier-note">Keep exploring in <Link href="/my-stories">My stories</Link>, or reread saved stories in the <Link href="/library">archive</Link>.</p>
           <details>
             <summary>A little more about Muse</summary>
             <p className="atelier-note">Gift story recipients open a private link without an account. AI stories can be imperfect; preview gift stories before sending. Stories have no automatic expiry.</p>

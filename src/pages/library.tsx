@@ -104,7 +104,7 @@ export default function LibraryPage() {
     catch (error) { setError(error instanceof Error ? error.message : 'Could not remove this browser entry.') }
   }
   const openPersonal = (id: string) => {
-    try { selectPersonalStory(id); window.location.assign('/story') }
+    try { selectPersonalStory(id); window.location.assign('/story?read=1') }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not reopen this story.') }
   }
   const loadProgress = async (ownerToken: string): Promise<SharedStoryProgress> => {
@@ -123,17 +123,18 @@ export default function LibraryPage() {
   const sharedEntries = entries.filter(entry => entry.kind === 'shared')
   return (
     <>
-      <Head><title>Muse — Saved stories</title><meta name="description" content="Continue your own stories and manage gift stories saved in this browser." /></Head>
+      <Head><title>Muse - Archive</title><meta name="description" content="Reread saved personal stories and manage your archived gift stories." /></Head>
       <main className="atelier-page" style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <p className="atelier-eyebrow">Your collection</p>
-          <h1 className="atelier-title">Saved stories</h1>
-          <p className="atelier-subtitle">Continue your own stories, or manage the gift stories you have created.</p>
+          <h1 className="atelier-title">Archive</h1>
+          <p className="atelier-subtitle">Reread your saved stories and find the gifts you have created.</p>
+          <p>To start or continue a personal adventure, visit <Link href="/my-stories">My stories</Link>.</p>
           <nav className="muse-section-links" aria-label="Saved story sections">
             <a href="#personal-stories-heading">Stories for me ({personalEntries.length})</a>
             <a href="#shared-stories-heading">Gift stories for others ({sharedEntries.length})</a>
           </nav>
-          <p role="note">Gift stories are connected to your Muse account. Personal story progress is saved in this browser.</p>
+          <p role="note">Account stories sync when you sign in. Older browser-only stories remain on the device where they were created.</p>
           <details>
             <summary>Privacy and storage</summary>
             <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
@@ -165,9 +166,7 @@ export default function LibraryPage() {
               })()}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <button className="atelier-button" onClick={() => openPersonal(entry.id)}>
-                  {entry.story.journey
-                    ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted' ? 'Read again' : 'Continue story'
-                    : entry.story.responses.length >= entry.story.scenes.length ? 'Read again' : 'Continue story'}
+                  Read story
                 </button>
                 <button className="atelier-secondary" onClick={() => remove(entry)}>Remove from this browser</button>
               </div>

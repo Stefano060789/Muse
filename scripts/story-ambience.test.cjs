@@ -142,6 +142,10 @@ async function main() {
       assert.equal(context.nodes.filter(node => ['highpass', 'lowpass'].includes(node.type)).length, 2)
       assert.ok(context.samples.some(value => value !== 0))
       assert.ok(context.samples.every(value => Number.isFinite(value) && Math.abs(value) <= 0.8))
+      if (['rain', 'wind', 'water'].includes(kind)) {
+        const rms = Math.sqrt(context.samples.reduce((sum, sample) => sum + sample * sample, 0) / context.samples.length)
+        assert.ok(rms >= 0.2 && rms <= 0.26, `${kind} has an audible, bounded source level rather than near-silent noise`)
+      }
       if (kind === 'crowd') {
         assert.ok(context.samples.every(value => Math.abs(value) <= 0.12))
         const filters = context.nodes.filter(node => ['highpass', 'lowpass'].includes(node.type))
@@ -214,13 +218,15 @@ async function main() {
     assert.equal(contexts.at(-1).state, 'running')
     engine.stop()
   })
-  await check('queued start replaced before activation never resumes; latest start wins', async () => {
+  await check('start unlocks audio synchronously; replacing it before fade keeps only the latest sound', async () => {
     const engine = new StoryAmbience()
     const first = engine.start('rain', 0.1)
     const old = contexts.at(-1)
+    assert.equal(old.resumes, 1, 'Web Audio resume must run in the Play gesture')
     const second = engine.start('water', 0.2)
     await Promise.all([first, second])
-    assert.equal(old.resumes, 0)
+    assert.equal(old.resumes, 1)
+    assert.equal(old.nodes[0].gain.events.length, 0, 'Replaced startup never fades in')
     cleaned(old)
     engine.stop()
   })
