@@ -89,7 +89,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}
-    {!owner && <p className="atelier-note">When this scene suggests it, quiet local ambience accompanies the narration after you press Play. Change the soundscape in Audio and atmosphere settings.</p>}
+    {!owner && <p className="atelier-note">Simple text cues may select a quiet synthetic local ambience for this scene; this is not composed music. It starts with playback. Change the soundscape in Audio and atmosphere settings.</p>}
     {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}

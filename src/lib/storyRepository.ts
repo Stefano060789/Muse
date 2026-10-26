@@ -3,7 +3,7 @@ import type { SharedStoryBrief, SharedStoryContent } from './sharedStory'
 import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult } from './sharedAdventure'
-import type { JourneyOperation, JourneyResult } from './personalJourney'
+import type { JourneyOperation, JourneyRecord, JourneyResult } from './personalJourney'
 import type { StudioRequest, StudioResult } from './studioNarration'
 import type { SharedStoryProgress } from './sharedStoryProgress'
 import {
@@ -19,6 +19,7 @@ function isMissingGiftSchema(error: unknown): boolean {
 
 export type StoredStory = {
   id: string
+  owner_id?: string | null
   owner_hash: string
   play_hash: string
   brief: SharedStoryBrief
@@ -30,7 +31,8 @@ export type StoredStory = {
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export interface StoryRepository {
-  listRetained(after: string | null, limit: number): Promise<StoredStory[]>
+  listRetained(ownerId: string, after: string | null, limit: number): Promise<StoredStory[]>
+  claimStoryOwner(id: string, ownerId: string): Promise<boolean>
   progress(storyId: string, adventure?: boolean): Promise<SharedStoryProgress>
   studio(request: StudioRequest): Promise<StudioResult>
   insert(story: StoredStory): Promise<void>
@@ -42,7 +44,8 @@ export interface StoryRepository {
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   personalJourney(request: JourneyOperation): Promise<JourneyResult>
-  deletePersonalJourney(id: string, capabilityHash: string): Promise<boolean>
+  listPersonalJourneys(ownerId: string): Promise<JourneyRecord[]>
+  deletePersonalJourney(id: string, capabilityHash: string, ownerId: string): Promise<boolean>
   /** Registers a pending upload; false when the story's attempt allowance is used up. */
   mediaBegin(record: SharedMediaRecord, maxAttempts: number): Promise<boolean>
   mediaGet(id: string): Promise<SharedMediaRecord | null>
@@ -103,13 +106,23 @@ export function storyRepository(): StoryRepository {
   const giftUnavailable = () => new SharedStoryError('Gift features are not available in storage yet. Apply supabase/shared-story-gifts.sql, then retry.', 503)
   const giftStorageError = (error: unknown) => isMissingGiftSchema(error) ? giftUnavailable() : storyStorageError(error)
   return {
-    async listRetained(after, limit) {
+    async listRetained(ownerId, after, limit) {
       let query = db.from('shared_stories').select('*').gt('expires_at', new Date().toISOString()).order('id', { ascending: true }).limit(limit)
+      query = query.eq('owner_id', ownerId)
       if (after) query = query.gt('id', after)
       const { data, error } = await query
       if (error) throw storyStorageError(error)
       if (!Array.isArray(data)) throw storyStorageError()
       return data as StoredStory[]
+    },
+    async claimStoryOwner(id, ownerId) {
+      const { data, error } = await db.from('shared_stories').update({ owner_id: ownerId })
+        .eq('id', id).is('owner_id', null).select('id').maybeSingle()
+      if (error) throw storyStorageError(error)
+      if (data) return true
+      const { data: existing, error: lookupError } = await db.from('shared_stories').select('owner_id').eq('id', id).maybeSingle()
+      if (lookupError) throw storyStorageError(lookupError)
+      return existing?.owner_id === ownerId
     },
     async progress(storyId, adventure = false) {
       const sessions = () => db.from('shared_story_sessions')
@@ -153,11 +166,22 @@ export function storyRepository(): StoryRepository {
       }
       return data as StudioResult
     },
-    async deletePersonalJourney(id, capabilityHash) {
-      const { data, error } = await db.rpc('muse_delete_personal_journey', { p_id: id, p_capability_hash: capabilityHash })
+    async deletePersonalJourney(id, capabilityHash, ownerId) {
+      const { data: row, error: lookupError } = await db.from('muse_personal_journeys').select('capability_hash')
+        .eq('id', id).eq('owner_id', ownerId).maybeSingle()
+      if (lookupError) throw storyStorageError(lookupError)
+      if (!row) return false
+      const { data, error } = await db.rpc('muse_delete_personal_journey', { p_id: id, p_capability_hash: row.capability_hash, p_owner_id: ownerId })
       if (error) throw storyStorageError(error)
       if (typeof data !== 'boolean') throw storyStorageError()
       return data
+    },
+    async listPersonalJourneys(ownerId) {
+      const { data, error } = await db.from('muse_personal_journeys').select('record')
+        .eq('owner_id', ownerId).order('id', { ascending: true })
+      if (error) throw storyStorageError(error)
+      if (!Array.isArray(data)) throw storyStorageError()
+      return data.map(row => row.record as JourneyRecord)
     },
     async mediaBegin(record, maxAttempts) {
       const { data, error } = await db.rpc('muse_begin_shared_media', { media: record, max_attempts: maxAttempts })
@@ -293,7 +317,14 @@ export function storyRepository(): StoryRepository {
       if (retry.error) throw storyStorageError(retry.error)
     },
     async personalJourney(request) {
-      const { data, error } = await db.rpc('muse_personal_journey', { input: request })
+      const stored = request.operation === 'create' ? null : await db.from('muse_personal_journeys')
+        .select('capability_hash').eq('id', request.id).eq('owner_id', request.accountId).maybeSingle()
+      if (stored && (stored.error || !stored.data)) {
+        if (stored.error) throw storyStorageError(stored.error)
+        throw new SharedStoryError('Journey: session unavailable', 404)
+      }
+      const input = stored?.data ? { ...request, capabilityHash: String(stored.data.capability_hash) } : request
+      const { data, error } = await db.rpc('muse_personal_journey', { input })
       if (error) {
         const message = error.message ?? ''
         if (message.startsWith('Journey:')) throw new SharedStoryError(message, message.includes('unavailable') ? 404 : message.includes('daily cap') ? 429 : 409)

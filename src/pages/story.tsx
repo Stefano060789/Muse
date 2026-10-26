@@ -19,6 +19,7 @@ import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
 import StoryKeepsake from '../components/StoryKeepsake'
+import { accountFetch } from '../lib/accountClient'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -41,7 +42,6 @@ export default function StoryPage() {
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const [romance, setRomance] = useState<StoryRomance | undefined>()
   const [romanceConfirmed, setRomanceConfirmed] = useState(false)
-  const [creatorCode, setCreatorCode] = useState('')
   const [reconciled, setReconciled] = useState(false)
   const [preparation, setPreparation] = useState<Preparation | null>(null)
   const [storyError, setStoryError] = useState('')
@@ -65,7 +65,7 @@ export default function StoryPage() {
       : story ? story.currentStep / Math.max(1, story.scenes.length - 1) : 0,
     ending: story?.journey ? story.journey.status === 'concluded' : Boolean(story && story.currentStep >= story.scenes.length - 1),
     sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
-  }, { creatorCode })
+  })
   const stopSpeaking = narrator.stop
   const interaction = useStoryInteraction(stopSpeaking, story?.language || language)
   const stopRecording = interaction.stopRecording
@@ -164,8 +164,8 @@ export default function StoryPage() {
   const sceneQuestionStart = sceneBodyStart + sceneBody.length + 1
 
   const requestStory = async (body: Record<string, unknown>): Promise<PersonalStory> => {
-    const response = await fetch('/api/personal-story', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode }, body: JSON.stringify(body)
+    const response = await accountFetch('/api/personal-story', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Could not generate your story.')
@@ -173,8 +173,8 @@ export default function StoryPage() {
   }
 
   const requestJourney = async (body: Record<string, unknown>) => {
-    const response = await fetch('/api/personal-story', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+    const response = await accountFetch('/api/personal-story', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'journey', ...body })
     })
     const data = await response.json()
@@ -211,7 +211,7 @@ export default function StoryPage() {
     window.addEventListener('focus', refresh)
     window.addEventListener('storage', refresh)
     return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
-  }, [story?.id, Boolean(story?.journey), preparation?.id, creatorCode])
+  }, [story?.id, Boolean(story?.journey), preparation?.id])
 
   useEffect(() => {
     if ((!story?.journey && !preparation) || deletedOnServer.current === story?.id || isGenerating || (reconciled && !story?.journey?.pending)) return
@@ -347,8 +347,8 @@ export default function StoryPage() {
     interaction.cancelRecording()
     try {
       if (selected.journey && deletedOnServer.current !== selected.id) {
-        const response = await fetch('/api/personal-story', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-muse-creator-code': creatorCode },
+        const response = await accountFetch('/api/personal-story', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: 'journey', action: 'delete', id: selected.id, capability: selected.journey.capability })
         })
         const data = await response.json()
@@ -392,13 +392,7 @@ export default function StoryPage() {
           {draftError ? <p role="alert">{draftError}</p> : null}
           {draftNotice && (!story || responseDraft) ? <p role="status">{draftNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
-          <details style={{ marginBottom: '1rem' }}>
-          <summary>Creator access (beta)</summary>
-          <label style={{ display: 'block', marginBottom: '1rem' }}>Creator access code (if required)
-            <input type="password" autoComplete="off" maxLength={512} value={creatorCode} disabled={isGenerating} onChange={event => { setCreatorCode(event.target.value); setReconciled(false) }} style={{ display: 'block', padding: '0.6rem', width: '100%', maxWidth: 400 }} />
-          </label>
-          <p>Code never saved. Keep this browser private.</p>
-          </details>
+          {!story ? <p>Sign in to save personal stories to your account. <Link href="/account">Go to your Muse account</Link>.</p> : null}
           {story ? <details style={{ marginBottom: '1rem' }}>
             <summary>Audio settings</summary>
             <NarrationControls narrator={narrator} beforeSpeak={stopRecording} showCloudConsent={false} />

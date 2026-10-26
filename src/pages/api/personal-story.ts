@@ -1,9 +1,10 @@
+import { randomBytes } from 'crypto'
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { parsePersonalStoryRequest, generatePersonalStory } from '../../lib/personalStoryGenerator'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { storyProviderConfig } from '../../lib/storyProvider'
 import { storyDatabase, reserveStoryRequest } from '../../lib/storyRequestLimits'
-import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { requireAccount } from '../../lib/accountAuth'
 import { adventureGlobalCap } from '../../lib/sharedAdventure'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
@@ -21,7 +22,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
   if (!await apiSafety(req, res)) return
-  if (!requireCreatorAccess(req, res)) return
+  const account = await requireAccount(req, res)
+  if (!account) return
   if (req.headers.origin) {
     try {
       if (new URL(req.headers.origin).host !== req.headers.host) {
@@ -32,6 +34,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
   try {
+    if (req.body?.mode === 'journey' && req.body?.action === 'library') {
+      const db = storyDatabase()
+      const cap = adventureGlobalCap()
+      const records = await db.listPersonalJourneys(account.id)
+      const stories = await Promise.all(records.map(async record => {
+        const capability = randomBytes(32).toString('hex')
+        const result = await db.personalJourney({
+          operation: 'view', id: record.id, accountId: account.id,
+          capabilityHash: journeyHash(capability), cap
+        })
+        return publicJourney(result, capability).story
+      }))
+      return res.status(200).json({ stories: stories.filter(Boolean) })
+    }
     if (!(req.body?.mode === 'journey' && ['resume', 'delete'].includes(req.body?.action))) requireProviderConsent(req.body)
     if (req.body?.mode === 'journey') {
       const body = req.body as Record<string, unknown>
@@ -39,12 +55,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = journeyIdentifier(body.id)
       const db = storyDatabase()
       if (body.action === 'delete') {
-        if (!await db.deletePersonalJourney(id, journeyHash(capability))) {
+        if (!await db.deletePersonalJourney(id, journeyHash(capability), account.id)) {
           throw new SharedStoryError('Journey: session unavailable', 404)
         }
         return res.status(200).json({ deleted: true })
       }
-      const common = { id, capabilityHash: journeyHash(capability), cap: adventureGlobalCap() }
+      const common = { id, capabilityHash: journeyHash(capability), accountId: account.id, cap: adventureGlobalCap() }
       if (body.action === 'resume') {
         return res.status(200).json(publicJourney(await db.personalJourney({ ...common, operation: 'view' }), capability))
       }
@@ -68,8 +84,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? { opening: await generateJourneyOpening(reserved.record.input) }
           : { turn: await generateJourneyTurn(reserved.record) }
         const finished = await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, ...generated })
-          if (operation.operation === 'create') await reportOperation('story-created')
-          return res.status(200).json(publicJourney(finished, capability))
+        if (operation.operation === 'create') await reportOperation('story-created')
+        return res.status(200).json(publicJourney(finished, capability))
       } catch (error) {
         console.error('Personal journey attempt failed', error instanceof Error ? error.name : 'Unknown error')
         await reportOperation('request-failure')

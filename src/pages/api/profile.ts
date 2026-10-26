@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { extractProfileKeypoints, readMuseProfile, writeMuseProfile } from '../../lib/profileStorage'
-import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { requireAccount } from '../../lib/accountAuth'
 import { apiSafety } from '../../lib/operations'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } }
@@ -8,9 +8,10 @@ export const config = { api: { bodyParser: { sizeLimit: '20kb' } } }
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store')
   if (!await apiSafety(req, res)) return
-  if (!requireCreatorAccess(req, res)) return
+  const account = await requireAccount(req, res)
+  if (!account) return
   if (req.method === 'GET') {
-    return res.status(200).json(await readMuseProfile())
+    return res.status(200).json(await readMuseProfile(account.id))
   }
 
   if (req.method !== 'POST') {
@@ -27,6 +28,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     updatedAt: new Date().toISOString()
   }
 
-  await writeMuseProfile(profile)
+  await writeMuseProfile(profile, account.id)
   return res.status(200).json(profile)
 }

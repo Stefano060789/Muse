@@ -65,6 +65,7 @@ export type JourneyOperation = {
   operation: 'create' | 'view' | 'reserve' | 'finish'
   id: string
   capabilityHash: string
+  accountId: string
   requestId?: string
   fingerprint?: string
   revision?: number

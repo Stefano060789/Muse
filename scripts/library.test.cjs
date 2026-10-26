@@ -43,12 +43,13 @@ try {
     assert.equal(result.error, null)
     return result
   }
-  function mountLibrary(stories, origin = 'https://muse.example', personalStories = []) {
+  function mountLibrary(stories, origin = 'https://muse.example', personalStories = [], session = null) {
     const ts = require('typescript')
     const store = memory()
     for (const story of stories) lib.saveLibraryCreatorStory(story, store)
     for (const story of personalStories) lib.saveLibraryPersonalStory(story, store)
     const states = [], effects = [], copied = [], requests = []
+    let currentSession = session
     let progressResponse = { ok: true, data: { progress: { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 } } }
     let cursor = 0, mounted = false, tick, clock = Date.parse('2026-10-15T00:00:00Z')
     const jsx = (type, props) => ({ type, props: props || {} })
@@ -91,9 +92,20 @@ try {
         if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
         if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
+        if (name === '../lib/accountClient') return {
+          supabase: { auth: { getSession: async () => ({ data: { session: currentSession }, error: null }) } },
+          accountFetch: async (url, init) => {
+            const headers = { ...init.headers, ...(currentSession?.access_token ? { Authorization: `Bearer ${currentSession.access_token}` } : {}) }
+            const body = JSON.parse(init.body)
+            requests.push({ url, ...init, headers, body })
+            const response = typeof progressResponse === 'function' ? progressResponse(body) : progressResponse
+            return { ok: response.ok, json: async () => response.data }
+          }
+        }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
           restoreLibraryCreatorStories: values => lib.restoreLibraryCreatorStories(values, store),
+          saveLibraryPersonalStory: story => lib.saveLibraryPersonalStory(story, store),
           removeLibraryEntry: (kind, id) => lib.removeLibraryEntry(kind, id, store),
           selectPersonalStory: id => lib.selectPersonalStory(id, store)
         }
@@ -304,14 +316,14 @@ try {
       assert.deepEqual(panel.props.previewContent.props.content, validatedStory.content)
       assert.ok(!JSON.stringify(panel.props).includes(story.ownerToken), 'Sharing receives only recipient-facing data, never owner access')
       assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
-      assert.ok(text.includes('Creator access also finds your saved gift stories'))
+      assert.ok(text.includes('Gift stories are connected to your Muse account.'))
       assert.ok(text.includes('independently of recipient completion'))
       assert.ok(text.includes('View story progress'))
       assert.ok(text.includes('private owner access; do not share them'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
     } finally { ui.cleanup() }
   })
-  check('server recovery merges stories atomically without duplicate IDs or replacing original recipient links', () => {
+  check('account recovery merges stories atomically and refreshes recipient links', () => {
     const store = memory()
     lib.saveLibraryPersonalStory(personal('keep-me'), store)
     lib.saveLibraryCreatorStory(shared('same-story.original-owner'), store)
@@ -322,9 +334,9 @@ try {
     const result = read(store).library
     assert.equal(result.entries.length, 3)
     const original = result.entries.find(entry => entry.id === 'same-story.original-owner')
-    assert.equal(original.story.playToken, 'recipient-secret')
+    assert.equal(original.story.playToken, 'recovered-recipient')
     assert.equal(original.story.content.title, 'Refreshed story')
-    // Recovered capabilities must be refreshable after administrator-code rotation.
+    // Account recovery refreshes the saved recipient capability with the current link.
     lib.restoreLibraryCreatorStories([{ ...shared('rotate.before'), recovered: true }], store)
     lib.restoreLibraryCreatorStories([{ ...shared('rotate.after'), recovered: true }], store)
     assert.ok(!read(store).library.entries.some(entry => entry.id === 'rotate.before'))
@@ -333,48 +345,31 @@ try {
     assert.throws(() => lib.restoreLibraryCreatorStories([shared('new.recovered'), { invalid: true }], store))
     assert.equal(store.getItem('muse-story-library'), before)
   })
-  await checkAsync('Creator recovery is explicit, keeps codes memory-only, validates pages and reports failures', async () => {
-    const ui = mountLibrary([])
-    const password = () => nodes(ui.render()).find(node => node.type === 'input' && node.props.type === 'password')
+  await checkAsync('account recovery syncs gift and personal stories and reports failures', async () => {
+    const ui = mountLibrary([], 'https://muse.example', [], { access_token: 'fixture-account-token' })
     try {
-      assert.equal(button(ui.render(), 'View all story progress').props.disabled, false)
-      button(ui.render(), 'View all story progress').props.onClick()
-      assert.equal(ui.requests.length, 0)
-      password().props.onChange({ target: { value: 'synthetic-creator-code' } })
-      ui.setProgressResponse({ ok: false, data: { error: 'Access denied' } })
-      await button(ui.render(), 'View all story progress').props.onClick()
-      await new Promise(resolve => setImmediate(resolve))
-      assert.ok(textOf(ui.render()).includes('Access denied'), textOf(ui.render()))
       const summary = { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 0, sceneCount: 1 }
-      ui.setProgressResponse(body => ({ ok: true, data: {
-        stories: [{ ...shared(body.after ? 'second.owner' : 'recovered.owner'), progress: summary }],
-        next: body.after ? null : 'next-page'
-      } }))
-      const beforeLoading = ui.requests.length
-      const checkAll = button(ui.render(), 'View all story progress').props.onClick
-      checkAll(); checkAll()
+      ui.setProgressResponse(body => body.action === 'library' && body.mode !== 'journey'
+        ? { ok: true, data: { stories: [{ ...shared('recovered.owner'), progress: summary }], next: null } }
+        : { ok: true, data: { stories: [] } })
       await new Promise(resolve => setImmediate(resolve))
-      assert.equal(read(ui.store).library.entries.length, 2)
-      assert.ok(!textOf(ui.render()).includes('Load more stories'))
-      assert.equal(ui.requests.at(-1).body.after, 'next-page', 'All collection pages load automatically')
-      assert.equal(ui.requests.at(-1).body.includeProgress, true)
-      assert.equal(ui.requests.length - beforeLoading, 2, 'Repeated clicks share one paginated request')
-      assert.deepEqual(nodes(ui.render()).find(node => node.type === 'gift-progress').props.snapshot, summary)
-      assert.equal(ui.requests.at(-1).body.action, 'library')
-      assert.equal(ui.requests.at(-1).headers['x-muse-creator-code'], 'synthetic-creator-code')
-      assert.ok(!JSON.stringify([...ui.store.values]).includes('synthetic-creator-code'))
-      ui.setProgressResponse({ ok: true, data: { stories: 'invalid', next: null } })
-      button(ui.render(), 'View all story progress').props.onClick()
+      assert.equal(ui.requests[0].body.action, 'library')
+      assert.equal(ui.requests[0].body.includeProgress, true)
+      assert.equal(ui.requests[0].headers.Authorization, 'Bearer fixture-account-token')
+      assert.equal(ui.requests[1].body.mode, 'journey', 'The personal story request uses the personal-story API mode')
+      assert.equal(ui.requests[1].body.action, 'library')
+      assert.equal(ui.requests[1].url, '/api/personal-story')
+      assert.equal(ui.requests[1].headers.Authorization, 'Bearer fixture-account-token')
+      assert.equal(read(ui.store).library.entries.length, 1)
+      const progressNode = nodes(ui.render()).find(node => node.type === 'gift-progress')
+      assert.ok(progressNode, JSON.stringify({ text: textOf(ui.render()), types: nodes(ui.render()).map(node => node.type) }))
+      assert.deepEqual(progressNode.props.snapshot, summary)
+      ui.setProgressResponse({ ok: false, data: { error: 'Account session expired.' } })
+      button(ui.render(), 'Sync account stories').props.onClick()
       await new Promise(resolve => setImmediate(resolve))
-      assert.ok(textOf(ui.render()).includes('invalid story collection'))
-      assert.equal(read(ui.store).library.entries.length, 2)
-      ui.setProgressResponse(body => ({ ok: true, data: {
-        stories: [{ ...shared('recovered.refreshed'), recovered: true, progress: summary }], next: body.after || 'repeated'
-      } }))
-      button(ui.render(), 'View all story progress').props.onClick()
-      await new Promise(resolve => setImmediate(resolve))
-      assert.ok(textOf(ui.render()).includes('Could not finish loading stories'))
-      assert.equal(read(ui.store).library.entries.length, 2, 'Failed pagination does not partially replace the library')
+      assert.ok(textOf(ui.render()).includes('Account session expired.'))
+      assert.ok(textOf(ui.render()).includes('Sign in or create an account'))
+      assert.equal(read(ui.store).library.entries.length, 1, 'Failed account sync preserves existing browser entries')
     } finally { ui.cleanup() }
   })
   check('personal cards keep progress simple and place journey allowances and storage details under disclosure', () => {
@@ -415,13 +410,12 @@ try {
         assert.ok(button(tree, 'Remove story'))
         if (variant === 'missing') assert.ok(textOf(tree).includes('No recipient link saved here'))
         assert.ok(!textOf(tree).includes('View story progress to see'), 'Gift cards omit instructional copy')
-        const access = nodes(tree).find(node => node.type === 'details' && textOf(node).includes('Creator access code'))
-        assert.ok(access && !access.props.open, 'Creator recovery stays collapsed until needed')
+        assert.ok(!nodes(tree).some(node => node.type === 'input' && node.props.type === 'password'), 'No deployment-wide creator code is requested')
         assert.ok(read(ui.store).library.entries.length === 1)
       } finally { ui.cleanup() }
     }
   })
-  await checkAsync('completion checks use private owner access, never poll, and surface failures', async () => {
+  await checkAsync('completion checks use account authorization, never poll, and surface failures', async () => {
     const story = shared('private-owner')
     const ui = mountLibrary([story])
     try {
@@ -434,19 +428,14 @@ try {
       assert.equal(ui.requests[0].body.action, 'progress')
       assert.equal(ui.requests[0].body.token, story.ownerToken)
       assert.ok(!JSON.stringify(ui.requests[0]).includes(story.playToken))
-      const code = nodes(tree).find(node => node.type === 'input' && node.props.type === 'password')
-      code.props.onChange({ target: { value: 'memory-only-code' } })
       const liveSummary = { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 1, sceneCount: null }
-      ui.setProgressResponse({ ok: true, data: { stories: [{ ...story, progress: liveSummary }], next: null } })
+      ui.setProgressResponse({ ok: true, data: { progress: liveSummary } })
       await progress().props.load()
-      assert.equal(ui.requests[1].body.action, 'library', 'One progress click automatically restores the server collection')
-      assert.equal(ui.requests[1].body.includeProgress, true)
-      assert.equal(ui.requests[1].headers['x-muse-creator-code'], 'memory-only-code')
-      assert.ok(!JSON.stringify([...ui.store.values]).includes('memory-only-code'))
-      ui.setProgressResponse({ ok: false, data: { error: 'Creator access required.' } })
-      await assert.rejects(progress().props.load(), /Creator access required/)
+      assert.equal(ui.requests[1].body.action, 'progress')
+      ui.setProgressResponse({ ok: false, data: { error: 'Sign in to view progress.' } })
+      await assert.rejects(progress().props.load(), /Sign in to view progress/)
       ui.setProgressResponse({ ok: true, data: {} })
-      await assert.rejects(progress().props.load(), /invalid story collection/)
+      await assert.rejects(progress().props.load(), /Story progress was not returned/)
       assert.equal(read(ui.store).library.entries.length, 1, 'Failed checks do not erase the story')
       const beforeRemove = ui.requests.length
       button(ui.render(), 'Remove story').props.onClick()

@@ -318,6 +318,7 @@ async function main() {
   const adventureProgressQueries = []
   let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
   delete process.env.VERCEL
   global.fetch = async (url, options) => {
@@ -328,6 +329,9 @@ async function main() {
     }
     const location = new URL(String(url))
     assert.equal(location.hostname, 'muse-test.supabase.co')
+    if (location.pathname === '/auth/v1/user') {
+      return json({ id: new Headers(options.headers).get('Authorization') === 'Bearer other-account-token' ? 'other-account' : 'fixture-account', email: 'fixture@example.test' })
+    }
     const body = options?.body ? JSON.parse(options.body) : null
     if (location.pathname === '/rest/v1/muse_adventure_requests') {
       adventureProgressQueries.push(location)
@@ -374,7 +378,7 @@ async function main() {
     if ((!options.method || options.method === 'GET') && location.searchParams.has('limit')) {
       collectionQueries.push(location)
       if (collectionFailure) return json({ message: 'private collection failure' }, 400)
-      return json(stored ? [stored] : [])
+      return json(stored && location.searchParams.get('owner_id') === `eq.${stored.owner_id}` ? [stored] : [])
     }
     if (options.method === 'POST') {
       stored = body
@@ -400,7 +404,7 @@ async function main() {
       status: (value) => { status = value; return res },
       json: (value) => { result = value; return res }
     }
-    await selectedHandler({ method, body: { consentVersion: '2026-10-18', ...body }, headers: { host: 'localhost:3102', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
+    await selectedHandler({ method, body: { consentVersion: '2026-10-18', ...body }, headers: { host: 'localhost:3102', authorization: 'Bearer fixture-account-token', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
     assert.equal(responseHeaders['Cache-Control'], 'no-store')
     return { status, body: result }
   }
@@ -421,42 +425,37 @@ async function main() {
     assert.equal(created.body.expiresAt, null, 'Permanent stories expose an explicit null expiry')
     assert.equal(stored.expires_at, 'infinity', 'Hosted storage uses PostgreSQL infinity, never a distant date')
   })
-  await check('hosted Creator recovery is gated, paginated, read-only and returns usable role-separated capabilities', async () => {
-    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
-    const code = 'synthetic-hosted-recovery-code'
-    process.env.MUSE_CREATOR_ACCESS_CODE = code
-    try {
-      const calls = runtimeProviderCalls
-      const before = JSON.stringify(stored)
-      assert.equal((await api({ action: 'library' })).status, 401)
-      assert.equal(collectionQueries.length, 0)
-      const result = await api({ action: 'library' }, 'POST', { 'x-muse-creator-code': code })
-      assert.equal(result.status, 200)
-      assert.equal(result.body.next, null)
-      assert.equal(result.body.stories.length, 1)
-      const query = collectionQueries.at(-1)
-      assert.equal(query.searchParams.get('limit'), '21')
-      assert.equal(query.searchParams.get('order'), 'id.asc')
-      assert.ok(query.searchParams.get('expires_at').startsWith('gt.'))
-      const recovered = result.body.stories[0]
-      assert.equal(recovered.recovered, true)
-      assert.equal(recovered.brief.message, brief.message)
-      assert.equal(recovered.expiresAt, null)
-      assert.equal((await api({ action: 'manage', token: recovered.ownerToken }, 'POST', { 'x-muse-creator-code': code })).status, 200)
-      assert.equal(JSON.stringify(stored), before, 'Recovery does not patch stored hashes')
-      const after = stored.id
-      await api({ action: 'library', after }, 'POST', { 'x-muse-creator-code': code })
-      assert.equal(collectionQueries.at(-1).searchParams.get('id'), `gt.${after}`)
-      collectionFailure = true
-      const failed = await api({ action: 'library' }, 'POST', { 'x-muse-creator-code': code })
-      assert.equal(failed.status, 503)
-      assert.ok(!JSON.stringify(failed.body).includes('private collection failure'))
-      assert.equal(runtimeProviderCalls, calls)
-    } finally {
-      collectionFailure = false
-      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
-      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
-    }
+  await check('hosted account recovery is owner-scoped, paginated, read-only and returns role-separated capabilities', async () => {
+    const calls = runtimeProviderCalls
+    const before = JSON.stringify(stored)
+    assert.equal((await api({ action: 'library' }, 'POST', { authorization: '' })).status, 401)
+    assert.equal(collectionQueries.length, 0)
+    const result = await api({ action: 'library' })
+    assert.equal(result.status, 200)
+    assert.equal(result.body.next, null)
+    assert.equal(result.body.stories.length, 1)
+    const query = collectionQueries.at(-1)
+    assert.equal(query.searchParams.get('owner_id'), 'eq.fixture-account')
+    assert.equal(query.searchParams.get('limit'), '21')
+    assert.equal(query.searchParams.get('order'), 'id.asc')
+    assert.ok(query.searchParams.get('expires_at').startsWith('gt.'))
+    const recovered = result.body.stories[0]
+    assert.equal(recovered.recovered, true)
+    assert.equal(recovered.brief.message, brief.message)
+    assert.equal(recovered.expiresAt, null)
+    assert.equal((await api({ action: 'manage', token: recovered.ownerToken })).status, 200)
+    assert.equal((await api({ action: 'manage', token: recovered.ownerToken }, 'POST', { authorization: 'Bearer other-account-token' })).status, 404)
+    assert.equal(JSON.stringify(stored), before, 'Recovery does not patch stored hashes')
+    const after = stored.id
+    await api({ action: 'library', after })
+    assert.equal(collectionQueries.at(-1).searchParams.get('id'), `gt.${after}`)
+    assert.equal(collectionQueries.at(-1).searchParams.get('owner_id'), 'eq.fixture-account')
+    collectionFailure = true
+    const failed = await api({ action: 'library' })
+    assert.equal(failed.status, 503)
+    assert.ok(!JSON.stringify(failed.body).includes('private collection failure'))
+    assert.equal(runtimeProviderCalls, calls)
+    collectionFailure = false
   })
   await check('recipient cannot access management and owner cannot play with the owner token', async () => {
     assert.equal((await api({ action: 'manage', token: created.body.playToken })).status, 404)
@@ -475,7 +474,7 @@ async function main() {
     assert.equal(changed.body.content.title, 'A Story Across the Stars')
     assert.equal(stored.content.title, 'A Story Across the Stars')
     assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.content.title, 'A Story Across the Stars')
-    const opened = await api({ action: 'open', token: created.body.playToken })
+    const opened = await api({ action: 'open', token: created.body.playToken }, 'POST', { authorization: '' })
     assert.equal(opened.body.player.title, 'A Story Across the Stars')
     await api({ action: 'title', token: created.body.ownerToken, title: content.title })
   })
@@ -495,21 +494,14 @@ async function main() {
     progressFailure = false
     assert.equal(runtimeProviderCalls, before, 'Progress never calls the AI provider')
   })
-  await check('one hosted collection request includes authoritative progress without creating playthroughs or AI calls', async () => {
-    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
-    process.env.MUSE_CREATOR_ACCESS_CODE = 'synthetic-combined-progress-code'
-    try {
-      const calls = runtimeProviderCalls
-      const result = await api({ action: 'library', includeProgress: true }, 'POST', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })
-      assert.equal(result.status, 200)
-      assert.deepEqual(result.body.stories[0].progress, {
-        opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length
-      })
-      assert.equal(runtimeProviderCalls, calls)
-    } finally {
-      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
-      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
-    }
+  await check('one hosted account collection request includes progress without creating playthroughs or AI calls', async () => {
+    const calls = runtimeProviderCalls
+    const result = await api({ action: 'library', includeProgress: true })
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.body.stories[0].progress, {
+      opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length
+    })
+    assert.equal(runtimeProviderCalls, calls)
   })
   await check('hosted live progress counts successful scenes per playthrough across all result pages, not charged attempts', async () => {
     const previous = stored.brief

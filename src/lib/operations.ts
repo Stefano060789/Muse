@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { consumeOperation, storeOperationAlert, operationStatus } from './operationsStore'
 
-export const OPERATION_EVENTS = ['ai-budget-warning', 'ai-budget-exhausted', 'provider-failure', 'storage-failure', 'request-failure', 'client-render-failure', 'site-visit', 'story-created'] as const
+export const OPERATION_EVENTS = ['ai-budget-warning', 'ai-budget-exhausted', 'provider-failure', 'storage-failure', 'request-failure', 'client-render-failure', 'story-created'] as const
 export type OperationEvent = typeof OPERATION_EVENTS[number]
 
 export function dailyAiLimit() {
@@ -51,8 +51,8 @@ export async function apiSafety(req: NextApiRequest, res: NextApiResponse, publi
   try {
     await limitApiRequest(req, res)
     const action = req.body?.action
-    const invalidCreatorAttempt = !!process.env.MUSE_CREATOR_ACCESS_CODE &&
-      req.headers['x-muse-creator-code'] !== process.env.MUSE_CREATOR_ACCESS_CODE &&
+    const invalidCreatorAttempt = req.url?.split('?')[0] === '/api/operations' && !!process.env.MUSE_OPERATIONS_ACCESS_CODE &&
+      req.headers['x-muse-operations-code'] !== process.env.MUSE_OPERATIONS_ACCESS_CODE &&
       !(publicPlayerActions && ['open', 'next', 'guess', 'hint', 'adventure', 'media'].includes(String(action)))
     if (invalidCreatorAttempt) await limitApiRequest(req, res, 'creator')
     return true
@@ -81,7 +81,7 @@ export async function limitApiRequest(req: NextApiRequest, res: NextApiResponse,
   const address = process.env.VERCEL
     ? String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim()
     : req.socket?.remoteAddress || 'local'
-  const salt = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.MUSE_CREATOR_ACCESS_CODE
+  const salt = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.MUSE_OPERATIONS_ACCESS_CODE
   if (process.env.VERCEL && !salt) throw new SharedStoryError('Request safety controls are not configured.', 503)
   const digest = salt ? createHmac('sha256', salt).update(address).digest('hex') : createHash('sha256').update(address).digest('hex')
   const interval = kind === 'creator' ? 600000 : 60000
@@ -110,6 +110,7 @@ export async function productionOperationStatus() {
       ...(!operator ? ['Public operator name is missing.'] : []),
       ...(!support || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(support) ? ['Valid support email is missing.'] : []),
       ...(!Number.isFinite(backupTime) || backupTime > Date.now() || Date.now() - backupTime > 86400000 ? ['No recent operator-attested backup verification.'] : []),
+      ...(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? ['Supabase account authentication is not configured.'] : []),
       'Privacy/terms and production recovery require operator review and a restore rehearsal.'
     ],
     backupVerification: Number.isFinite(backupTime) ? 'Operator-attested timestamp, not an independently verified backup guarantee.' : 'Not configured.'

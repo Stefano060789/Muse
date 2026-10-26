@@ -10,7 +10,7 @@ begin
     or has_table_privilege('authenticated','public.muse_operations_alerts','SELECT')
     or has_function_privilege('anon','public.muse_consume_operation(text,integer,timestamp with time zone,integer)','EXECUTE')
     or has_function_privilege('authenticated','public.muse_record_operation_alert(text,text)','EXECUTE')
-    or has_function_privilege('anon','public.muse_delete_personal_journey(uuid,text)','EXECUTE') then
+    or has_function_privilege('anon','public.muse_delete_personal_journey(uuid,text,uuid)','EXECUTE') then
     raise exception 'Client grants must be absent';
   end if;
   if not has_function_privilege('service_role','public.muse_consume_operation(text,integer,timestamp with time zone,integer)','EXECUTE') then
@@ -29,7 +29,7 @@ begin
     or public.muse_record_operation_alert('request-failure:999999999','request-failure') is distinct from false then
     raise exception 'Alert deduplication failed';
   end if;
-  if public.muse_delete_personal_journey(gen_random_uuid(),repeat('a',64)) is distinct from false then
+  if public.muse_delete_personal_journey(gen_random_uuid(),repeat('a',64),gen_random_uuid()) is distinct from false then
     raise exception 'Unknown journey deletion must not succeed';
   end if;
   raise notice 'Muse operation cap, warning, grants, deduplication and unknown deletion checks passed; rolling back.';

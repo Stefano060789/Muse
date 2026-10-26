@@ -6,7 +6,7 @@ import { pipeline } from 'stream/promises'
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { storyRepository, storyStorageMode } from '../../lib/storyRepository'
-import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { requireAccount } from '../../lib/accountAuth'
 import { localMediaPath } from '../../lib/sharedMediaStore'
 import { apiSafety, reportOperation } from '../../lib/operations'
 
@@ -36,7 +36,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   let part = ''
   try {
     if (storyStorageMode() !== 'sqlite') throw new SharedStoryError('Hosted uploads go directly to private storage.', 404)
-    if (!requireCreatorAccess(req, res)) return
+    const account = await requireAccount(req, res)
+    if (!account) return
     const capability = req.headers['x-muse-upload']
     if (typeof capability !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[0-9a-f]{64}$/.test(capability)) {
       throw new SharedStoryError('This upload link is invalid.', 404)
@@ -45,7 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = storyRepository()
     const record = await db.mediaGet(uploadId) ?? await db.voiceGet(uploadId)
     const expected = record ? Buffer.from(record.upload_hash, 'hex') : Buffer.alloc(0)
-    if (!record || record.status !== 'pending' || expected.length !== 32 || !timingSafeEqual(hash(uploadSecret), expected) || !await db.findUnexpired(record.story_id)) {
+    const story = record ? await db.findUnexpired(record.story_id) : null
+    if (!record || record.status !== 'pending' || expected.length !== 32 || !timingSafeEqual(hash(uploadSecret), expected) || !story || story.owner_id !== account.id) {
       throw new SharedStoryError('This upload link is invalid or has already been used.', 404)
     }
     if (Date.parse(record.upload_expires_at) <= Date.now()) throw new SharedStoryError('The upload window expired. Choose the file again; your story is unchanged.', 410)

@@ -95,7 +95,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
           <input aria-label="Background volume" type="range" min="0" max="0.3" step="0.01" value={narrator.immersive.ambientVolume} onChange={event => narrator.setImmersivePreference('ambientVolume', Number(event.target.value))} />
         </label>
       </div>
-      <p>Auto adds a quiet, synthetic local soundscape when the scene suggests one, including alongside prepared recordings. No sound plays until you press Play. Adjust or turn it off any time; press Play again after changing settings.</p>
+      <p>Auto uses simple text cues in the narration to choose a quiet, synthetic local ambience; it does not analyze audio or compose music. It also works alongside prepared recordings. Nothing plays until you press Play. Adjust or turn it off any time; press Play again after changing settings.</p>
       {narrator.ambientKind !== 'none' && narrator.busy ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
       {narrator.ambientNotice ? <p role="status">{narrator.ambientNotice}</p> : null}
     </fieldset>

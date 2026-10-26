@@ -6,7 +6,7 @@ import { generateSharedStory, sharedStoryProviderConfig } from '../../lib/shared
 import { normalizeSharedAnswer, parseSharedStoryBrief, sharedStoryPlayerView, SharedStoryError } from '../../lib/sharedStory'
 import { storyDatabase as database, reserveStoryRequest as reserveRequest } from '../../lib/storyRequestLimits'
 import type { StoryRepository, StoredStory } from '../../lib/storyRepository'
-import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { requireAccount, type AccountUser } from '../../lib/accountAuth'
 import { adventureGlobalCap, adventureChoiceView, generateAdventureTurn, parseAdventureAction, type AdventureRequest } from '../../lib/sharedAdventure'
 import {
   mediaSignatureMatches, mediaSummary, parseMediaDeclaration, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_UPLOAD_WINDOW_MS,
@@ -146,21 +146,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new SharedStoryError('Unsupported story action.')
     }
     const studioPreview = action === 'studio-audio' && body.preview === true
-    if ((!PLAYER_ACTIONS.includes(String(action)) || studioPreview) && !requireCreatorAccess(req, res)) return
+    const ownerActionRequested = !PLAYER_ACTIONS.includes(String(action)) || studioPreview
+    const account: AccountUser | null = ownerActionRequested ? await requireAccount(req, res) : null
+    if (ownerActionRequested && !account) return
     if (action === 'library') {
-      // Unlike local creation, collection recovery must never use an ungated
-      // development environment as administrator authorization.
-      const code = process.env.MUSE_CREATOR_ACCESS_CODE
-      if (!code || code.length < 16 || code.length > 512) throw new SharedStoryError('Server recovery requires a configured private Creator access code.', 503)
       if (body.after !== undefined && body.after !== null && (typeof body.after !== 'string' || !UUID.test(body.after))) {
         throw new SharedStoryError('The story collection page is invalid.')
       }
       const db = database()
-      const page = await db.listRetained(body.after || null, 21)
+      const page = await db.listRetained(account!.id, body.after || null, 21)
       const stories = await Promise.all(page.slice(0, 20).map(async story => ({
         recovered: true,
-        ownerToken: `${story.id}.${recoveryKey(story, 'owner')}`,
-        playToken: `${story.id}.${recoveryKey(story, 'play')}`,
+        ownerToken: `${story.id}.${recoveryKey(story, 'owner', account!.id)}`,
+        playToken: `${story.id}.${recoveryKey(story, 'play', account!.id)}`,
         brief: story.brief, content: story.content, expiresAt: publicStoryExpiry(story.expires_at),
         ...(body.includeProgress === true ? { progress: await storyProgress(db, story) } : {})
       })))
@@ -198,6 +196,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const expiresAt = PERMANENT_STORY_EXPIRY
       await db.insert({
         id, owner_hash: hash(ownerKey), play_hash: hash(playKey),
+        owner_id: account!.id,
         brief, content, answer_normalized: normalizeSharedAnswer(brief.solution),
         alternative_answers_normalized: (brief.alternativeAnswers ?? []).map(normalizeSharedAnswer), expires_at: expiresAt
       })
@@ -212,8 +211,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await sweepStudioAudio(db)
     const story = await db.findUnexpired(id)
     const ownerAction = OWNER_ACTIONS.includes(String(action)) || studioPreview
-    if (!story || (!matches(key, ownerAction ? story.owner_hash : story.play_hash) && !matchesRecoveryKey(key, story, ownerAction ? 'owner' : 'play'))) {
+    const recoveredKey = story && (ownerAction
+      ? account && matchesRecoveryKey(key, story, 'owner', account.id)
+      : story.owner_id && matchesRecoveryKey(key, story, 'play', story.owner_id))
+    if (!story || (!matches(key, ownerAction ? story.owner_hash : story.play_hash) && !recoveredKey)) {
       throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+    }
+    if (ownerAction && account && story.owner_id !== account.id) {
+      if (story.owner_id || !await db.claimStoryOwner(id, account.id)) {
+        throw new SharedStoryError('This story belongs to a different account.', 404)
+      }
     }
     let romance: ReturnType<typeof parseStoryRomance>
     try { romance = parseStoryRomance(story.brief.romance) } catch {

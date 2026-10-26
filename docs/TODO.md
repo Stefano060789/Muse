@@ -8,9 +8,12 @@ native app. Confirm current hosted configuration and actual product scope:
 this TODO tracks the active Myself/My Story/Shared Story implementation, while
 older planning and marketing documents describe a different product direction.
 
-- [ ] By 23 October 2026, freeze the minimum public scope and choose/clear a
-      public product name; "Muse" remains an internal codename with documented
+- [ ] Immediately freeze the minimum public scope and choose/clear a public
+      product name; "Muse" remains an internal codename with documented
       naming conflicts.
+- [ ] Before inviting unrelated creators, replace the deployment-wide Creator
+      access code with creator-scoped accounts or per-story capabilities;
+      remove deployment-wide recovery of other creators' private stories.
 - [ ] Before public invitations, verify production Supabase/Vercel settings,
       migrations, access controls, backups, error reporting, API/provider
       spending limits and alerts; never expose service-role credentials.
@@ -18,6 +21,8 @@ older planning and marketing documents describe a different product direction.
       retention/deletion, and support-contact reviews for the features actually
       included. Do not release cycle-sensitive features or advertising without
       their separate privacy/legal approval.
+- [ ] Update the first-party operational-event disclosure and confirm it with
+      the privacy review; page-view collection is disabled.
 - [ ] Run closed user tests by 15 December 2026, including story quality,
       clue-solvability, accessibility/mobile usability, and feedback on
       approximate session durations; fix launch-blocking defects.
@@ -221,6 +226,9 @@ current MVP.
       consent/deletion flows and private operations access
 - [ ] Configure real operator/support details and complete legal/privacy,
       consent, retention/deletion and recovery reviews before public invitations
+- [ ] Deploy and verify Supabase Auth and the account-ownership migrations
+      before multi-creator invitations. Confirm that signed-in accounts cannot
+      list or manage one another's stories and recipient links remain public.
 - [ ] Decide how operators receive proactive failure/spending alerts; current
       alerts are server logs and the private dashboard, not email notifications
 

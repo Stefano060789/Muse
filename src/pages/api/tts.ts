@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { legacyNarrationStyle, parseNarrationMetadata } from '../../lib/narration'
-import { requireCreatorAccess } from '../../lib/creatorAccess'
+import { requireAccount } from '../../lib/accountAuth'
 import { apiSafety, reserveAiAttempt, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { requireProviderConsent } from '../../lib/providerConsent'
@@ -20,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(503).json({ error: 'Provider narration is disabled. Use browser narration.' })
   }
   if (!await apiSafety(req, res)) return
-  if (!requireCreatorAccess(req, res)) return
+  if (!await requireAccount(req, res)) return
   try { requireProviderConsent(req.body) } catch {
     return res.status(400).json({ error: `Cloud narration requires consent to send text to ${provider === 'google' ? 'Google' : 'ElevenLabs'} and use a paid attempt.` })
   }

@@ -29,7 +29,7 @@ export default function SiteFooter() {
             : contact.supportEmail.status === 'invalid' ? 'Not configured (invalid setting)' : 'Not configured'}
         </div>
         <p style={{ margin: 0 }} role="status">
-          Public beta readiness is blocked until operator and support contacts are configured and legal review is complete.
+          Public beta readiness is blocked until operator/support details, legal review, and production recovery are verified.
         </p>
       </div>
     </footer>

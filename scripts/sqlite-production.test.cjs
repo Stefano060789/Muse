@@ -52,7 +52,7 @@ async function main() {
   const token = `${id}.${key}`
   async function start() {
     child = spawn(process.execPath, ['--require', preload, path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-H', '127.0.0.1', '-p', String(port)], {
-      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, MUSE_MEDIA_PATH: path.join(directory, 'media'), MUSE_CREATOR_ACCESS_CODE: '', VERCEL: '' }, stdio: ['ignore', 'pipe', 'pipe']
+      cwd: root, env: { ...process.env, STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: filename, MUSE_MEDIA_PATH: path.join(directory, 'media'), VERCEL: '' }, stdio: ['ignore', 'pipe', 'pipe']
     })
     child.stdout.on('data', value => { logs += value })
     child.stderr.on('data', value => { logs += value })

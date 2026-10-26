@@ -228,7 +228,6 @@ async function main() {
   await rejects(() => synth('fail closed'), 'google-storage-unavailable')
   reset('api')
   Object.assign(process.env, {
-    MUSE_CREATOR_ACCESS_CODE: 'google-test-private-creator',
     MUSE_OPERATIONS_SQLITE_PATH: path.join(output, 'operations.sqlite'),
     STORY_STORAGE: 'sqlite'
   })
@@ -236,7 +235,7 @@ async function main() {
   const handler = require(path.join(output, 'pages', 'api', 'tts.js')).default
   const { PROVIDER_CONSENT_VERSION } = require(path.join(output, 'lib', 'providerConsent.js'))
   let address = 1
-  async function api(body, creator = true, method = 'POST') {
+  async function api(body, method = 'POST') {
     const headers = {}
     const res = {
       statusCode: 200, body: null,
@@ -246,14 +245,13 @@ async function main() {
       send(body) { this.body = body; return this }
     }
     await handler({
-      method, headers: { host: 'localhost:3000', ...(creator ? { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE } : {}) },
+      method, headers: { host: 'localhost:3000' },
       socket: { remoteAddress: `10.93.0.${address++}` }, body
     }, res)
     return { status: res.statusCode, body: res.body, headers }
   }
   const body = { text: 'API cache test', narrationLanguage: 'en-US', narrationStyle: 'warm', consentVersion: PROVIDER_CONSENT_VERSION }
-  assert.equal((await api(body, true, 'GET')).status, 405)
-  assert.equal((await api(body, false)).status, 401)
+  assert.equal((await api(body, 'GET')).status, 405)
   assert.equal((await api({ ...body, consentVersion: undefined })).status, 400)
   const beforeApi = calls
   const first = await api(body)

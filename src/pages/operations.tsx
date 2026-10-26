@@ -27,7 +27,7 @@ export default function OperationsPage() {
   const refresh = async () => {
     setLoading(true); setError(''); setStatus(null)
     try {
-      const response = await fetch('/api/operations', { headers: { 'x-muse-creator-code': code }, cache: 'no-store' })
+      const response = await fetch('/api/operations', { headers: { 'x-muse-operations-code': code }, cache: 'no-store' })
       const body: unknown = await response.json()
       if (!response.ok) throw new Error(body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error : 'Could not load operational status.')
       if (!isStatus(body)) throw new Error('Operational status returned invalid data.')
@@ -41,7 +41,7 @@ export default function OperationsPage() {
     <main style={{ maxWidth: 850, margin: '0 auto', padding: '1.5rem', fontFamily: 'Georgia, serif', overflowWrap: 'anywhere' }}>
       <Link href="/">Muse</Link>
       <h1>Private operations</h1>
-      <label>Creator access code <input type="password" autoComplete="off" maxLength={512} value={code} onChange={e=>setCode(e.target.value)} /></label>
+      <label>Operations access code <input type="password" autoComplete="off" maxLength={512} value={code} onChange={e=>setCode(e.target.value)} /></label>
       <p>Code stays in page memory. Nothing below contains story text or private links.</p>
       <button disabled={loading || !code} onClick={()=>void refresh()}>{loading ? 'Loading…' : 'Refresh status'}</button>
       {error && <p role="alert">{error}</p>}

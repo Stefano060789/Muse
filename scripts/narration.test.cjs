@@ -191,9 +191,22 @@ async function main() {
     delete require.cache[require.resolve(modulePath)]
     const originalLoad = Module._load
     let useNarration
-    try { Module._load = function (id, ...args) { return id === 'react' ? react : id === './storyAmbience' ? { StoryAmbience: FakeAmbience } : originalLoad.call(this, id, ...args) }; useNarration = require(modulePath).useNarration } finally { Module._load = originalLoad }
+    try {
+      Module._load = function (id, ...args) {
+        if (id === 'react') return react
+        if (id === './storyAmbience') return { StoryAmbience: FakeAmbience }
+        if (id === './accountClient') return {
+          accountFetch: (url, init) => global.fetch(url, {
+            ...init,
+            headers: { ...init.headers, Authorization: `Bearer ${options.accountToken || 'fixture-account-token'}` }
+          })
+        }
+        return originalLoad.call(this, id, ...args)
+      }
+      useNarration = require(modulePath).useNarration
+    } finally { Module._load = originalLoad }
     let context = options.context || {}
-    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context, { browserOnly: options.browserOnly, creatorCode: options.creatorCode }); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
+    const render = () => { cursor = 0; current = useNarration(metadata, options.mood, context, { browserOnly: options.browserOnly }); const effects = pending; pending = []; effects.forEach(effect => effect()); return current }
     render(); render()
     return { render, spoken, listeners, synth, calls, ambientCalls, get cancels() { return cancels }, setContext(value) { context = value; render(); return render() }, setMetadata(value) { metadata = value; render(); return render() }, updateVoices(value) { voiceList = value; listeners.get('voiceschanged')?.() }, dispose() { slots.forEach(slot => { slot?.cleanup?.(); if (slot) slot.cleanup = undefined }) } }
   }
@@ -351,13 +364,13 @@ async function main() {
     let calls = 0
     global.fetch = async (_url, options) => {
       calls++
-      assert.equal(options.headers['x-muse-creator-code'], 'test-private-code')
+      assert.equal(options.headers.Authorization, 'Bearer test-account-token')
       return new Response(Buffer.from('ID3mock-audio'), { headers: { 'Content-Type': 'audio/mpeg' } })
     }
     global.Audio = class { constructor() { throw new Error('Google must not autoplay using new Audio') } }
     URL.createObjectURL = () => 'blob:google-recording'
     URL.revokeObjectURL = () => {}
-    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'ar-SA' }, [], false, { creatorCode: 'test-private-code' })
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'ar-SA' }, [], false, { accountToken: 'test-account-token' })
     try {
       assert.equal(hook.render().provider, 'google')
       await hook.render().speak('An original scene.')
@@ -873,6 +886,8 @@ async function main() {
 
   await check('TTS endpoint requires explicit provider mode and never returns upstream auth details', async () => {
     const handler = require(path.join(output, 'pages', 'api', 'tts.js')).default
+    process.env.STORY_STORAGE = 'sqlite'
+    delete process.env.VERCEL
     const run = async body => {
       let status = 200, result
       const res = { setHeader() {}, status(value) { status = value; return this }, json(value) { result = value; return this }, send(value) { result = value; return this } }

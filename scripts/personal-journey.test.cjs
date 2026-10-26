@@ -34,7 +34,6 @@ async function main() {
     '--outDir', output, '--module', 'commonjs', '--target', 'es2020', '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'], { cwd: root, stdio: 'inherit' })
   process.env.STORY_STORAGE = 'sqlite'; process.env.MUSE_SQLITE_PATH = filename
   process.env.LLM_PROVIDER = 'GROQ'; process.env.LLM_API_KEY = 'mock-journey-key'
-  process.env.MUSE_CREATOR_ACCESS_CODE = 'fixture-personal-journey-code'
   process.env.MUSE_ADVENTURE_DAILY_ACTION_CAP = '1000'
   delete process.env.VERCEL
   delete process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -71,8 +70,7 @@ async function main() {
       statusCode: 200, body: null, setHeader(name, value) { headers[name] = value },
       status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this }
     }
-    const code = Object.hasOwn(options, 'code') ? options.code : process.env.MUSE_CREATOR_ACCESS_CODE
-    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': code, ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body: { consentVersion, ...body } }, res)
+    await handler({ method: options.method || 'POST', headers: { host: 'localhost:3000', ...(options.origin ? { origin: options.origin } : {}) }, socket: { remoteAddress: options.address || `fixture-${++address}` }, body: { consentVersion, ...body } }, res)
     assert.equal(headers['Cache-Control'], 'no-store')
     return { status: res.statusCode, body: res.body }
   }
@@ -87,11 +85,14 @@ async function main() {
   })
   await check('every personal operation is gated, origin-protected and no-store before storage/provider access', async () => {
     const before = calls
+    process.env.VERCEL = '1'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-rate-limit-key'
     for (const action of ['create', 'respond', 'resume']) {
-      assert.equal((await api({ mode: 'journey', action }, { code: undefined })).status, 401)
-      assert.equal((await api({ mode: 'journey', action }, { code: 'incorrect' })).status, 401)
+      assert.equal((await api({ mode: 'journey', action }, { code: undefined })).status, 503)
       assert.equal((await api({ mode: 'journey', action }, { origin: 'https://hostile.example' })).status, 403)
     }
+    delete process.env.VERCEL
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
     assert.equal((await api({}, { method: 'GET' })).status, 405)
     assert.equal(calls, before)
     assert.ok(!fs.existsSync(filename))
@@ -150,6 +151,24 @@ async function main() {
       assert.equal(calls, atCap)
     })
   }
+  await check('account library restores personal journeys across browsers and isolates each account', async () => {
+    const listed = await api({ mode: 'journey', action: 'library' })
+    assert.equal(listed.status, 200)
+    assert.deepEqual(new Set(listed.body.stories.map(story => story.id)), new Set(savedCreations.map(item => item.initial.story.id)))
+    const restored = listed.body.stories[0]
+    assert.notEqual(restored.journey.capability, savedCreations.find(item => item.initial.story.id === restored.id).creation.capability)
+    const resumed = await api({ mode: 'journey', action: 'resume', id: restored.id, capability: restored.journey.capability })
+    assert.equal(resumed.status, 200)
+    assert.equal(resumed.body.story.id, restored.id)
+    const repository = storyRepository()
+    assert.deepEqual(await repository.listPersonalJourneys('another-account'), [])
+    await assert.rejects(repository.personalJourney({
+      operation: 'view', id: restored.id, accountId: 'another-account',
+      capabilityHash: journey.journeyHash(restored.journey.capability), cap: 1000
+    }), error => error.status === 404)
+    assert.equal(await repository.deletePersonalJourney(restored.id, 'a'.repeat(64), 'another-account'), false)
+    assert.equal((await repository.listPersonalJourneys('local-development')).length, savedCreations.length)
+  })
   await check('creation replay, new repository and process restart never regenerate or reset allowance', async () => {
     const { creation, initial } = savedCreations[0]
     const before = calls
@@ -158,12 +177,13 @@ async function main() {
     assert.equal(repeat.body.snapshot.revision, 3)
     assert.equal(repeat.body.snapshot.status, 'concluded')
     assert.equal((await api({ ...creation, duration: 20 })).status, 409)
-    const record = await storyRepository().personalJourney({ operation: 'view', id: creation.id, capabilityHash: journey.journeyHash(creation.capability), cap: 1000 })
+    const record = await storyRepository().personalJourney({ operation: 'view', id: creation.id, accountId: 'local-development', capabilityHash: journey.journeyHash(creation.capability), cap: 1000 })
     assert.equal(record.record.used, 3)
-    const child = execFileSync(process.execPath, ['-e', `const r=require(${JSON.stringify(path.join(output, 'lib', 'storyRepository.js'))}).storyRepository();r.personalJourney(${JSON.stringify({ operation: 'view', id: creation.id, capabilityHash: journey.journeyHash(creation.capability), cap: 1000 })}).then(v=>console.log(JSON.stringify(v.snapshot)))`], { cwd: root, env: process.env, encoding: 'utf8' })
+    const child = execFileSync(process.execPath, ['-e', `const r=require(${JSON.stringify(path.join(output, 'lib', 'storyRepository.js'))}).storyRepository();r.personalJourney(${JSON.stringify({ operation: 'view', id: creation.id, accountId: 'local-development', capabilityHash: journey.journeyHash(creation.capability), cap: 1000 })}).then(v=>console.log(JSON.stringify(v.snapshot)))`], { cwd: root, env: process.env, encoding: 'utf8' })
     assert.equal(JSON.parse(child.trim()).revision, 3)
     assert.equal(calls, before)
-    assert.equal((await api({ mode: 'journey', action: 'resume', id: initial.story.id, capability: 'a'.repeat(64) })).status, 404)
+    assert.equal((await api({ mode: 'journey', action: 'resume', id: initial.story.id, capability: 'a'.repeat(64) })).status, 200,
+      'The account owns the journey; its browser capability is not cross-account authorization')
   })
   let concurrency
   await check('atomic creation reservation blocks concurrent duplicates before paid generation', async () => {
@@ -226,7 +246,7 @@ async function main() {
     }
   })
   await check('abandoned reservation survives restart, expires as consumed, and late completion cannot overwrite', async () => {
-    const op = { operation: 'reserve', id: concurrency.story.id, capabilityHash: journey.journeyHash(concurrency.story.journey.capability), cap: 1000, ...journey.parseJourneyAction(responseBody(concurrency)) }
+    const op = { operation: 'reserve', id: concurrency.story.id, accountId: 'local-development', capabilityHash: journey.journeyHash(concurrency.story.journey.capability), cap: 1000, ...journey.parseJourneyAction(responseBody(concurrency)) }
     const reserved = await storyRepository().personalJourney(op)
     const before = calls
     assert.equal(reserved.status, 'reserved')
@@ -374,7 +394,7 @@ async function main() {
       global.fetch=async()=>{calls++;await new Promise(r=>setTimeout(r,180));return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:${JSON.stringify(JSON.stringify(opening.turn))}}}]}))};
       const body=JSON.parse(process.argv[1]);
       const res={statusCode:200,setHeader(){},status(n){this.statusCode=n;return this},json(v){console.log(JSON.stringify({status:this.statusCode,calls,body:v}))}};
-      handler({method:'POST',headers:{host:'localhost','x-muse-creator-code':process.env.MUSE_CREATOR_ACCESS_CODE},socket:{remoteAddress:'process'},body},res).catch(e=>{console.error(e);process.exitCode=1});
+      handler({method:'POST',headers:{host:'localhost'},socket:{remoteAddress:'process'},body},res).catch(e=>{console.error(e);process.exitCode=1});
     `
     function child(body) {
       return new Promise((resolve, reject) => {
@@ -392,20 +412,23 @@ async function main() {
     assert.equal(childCalls, 1)
     assert.equal((await api({ mode: 'journey', action: 'resume', id: created.story.id, capability: created.story.journey.capability })).body.snapshot.revision, 1)
   })
-  await check('Supabase repository calls only the private journey RPC and fails closed on missing migration', async () => {
+  await check('Supabase journey operations verify account ownership before invoking the private RPC', async () => {
     const vm = require('node:vm')
     const compiled = fs.readFileSync(path.join(output, 'lib', 'storyRepository.js'), 'utf8')
     let call, error, rpcData = { record: {}, snapshot: { revision: 0 } }
     const exports = {}
     vm.runInNewContext(compiled, { exports, process: { env: { STORY_STORAGE: 'supabase', NEXT_PUBLIC_SUPABASE_URL: 'https://mock.invalid', SUPABASE_SERVICE_ROLE_KEY: 'mock-service-key' } }, console,
       require(name) {
-        if (name === '@supabase/supabase-js') return { createClient() { return { async rpc(name, params) { call = { name, params }; return { data: rpcData, error } } } } }
+        if (name === '@supabase/supabase-js') return { createClient() { return {
+          from() { return { select() { return { eq() { return this }, async maybeSingle() { return { data: { capability_hash: request.capabilityHash }, error: null } } } } } },
+          async rpc(name, params) { call = { name, params }; return { data: rpcData, error } }
+        } } }
         return require(path.resolve(path.dirname(path.join(output, 'lib', 'storyRepository.js')), name))
       }
     })
-    const request = { operation: 'view', id: randomUUID(), capabilityHash: 'a'.repeat(64), cap: 100 }
+    const request = { operation: 'view', id: randomUUID(), accountId: 'fixture-account', capabilityHash: 'a'.repeat(64), cap: 100 }
     await exports.storyRepository().personalJourney(request)
-    assert.equal(call.name, 'muse_personal_journey'); assert.deepEqual(call.params.input, request)
+    assert.equal(call.name, 'muse_personal_journey'); assert.deepEqual(JSON.parse(JSON.stringify(call.params.input)), request)
     error = { message: 'private-database-error' }
     await assert.rejects(exports.storyRepository().personalJourney(request), /Apply supabase\/personal-journeys.sql/)
     error = { message: 'Journey: session unavailable' }
@@ -415,8 +438,9 @@ async function main() {
     const sql = fs.readFileSync(path.join(root, 'supabase', 'personal-journeys.sql'), 'utf8')
     for (const clause of ['security definer set search_path = public, pg_temp', 'enable row level security', 'from public, anon, authenticated', 'to service_role', 'pg_advisory_xact_lock', 'for update', "at time zone 'UTC'", 'public.muse_adventure_budgets', "interval '90 seconds'", "when 5 then 3 when 10 then 6 when 15 then 9 when 20 then 12", "'expiresAt', null", "'infinity'::timestamptz"]) assert.ok(sql.includes(clause))
     assert.ok(fs.existsSync(path.join(root, 'supabase', 'personal-journey-retention.sql')))
+    assert.ok(sql.includes('owner_id = account_id'))
   })
-  await check('My Story UI uses authoritative mood, memory-only code, shared dictation and automatic resume checks', () => {
+  await check('My Story UI uses authoritative mood, account sign-in, shared dictation and automatic resume checks', () => {
     const ui = fs.readFileSync(path.join(root, 'src', 'pages', 'story.tsx'), 'utf8')
     assert.ok(ui.includes('mood: selectedMood'))
     assert.ok(!ui.includes('inferPersonalStoryMood'))
@@ -424,21 +448,20 @@ async function main() {
     assert.ok(!ui.includes('Dictation language'))
     assert.ok(ui.includes('useStoryInteraction(stopSpeaking, story?.language || language)'))
     assert.ok(ui.includes('Editable response'))
-    assert.ok(ui.includes("'x-muse-creator-code': creatorCode"))
-    assert.ok(!/localStorage\.(?:setItem|getItem)\([^)]*creatorCode/.test(ui))
+    assert.ok(ui.includes('accountFetch'))
+    assert.ok(ui.includes('Go to your Muse account'))
+    assert.ok(!ui.includes('x-muse-creator-code'))
     assert.ok(!ui.includes('setInterval'))
     assert.ok(ui.includes('window.setTimeout') && ui.includes('window.clearTimeout'))
     assert.ok(!ui.includes('Sync saved progress (no AI call)'))
     assert.ok(ui.includes('!story.journey ? <>'))
   })
-  await check('personal deletion requires creator access and capability, cascades requests without resetting budgets or calling AI', async () => {
+  await check('personal deletion requires account ownership, cascades requests without resetting budgets or calling AI', async () => {
     const created = await api(newCreation())
     assert.equal(created.status, 200)
     const body = { mode: 'journey', action: 'delete', id: created.body.story.id, capability: created.body.story.journey.capability }
     const before = calls, used = dayUsed()
-    assert.equal((await api(body, { code: 'wrong-code' })).status, 401)
-    assert.equal((await api({ ...body, capability: 'a'.repeat(64) })).status, 404)
-    assert.equal((await api(body)).status, 200)
+    assert.equal((await api({ ...body, capability: 'a'.repeat(64) })).status, 200, 'The authenticated account, not a browser capability, authorizes deletion')
     assert.equal((await api({ ...body, action: 'resume' })).status, 404)
     assert.equal((await api(body)).status, 404)
     assert.equal(calls, before)

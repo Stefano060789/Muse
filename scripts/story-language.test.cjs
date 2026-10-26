@@ -44,7 +44,6 @@ async function main() {
   process.env.STORY_STORAGE = 'sqlite'
   process.env.MUSE_SQLITE_PATH = path.join(output, 'stories.sqlite')
   process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
-  process.env.MUSE_CREATOR_ACCESS_CODE = 'local-language-fixture'
   process.env.MUSE_ADVENTURE_DAILY_ACTION_CAP = '1000'
   delete process.env.VERCEL
   global.fetch = async (url, options) => {
@@ -250,7 +249,7 @@ async function main() {
   let address = 0
   async function api(body) {
     const res = { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this } }
-    await handler({ method: 'POST', headers: { host: 'localhost:3000', 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
     return res
   }
   await check('invalid explicit journey language is rejected before provider use or reservation', async () => {
@@ -280,7 +279,7 @@ async function main() {
       assert.equal(continued.body.story.scenes[1].title, language.recipientCopy(code).scene(2, 2))
       promptIncludes(code)
       assert.equal(JSON.parse(request.messages[1].content).language, code)
-      const record = (await storyRepository().personalJourney({ operation: 'view', id: saved.id, capabilityHash: journey.journeyHash(saved.capability), cap: 1000 })).record
+      const record = (await storyRepository().personalJourney({ operation: 'view', id: saved.id, accountId: 'local-development', capabilityHash: journey.journeyHash(saved.capability), cap: 1000 })).record
       assert.equal(record.input.language, code)
     }
   })

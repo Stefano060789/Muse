@@ -12,7 +12,6 @@ const choices = ['Inspect the lantern', 'Talk to the guide', 'Explore the courty
 const nextChoices = ['Follow the path', 'Examine the gate', 'Ask about the garden', 'Study the fountain', 'Rest by the wall']
 const state = { inventory: [], discoveries: [], relationships: [], progress: 'The courtyard is open.' }
 const narration = Array(60).fill('The lantern lights the courtyard as you explore the garden and notice something new.').join(' ').split(' ').slice(0, 100).join(' ')
-const code = 'interaction-test-not-a-real-secret'
 async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
 
 async function main() {
@@ -23,7 +22,7 @@ async function main() {
   Object.assign(process.env, {
     STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: path.join(output, 'test.sqlite'),
     MUSE_MEDIA_PATH: path.join(output, 'media'), LLM_PROVIDER: 'GROQ',
-    LLM_API_KEY: 'test-only', MUSE_CREATOR_ACCESS_CODE: code, MUSE_ADVENTURE_DAILY_ACTION_CAP: '1000'
+    LLM_API_KEY: 'test-only', MUSE_ADVENTURE_DAILY_ACTION_CAP: '1000'
   })
   delete process.env.VERCEL
   const personal = require(path.join(output, 'pages', 'api', 'personal-story.js')).default
@@ -64,7 +63,7 @@ async function main() {
   let client = 0
   async function api(handler, body) {
     const res = { statusCode: 200, setHeader() {}, status(status) { this.statusCode = status; return this }, json(body) { this.body = body; return this } }
-    await handler({ method: 'POST', headers: { host: 'localhost', 'x-muse-creator-code': code }, socket: { remoteAddress: `fixture-${++client}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost' }, socket: { remoteAddress: `fixture-${++client}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
     return { status: res.statusCode, body: res.body }
   }
   const createPersonal = (duration, choiceMode = 'suggested') => api(personal, {

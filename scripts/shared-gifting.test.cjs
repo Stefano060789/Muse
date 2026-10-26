@@ -12,7 +12,6 @@ const dbFile = path.join(output, 'stories.sqlite')
 const originalEnv = { ...process.env }
 const originalFetch = global.fetch
 const originalNow = Date.now
-const CODE = 'gift-test-creator-access-code'
 let now = Date.now()
 let address = 1
 let providerBrief
@@ -67,7 +66,6 @@ async function main() {
   process.env.STORY_STORAGE = 'sqlite'
   process.env.MUSE_SQLITE_PATH = dbFile
   process.env.MUSE_MEDIA_PATH = mediaRoot
-  process.env.MUSE_CREATOR_ACCESS_CODE = CODE
   process.env.LLM_PROVIDER = 'GROQ'
   process.env.LLM_API_KEY = 'fixture-not-a-secret'
   delete process.env.VERCEL
@@ -101,23 +99,23 @@ async function main() {
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 })
   }
 
-  async function api(body, code = CODE) {
+  async function api(body) {
     const res = mockRes()
     await handler({
       method: 'POST',
-      headers: { host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}) },
+      headers: { host: 'localhost:3000' },
       socket: { remoteAddress: `10.22.0.${address++}` },
       body: { consentVersion: '2026-10-18', ...body }
     }, res)
     return { status: res.statusCode, body: res.body, bytes: res.bytes(), headers: res.headers }
   }
 
-  async function put(upload, bytes, { code = CODE, type, length } = {}) {
+  async function put(upload, bytes, { type, length } = {}) {
     const req = Readable.from([bytes])
     Object.assign(req, {
       method: 'PUT', socket: { remoteAddress: '127.0.0.1' },
       headers: {
-        host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}),
+        host: 'localhost:3000',
         'content-type': type ?? upload.headers['Content-Type'],
         'x-muse-upload': upload.headers['X-Muse-Upload'],
         'content-length': String(length ?? bytes.length)
@@ -165,7 +163,6 @@ async function main() {
     assert.equal((await api({ action: 'manage', token: made.body.playToken })).status, 404)
     assert.equal((await api({ action: 'voice-start', token: made.body.playToken, voice: { mime: 'audio/wav', size: 44 } })).status, 404)
     assert.equal((await api({ action: 'reply', token: made.body.ownerToken, sessionToken: 'a'.repeat(64), reply: 'Hi' })).status, 404)
-    assert.equal((await api({ action: 'voice-start', token: made.body.ownerToken, voice: { mime: 'audio/wav', size: 44 } }, '')).status, 401)
     assert.equal((await api({ action: 'manage', token: made.body.ownerToken })).body.replies.length, 0)
   })
 

@@ -6,6 +6,7 @@ import {
 } from './narration'
 import { StoryAmbience } from './storyAmbience'
 import { MUSE_AI_CONSENT_VERSION } from './legalContact'
+import { accountFetch } from './accountClient'
 import {
   DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES, narrativeDelivery, parseImmersivePreferences, storySoundscape,
   type ImmersivePreferences, type NarrationContext
@@ -26,7 +27,7 @@ function readStoredPreferences(): { preferences: NarrationPreferences; notice: s
   return { preferences: parsed.preferences, notice: parsed.invalid ? STORAGE_INVALID_NOTICE : '' }
 }
 
-export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}, options: { browserOnly?: boolean; creatorCode?: string } = {}) {
+export function useNarration(metadata: NarrationMetadata = {}, mood?: string, context: NarrationContext = {}, options: { browserOnly?: boolean } = {}) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [supported, setSupported] = useState<boolean | null>(null)
   const [styleOverride, setStyleOverride] = useState<NarrationStyle | 'auto'>(DEFAULT_NARRATION_PREFERENCES.style)
@@ -300,8 +301,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     request.current = controller
     armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
     try {
-      const response = await fetch('/api/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.creatorCode ? { 'x-muse-creator-code': options.creatorCode } : {}) },
+      const response = await accountFetch('/api/tts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION }), signal: controller.signal
       })
       if (!response.ok) {

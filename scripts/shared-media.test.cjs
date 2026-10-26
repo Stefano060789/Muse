@@ -11,7 +11,6 @@ const realFetch = global.fetch
 const realNow = Date.now
 let now = Math.floor(realNow() / 3600000) * 3600000 + 60000
 let passed = 0
-const CODE = 'fixture-code-not-a-real-secret'
 const mediaRoot = path.join(output, 'private-media')
 
 async function check(name, run) {
@@ -48,7 +47,6 @@ async function main() {
   process.env.STORY_STORAGE = 'sqlite'
   process.env.MUSE_SQLITE_PATH = path.join(output, 'db', 'stories.sqlite')
   process.env.MUSE_MEDIA_PATH = mediaRoot
-  process.env.MUSE_CREATOR_ACCESS_CODE = CODE
   process.env.LLM_PROVIDER = 'GROQ'
   process.env.LLM_API_KEY = 'test-not-real'
   delete process.env.VERCEL
@@ -80,18 +78,18 @@ async function main() {
   }
   let address = 1
   const nextAddress = () => `10.0.0.${address++}`
-  async function api(body, { code = CODE, ip = '127.0.0.1' } = {}) {
+  async function api(body, { ip = '127.0.0.1' } = {}) {
     const res = mockRes()
-    await handler({ method: 'POST', headers: { host: 'localhost:3000', ...(code ? { 'x-muse-creator-code': code } : {}) }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-10-18', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-10-18', ...body } }, res)
     assert.equal(res.headers['cache-control'], 'no-store')
     return { status: res.statusCode, body: res.body, bytes: res.bytes(), headers: res.headers }
   }
-  async function put(target, bytes, { code = CODE, type, length, origin } = {}) {
+  async function put(target, bytes, { type, length, origin } = {}) {
     const req = Readable.from([bytes])
     Object.assign(req, {
       method: 'PUT', socket: { remoteAddress: '127.0.0.1' },
       headers: {
-        host: 'localhost:3000', ...(origin ? { origin } : {}), ...(code ? { 'x-muse-creator-code': code } : {}),
+        host: 'localhost:3000', ...(origin ? { origin } : {}),
         'content-type': type ?? target.headers['Content-Type'], 'x-muse-upload': target.headers['X-Muse-Upload'],
         ...(length === null ? {} : { 'content-length': String(length ?? bytes.length) })
       }
@@ -149,8 +147,9 @@ async function main() {
     assert.equal((await create(baseBrief)).status, 400, 'A story needs a message or a photo/video')
     assert.equal((await create({ ...baseBrief, message: 'Hi' }, null)).status, 201)
     assert.equal(prompts.length, 1, 'Only the valid text story reached the provider')
-    assert.equal((await api({ action: 'create', brief: baseBrief, finalMedia: { mime: 'image/png', size: 10 } }, { code: '' })).status, 401)
-    assert.equal(prompts.length, 1)
+    const noSharedCode = await api({ action: 'create', brief: baseBrief, finalMedia: { mime: 'image/png', size: 10 } }, { code: '' })
+    assert.equal(noSharedCode.status, 201, 'Local development no longer relies on a deployment-wide creator code')
+    assert.equal(prompts.length, 2)
   })
 
   await check('confirmed skip unlocks private media only for its own opted-in playthrough without AI calls', async () => {
@@ -195,15 +194,13 @@ async function main() {
   await check('upload sessions are bound to the creator, story, secret, exact type and exact size', async () => {
     photoBytes = png(4321)
     const other = (await create({ ...baseBrief, message: 'Other story' })).body
-    assert.equal((await api({ action: 'media-start', token: photoStory.playToken, media: { mime: 'image/png', size: 4321 } }, { code: '' })).status, 401, 'Recipients cannot start uploads')
+    assert.equal((await api({ action: 'media-start', token: photoStory.playToken, media: { mime: 'image/png', size: 4321 } }, { code: '' })).status, 404, 'Recipients cannot start uploads')
     assert.equal((await api({ action: 'media-start', token: photoStory.playToken, media: { mime: 'image/png', size: 4321 } })).status, 404, 'A recipient token is not an owner token')
-    assert.equal((await api({ action: 'media-start', token: photoStory.ownerToken, media: { mime: 'image/png', size: 4321 } }, { code: 'wrong-code-wrong-code' })).status, 401)
     const started = await start(photoStory, { mime: 'image/png', size: 4321 })
     assert.equal(started.status, 201)
     const target = started.body.upload
     assert.equal(target.url, '/api/shared-story-upload')
     assert.ok(!JSON.stringify(started.body).includes('stories/'), 'Object keys are never exposed to the browser')
-    assert.equal((await put(target, photoBytes, { code: '' })).status, 401, 'Uploads require the creator code')
     assert.equal((await put(target, photoBytes, { origin: 'https://evil.example' })).status, 403)
     assert.equal((await put({ headers: { ...target.headers, 'X-Muse-Upload': target.headers['X-Muse-Upload'].slice(0, -1) + (target.headers['X-Muse-Upload'].endsWith('0') ? '1' : '0') } }, photoBytes)).status, 404, 'Wrong upload secret')
     assert.equal((await put(target, photoBytes, { type: 'image/jpeg' })).status, 415)
@@ -258,7 +255,7 @@ async function main() {
     assert.equal((await api({ action: 'media', token: photoStory.playToken, sessionToken: other.body.sessionToken }, { code: '' })).status, 403, 'Another unsolved session stays locked')
     const preview = await api({ action: 'media-preview', token: photoStory.ownerToken })
     assert.ok(preview.bytes.equals(photoBytes))
-    assert.equal((await api({ action: 'media-preview', token: photoStory.playToken }, { code: '' })).status, 401)
+    assert.equal((await api({ action: 'media-preview', token: photoStory.playToken }, { code: '' })).status, 404)
     assert.equal((await api({ action: 'media-preview', token: photoStory.playToken })).status, 404, 'Owner preview needs the owner token')
     const rotated = await api({ action: 'share', token: photoStory.ownerToken })
     assert.equal((await api({ action: 'media', token: photoStory.playToken, sessionToken: session }, { code: '' })).status, 404, 'Rotated recipient links lose media access')

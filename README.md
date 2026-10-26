@@ -56,24 +56,12 @@ information in a collapsed explanation, not repeated recording-ready copy.
 
 ### Simple start and app installation
 
-**Private-beta server recovery:** After entering Creator access, **View all story
-progress** finds server stories and displays their progress in one action.
-Individual **View story progress** buttons also refresh the server collection
-when a Creator code is entered; there is no separate server-loading step.
-The configured deployment-wide
-`MUSE_CREATOR_ACCESS_CODE` grants administrator access to all retained gifts,
-including private sender briefs; it is not a per-user account. Recovery is
-disabled without a valid configured code even in local development. Internal pages contain
-at most 20 stories; all pages load automatically and merge into the browser only
-after the entire collection and its progress validate, without removing personal
-stories or duplicating gifts. Original links, sessions, budgets and progress are
-unchanged; no AI call occurs. Recovery derives role-separated HMAC capabilities
-from the administrator code and current stored link hashes, without storing
-plaintext secrets or needing a schema migration. Recovered links are invalidated
-by administrator-code changes; replacing the recipient link also invalidates
-recovered recipient links. Reload the server collection to refresh recovered
-access. Deleted or purged stories and browser-only data cannot be recovered.
-This is private-beta administrator recovery, not general account/cloud sync.
+**Account story recovery:** Sign in to **Saved stories** to restore server
+personal journeys and gift stories owned by that account. Ownership is verified
+on creator API requests. Recipients continue to open gift-story links without
+an account. Legacy gift stories are not assigned automatically; an owner can
+claim one by opening its existing private management link while signed in.
+Deleted stories and browser-only data cannot be recovered.
 
 Home separates creation into two visible choices: **My story** is for your own
 interactive adventure; **Gift story** is for writing a private mystery and
@@ -102,7 +90,7 @@ includes the opening plus successfully generated scenes in the furthest
 playthrough; failed/pending attempts and other playthroughs do not inflate it.
 Scene totals come from the server rather than a stale browser copy. Checks do not poll or generate
 AI content. The optional
-creator access code is memory-only and is required when creator access is gated.
+account sign-in is required for server-side creation and management.
 Expired/deleted server stories may no longer have available progress.
 **Myself** appears before **Create a story** in the main navigation, with typing,
 hold-to-speak, explicit browser-local saving and memory editing/removal.
@@ -123,7 +111,7 @@ the tab, without generating story text. Pending checks retry after three seconds
 failed checks retry after fifteen seconds, stopping when synchronized. No manual
 sync button or bottom create/profile actions appear in the reading view.
 **Delete story** is available at the bottom after creation, with confirmation.
-For server journeys it requires creator access and the story capability, deletes
+For server journeys it requires the signed-in account and story capability, deletes
 server progress before removing the browser entry, and never refunds attempts.
 Legacy browser-only stories are removed locally. Failed deletion preserves the
 story; a local cleanup failure after server deletion is explicit and retryable.
@@ -457,23 +445,24 @@ Configure these Vercel environment variables privately before deploying:
 
 - `STORY_STORAGE=supabase`
 - `NEXT_PUBLIC_SUPABASE_URL` for the chosen project
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` for Supabase Auth sessions
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
 - `LLM_PROVIDER=ANTHROPIC`
 - `LLM_MODEL=claude-haiku-5-5`
 - `ANTHROPIC_API_KEY` (server-only)
 - `NEXT_PUBLIC_NARRATION_PROVIDER=browser`
-- `MUSE_CREATOR_ACCESS_CODE`: a private random code of 16 to 512 characters
-- `NEXT_PUBLIC_MUSE_CREATOR_LOCKED=true`
+- `MUSE_OPERATIONS_ACCESS_CODE`: a private random code of 16 to 512 characters
+  for the internal `/operations` dashboard only
 
-The hosted test focuses on Shared Story. Its creator page accepts the code
-in memory only and includes it in creation/management requests; refresh
-requires entering it again. Other paid/legacy APIs are also gated, but
-their existing pages do not yet have an access-code workflow. Local use
-without the gate configuration remains unchanged. This code is a temporary
-creator gate, not account registration or recipient identity verification.
-Keep it separate from management and recipient link capabilities. Vercel
-fails closed for private APIs if no usable creator code is configured.
-Recipients need only their recipient link; browser narration needs no key.
+Enable Supabase Auth email/password sign-in and configure the production site
+URL and allowed redirect URLs in the Supabase Auth settings. Apply the current
+`supabase/shared-stories.sql`, `supabase/personal-journeys.sql`,
+`supabase/operations.sql`, then `supabase/account-ownership.sql` migrations
+before deploying. Existing retained gift stories remain unowned until claimed
+through their private owner link; existing personal journeys are not attributed
+to an account. Creator APIs fail closed without a verified Supabase session.
+The operations code authorizes only the internal operations dashboard and
+cannot create or recover customer stories. Recipients need only their link.
 
 Create new non-sensitive test stories on the hosted address. Existing
 local SQLite stories are not automatically uploaded. Keep production
@@ -679,8 +668,8 @@ These are anonymous browser sessions, not unique people or proof of reading:
 opening a link counts even before opening its gift cover; another browser or
 cleared storage may count again. Counts include earlier recipient links for the
 same story, and unfinished never means failed. Recipient pages disclose this.
-The owner-only API requires the private management capability and creator access;
-it never exposes identifiers, answers or private messages in the summary.
+The owner-only API requires a verified account plus an account-owned private
+management capability; it never exposes identifiers, answers or private messages in the summary.
 It uses existing session data, no extra AI calls, no polling and no new migration
 (the existing puzzle-help migration supplying `skipped` is required on Supabase).
 Browser entries are not account sync or backups; server deletion still applies.
@@ -1089,11 +1078,11 @@ no provider call is made without a durable reservation.
 - All paid story requests and generic cloud narration cache misses share
   `MUSE_AI_DAILY_ATTEMPT_CAP` (default 100, allowed 1-100) across instances.
   Failed calls count. The 80% warning and exhaustion events appear in server
-  logs and `/operations`, protected by the creator access code.
+  logs and `/operations`, protected by `MUSE_OPERATIONS_ACCESS_CODE`.
   This caps attempts, **not dollars**. Set provider-account billing/spending
   controls separately; model pricing and text lengths still affect cost.
-- Requests are bounded to 120/minute per connection; failed creator access to
-  20/10 minutes; browser error reports to 5/minute. Limits are atomic in
+- Requests are bounded to 120/minute per connection; failed operations access
+  to 20/10 minutes; browser error reports to 5/minute. Limits are atomic in
   Supabase/SQLite, with `Retry-After`. This is not a replacement for network
   DDoS protection or platform firewall settings.
 - Error reporting stores only fixed event codes and timestamps, deduplicated

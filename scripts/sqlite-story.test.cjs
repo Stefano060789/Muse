@@ -183,10 +183,8 @@ async function main() {
     assert.deepEqual(await storyRepository().progress(fixture.id), expected, 'A fresh repository sees durable progress')
     const serialized = JSON.stringify((await summary()).body)
     for (const secret of [...sessions, brief.solution, brief.message, fixture.owner_hash, fixture.play_hash]) assert.ok(!serialized.includes(secret))
-    process.env.MUSE_CREATOR_ACCESS_CODE = 'progress-test-private-code'
-    assert.equal((await summary()).status, 401)
-    assert.equal((await api({ action: 'progress', token: ownerToken }, handler, '127.0.0.1', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })).status, 200)
-    delete process.env.MUSE_CREATOR_ACCESS_CODE
+    assert.equal((await summary()).status, 200)
+    assert.equal((await api({ action: 'progress', token: ownerToken })).status, 200)
     const rotated = await api({ action: 'share', token: ownerToken })
     assert.equal(rotated.status, 200)
     assert.deepEqual((await summary()).body.progress, { ...expected, sceneCount: content.scenes.length }, 'Rotation preserves historical counts')
@@ -221,18 +219,11 @@ async function main() {
     assert.equal(result.furthestScene, 2, 'Two successful generated scenes plus opening; do not sum recipients or count failures')
     assert.equal(result.inProgress, 2)
     assert.equal(result.solved, 0)
-    const originalCode = process.env.MUSE_CREATOR_ACCESS_CODE
-    process.env.MUSE_CREATOR_ACCESS_CODE = 'synthetic-auto-progress-code'
-    try {
-      const combined = await api({ action: 'library', includeProgress: true }, handler, '127.0.0.1', { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE })
-      assert.equal(combined.status, 200)
-      assert.deepEqual(combined.body.stories.find(story => story.ownerToken.startsWith(fixture.id)).progress, result)
-      const { sceneCount, ...expected } = result
-      assert.deepEqual(await repo.progress(fixture.id, true), expected, 'Loading the collection does not mutate recipient progress')
-    } finally {
-      if (originalCode === undefined) delete process.env.MUSE_CREATOR_ACCESS_CODE
-      else process.env.MUSE_CREATOR_ACCESS_CODE = originalCode
-    }
+    const combined = await api({ action: 'library', includeProgress: true })
+    assert.equal(combined.status, 200)
+    assert.deepEqual(combined.body.stories.find(story => story.ownerToken.startsWith(fixture.id)).progress, result)
+    const { sceneCount, ...expected } = result
+    assert.deepEqual(await repo.progress(fixture.id, true), expected, 'Loading the collection does not mutate recipient progress')
     assert.equal(providerCalls, calls)
     await repo.delete(fixture.id)
   })
@@ -387,69 +378,55 @@ async function main() {
     assert.equal((await api({ ...args, confirmSkip: true })).status, 404)
     await repo.delete(storyId)
   })
-  await check('administrator recovery restores retained gifts without changing original capabilities or progress', async () => {
+  await check('account library restores only owned gifts without changing capabilities or progress', async () => {
     const callsBefore = providerCalls
-    assert.equal((await api({ action: 'library' })).status, 503, 'Local development must not expose an ungated collection')
-    const code = 'synthetic-recovery-admin-code'
-    process.env.MUSE_CREATOR_ACCESS_CODE = code
-    const auth = { 'x-muse-creator-code': code }
-    try {
-      assert.equal((await api({ action: 'library' })).status, 401)
-      assert.equal((await api({ action: 'library' }, handler, '127.0.0.1', { 'x-muse-creator-code': 'incorrect' })).status, 401)
-      assert.equal((await api({ action: 'library', after: 'not-a-uuid' }, handler, '127.0.0.1', auth)).status, 400)
-      const before = await storyRepository().findUnexpired(id)
-      const progressBefore = await storyRepository().progress(id)
-      const result = await api({ action: 'library' }, handler, '127.0.0.1', auth)
-      assert.equal(result.status, 200)
-      assert.deepEqual(await storyRepository().progress(id), progressBefore, 'Listing never creates a recipient session')
-      const restored = result.body.stories.find(story => story.ownerToken.startsWith(id + '.'))
-      assert.ok(restored)
-      assert.ok(!JSON.stringify(restored).includes(before.owner_hash))
-      assert.notEqual(restored.ownerToken, created.body.ownerToken)
-      assert.equal((await api({ action: 'manage', token: restored.ownerToken }, handler, '127.0.0.1', auth)).status, 200)
-      assert.equal((await api({ action: 'manage', token: restored.playToken }, handler, '127.0.0.1', auth)).status, 404)
-      assert.equal((await api({ action: 'open', token: restored.ownerToken })).status, 404)
-      assert.equal((await api({ action: 'open', token: restored.playToken })).status, 200)
-      assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 200)
-      const after = await storyRepository().findUnexpired(id)
-      assert.equal(after.owner_hash, before.owner_hash)
-      assert.equal(after.play_hash, before.play_hash)
-      // Opening a recipient link is a real playthrough, but listing/recovery
-      // itself must not create one.
-      assert.deepEqual((await api({ action: 'progress', token: restored.ownerToken }, handler, '127.0.0.1', auth)).body.progress,
-        { ...await storyRepository().progress(id), sceneCount: before.content.scenes.length })
-      const { recoveryKey, matchesRecoveryKey } = require(path.join(output, 'lib', 'creatorRecovery.js'))
-      assert.equal(matchesRecoveryKey(restored.playToken.split('.')[1], { ...before, play_hash: hash('rotated') }, 'play'), false)
-      assert.notEqual(recoveryKey({ ...before, id: randomUUID() }, 'play'), restored.playToken.split('.')[1])
-      process.env.MUSE_CREATOR_ACCESS_CODE = code + '-changed'
-      assert.equal((await api({ action: 'open', token: restored.playToken })).status, 404)
-      assert.equal((await api({ action: 'open', token: created.body.playToken })).status, 200)
-      assert.equal(providerCalls, callsBefore, 'Recovery never calls the AI provider')
-      process.env.MUSE_CREATOR_ACCESS_CODE = code
-      const extraIds = []
-      for (let index = 0; index < 23; index++) {
-        const extraId = randomUUID()
-        extraIds.push(extraId)
-        await storyRepository().insert({ ...before, id: extraId })
+    assert.equal((await api({ action: 'library', after: 'not-a-uuid' })).status, 400)
+    const before = await storyRepository().findUnexpired(id)
+    const progressBefore = await storyRepository().progress(id)
+    const result = await api({ action: 'library' })
+    assert.equal(result.status, 200)
+    assert.deepEqual(await storyRepository().progress(id), progressBefore, 'Listing never creates a recipient session')
+    const restored = result.body.stories.find(story => story.ownerToken.startsWith(id + '.'))
+    assert.ok(restored)
+    assert.ok(!JSON.stringify(restored).includes(before.owner_hash))
+    assert.notEqual(restored.ownerToken, created.body.ownerToken)
+    assert.ok(restored.playToken, 'The account-scoped recipient recovery capability is available')
+    assert.equal((await api({ action: 'manage', token: restored.ownerToken })).status, 200)
+    assert.equal((await api({ action: 'open', token: restored.ownerToken })).status, 404)
+    assert.equal((await api({ action: 'open', token: restored.playToken })).status, 200)
+    const after = await storyRepository().findUnexpired(id)
+    assert.equal(after.owner_hash, before.owner_hash)
+    assert.equal(after.play_hash, before.play_hash)
+    const { recoveryKey, matchesRecoveryKey } = require(path.join(output, 'lib', 'creatorRecovery.js'))
+    assert.equal(matchesRecoveryKey(restored.ownerToken.split('.')[1], before, 'owner', 'local-development'), true)
+    assert.equal(matchesRecoveryKey(restored.ownerToken.split('.')[1], before, 'owner', 'another-account'), false)
+    assert.equal(matchesRecoveryKey(restored.playToken.split('.')[1], before, 'play', 'local-development'), true)
+    assert.equal((await storyRepository().listRetained('another-account', null, 20)).length, 0, 'Another account cannot list the story')
+    assert.equal(await storyRepository().claimStoryOwner(id, 'another-account'), false, 'An already claimed story cannot be reassigned')
+    assert.equal(providerCalls, callsBefore, 'Recovery never calls the AI provider')
+    const extraIds = []
+    for (let index = 0; index < 23; index++) {
+      const extraId = randomUUID()
+      extraIds.push(extraId)
+      await storyRepository().insert({ ...before, id: extraId })
+    }
+    const seen = new Set()
+    let cursor = null
+    do {
+      const page = await api({ action: 'library', after: cursor })
+      assert.equal(page.status, 200)
+      assert.ok(page.body.stories.length <= 20)
+      for (const item of page.body.stories) {
+        const key = item.ownerToken.split('.')[0]
+        assert.ok(!seen.has(key), 'Pagination must not repeat stories')
+        seen.add(key)
       }
-      const seen = new Set()
-      let cursor = null
-      do {
-        const page = await api({ action: 'library', after: cursor }, handler, '127.0.0.1', auth)
-        assert.equal(page.status, 200)
-        assert.ok(page.body.stories.length <= 20)
-        for (const item of page.body.stories) {
-          const key = item.ownerToken.split('.')[0]
-          assert.ok(!seen.has(key), 'Pagination must not repeat stories')
-          seen.add(key)
-        }
-        cursor = page.body.next
-      } while (cursor)
-      for (const extraId of extraIds) {
-        assert.ok(seen.has(extraId))
-        await storyRepository().delete(extraId)
-      }
-    } finally { delete process.env.MUSE_CREATOR_ACCESS_CODE }
+      cursor = page.body.next
+    } while (cursor)
+    for (const extraId of extraIds) {
+      assert.ok(seen.has(extraId))
+      await storyRepository().delete(extraId)
+    }
   })
   await check('rotation invalidates old play capability and deletion cascades persisted sessions', async () => {
     const rotated = await api({ action: 'share', token: created.body.ownerToken })

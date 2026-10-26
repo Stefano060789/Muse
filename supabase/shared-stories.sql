@@ -4,6 +4,7 @@ begin;
 -- retain empty alternatives and existing player sessions start with no hints.
 create table if not exists public.shared_stories (
   id uuid primary key,
+  owner_id uuid references auth.users(id) on delete cascade,
   owner_hash text not null,
   play_hash text not null,
   brief jsonb not null,
@@ -12,6 +13,8 @@ create table if not exists public.shared_stories (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default 'infinity'::timestamptz
 );
+alter table public.shared_stories add column if not exists owner_id uuid references auth.users(id) on delete cascade;
+create index if not exists shared_stories_owner_id_id on public.shared_stories(owner_id, id);
 
 create table if not exists public.shared_story_sessions (
   story_id uuid not null references public.shared_stories(id) on delete cascade,

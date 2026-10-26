@@ -4,10 +4,13 @@
 begin;
 create table if not exists public.muse_personal_journeys (
   id uuid primary key,
+  owner_id uuid references auth.users(id) on delete cascade,
   capability_hash text not null check (capability_hash ~ '^[0-9a-f]{64}$'),
   record jsonb not null,
   expires_at timestamptz not null default 'infinity'::timestamptz
 );
+alter table public.muse_personal_journeys add column if not exists owner_id uuid references auth.users(id) on delete cascade;
+create index if not exists muse_personal_journeys_owner_id_id on public.muse_personal_journeys(owner_id, id);
 alter table public.muse_personal_journeys alter column expires_at set default 'infinity'::timestamptz;
 update public.muse_personal_journeys
   set expires_at = 'infinity'::timestamptz,
@@ -32,6 +35,7 @@ returns jsonb language plpgsql security definer set search_path = public, pg_tem
 as $$
 declare
   sid uuid := (input->>'id')::uuid;
+  account_id uuid := (input->>'accountId')::uuid;
   op text := input->>'operation';
   ch text := input->>'capabilityHash';
   rid text := input->>'requestId';
@@ -51,13 +55,14 @@ declare
   day_bucket text := 'day:' || to_char(now() at time zone 'UTC', 'YYYY-MM-DD');
   stamp text := to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
 begin
+  if account_id is null then raise exception 'Journey: account required'; end if;
   if cap is null or cap not between 1 and 10000 then raise exception 'Journey: invalid daily cap'; end if;
   if op is null or op not in ('create', 'view', 'reserve', 'finish') then raise exception 'Journey: invalid operation'; end if;
   if ch is null or ch !~ '^[0-9a-f]{64}$' then raise exception 'Journey: invalid capability'; end if;
   -- This serializes first creation as well as existing-session operations.
   -- Lock order is always session then UTC budget, as in Shared Adventure.
   perform pg_advisory_xact_lock(hashtextextended('muse-personal:' || sid::text, 0));
-  select record into r from public.muse_personal_journeys where id = sid and capability_hash = ch for update;
+  select record into r from public.muse_personal_journeys where id = sid and capability_hash = ch and owner_id = account_id for update;
   if r is null and op = 'create' then
     if exists(select 1 from public.muse_personal_journeys where id = sid) then raise exception 'Journey: session unavailable'; end if;
     duration := (input->'input'->>'duration')::integer;
@@ -67,7 +72,8 @@ begin
       'createdAt', stamp, 'expiresAt', null,
       'opening', null, 'used', 0, 'turn', null, 'lastAction', '', 'scenes', '[]'::jsonb,
       'responses', '[]'::jsonb, 'creationStatus', 'pending');
-    insert into public.muse_personal_journeys values (sid, ch, r, 'infinity'::timestamptz);
+    insert into public.muse_personal_journeys (id, owner_id, capability_hash, record, expires_at)
+      values (sid, account_id, ch, r, 'infinity'::timestamptz);
     insert into public.muse_personal_journey_requests(journey_id, request_id, fingerprint, kind, status, revision)
       values (sid, rid, fp, 'create', 'pending', 0);
     reserved := true;

@@ -21,7 +21,7 @@ async function main() {
   Object.assign(process.env, {
     STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: path.join(output, 'stories.sqlite'),
     MUSE_MEDIA_PATH: path.join(output, 'media'), MUSE_OPERATIONS_SQLITE_PATH: path.join(output, 'operations.sqlite'),
-    MUSE_CREATOR_ACCESS_CODE: 'studio-test-creator', ELEVEN_API_KEY: 'fake-no-paid-calls',
+    ELEVEN_API_KEY: 'fake-no-paid-calls',
     ELEVEN_VOICE_ID: 'testVoice', MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS: '100000'
   })
   delete process.env.VERCEL
@@ -52,7 +52,7 @@ async function main() {
     if (mode === 'oversize') return new Response(Buffer.alloc(studio.STUDIO_MAX_BYTES + 1), { headers: { 'Content-Type': 'audio/mpeg' } })
     return new Response(mp3, { headers: { 'Content-Type': 'audio/mpeg' } })
   }
-  async function api(body, creator = false) {
+  async function api(body) {
     const res = new Writable({ write(_chunk, _enc, callback) { callback() } })
     const headers = {}
     Object.assign(res, {
@@ -62,7 +62,7 @@ async function main() {
       send(value) { res.body = value; res.end(); return res }
     })
     await handler({
-      method: 'POST', headers: { host: 'localhost:3000', ...(creator ? { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE } : {}) },
+      method: 'POST', headers: { host: 'localhost:3000' },
       socket: { remoteAddress: `10.92.${Math.floor(address / 250)}.${address++ % 250}` }, body
     }, res)
     return { status: res.statusCode, body: res.body, headers }
@@ -89,9 +89,9 @@ async function main() {
     const connection = new DatabaseSync(process.env.MUSE_SQLITE_PATH)
     try { return run(connection) } finally { connection.close() }
   }
-  const status = story => api({ action: 'studio-status', token: story.ownerToken }, true)
+  const status = story => api({ action: 'studio-status', token: story.ownerToken })
   const generate = (story, sceneIndex = 0, consentVersion = '2026-10-18') =>
-    api({ action: 'studio-generate', token: story.ownerToken, sceneIndex, consentVersion }, true)
+    api({ action: 'studio-generate', token: story.ownerToken, sceneIndex, consentVersion })
   const audio = (story, sceneIndex = 0, extra = {}) =>
     api({ action: 'studio-audio', token: story.token, sessionToken, sceneIndex, ...extra })
   const first = await insert()
@@ -108,10 +108,10 @@ async function main() {
   delete process.env.ELEVEN_API_KEY
   assert.equal((await generate(first)).status, 503)
   process.env.ELEVEN_API_KEY = 'fake-no-paid-calls'
-  assert.equal((await api({ action: 'studio-generate', token: first.ownerToken, sceneIndex: 0 })).status, 401)
+  assert.equal((await api({ action: 'studio-generate', token: first.ownerToken, sceneIndex: 0 })).status, 400)
   assert.equal((await generate(first, 0, null)).status, 400)
-  assert.equal((await api({ action: 'studio-generate', token: first.token, sceneIndex: 0, consentVersion: '2026-10-18' }, true)).status, 404)
-  assert.equal((await api({ action: 'studio-status', token: first.token }, true)).status, 404)
+  assert.equal((await api({ action: 'studio-generate', token: first.token, sceneIndex: 0, consentVersion: '2026-10-18' })).status, 404)
+  assert.equal((await api({ action: 'studio-status', token: first.token })).status, 404)
   assert.equal(providerCalls, 0)
   for (const index of [-1, '0', 3, 1.1, null]) assert.equal((await generate(first, index)).status, 400)
   assert.throws(() => studio.studioScene({ ...first, content: { ...first.content, scenes: Array(13).fill(first.content.scenes[0]) } }, 0), /scene index/)
@@ -136,9 +136,8 @@ async function main() {
   assert.equal(played.headers['Content-Type'], 'audio/mpeg')
   assert.equal((await audio(first, 0, { sessionToken: 'd'.repeat(64) })).status, 404)
   assert.equal((await audio(first, 0, { token: first.ownerToken })).status, 404)
-  assert.equal((await api({ action: 'studio-audio', token: first.ownerToken, preview: true, sceneIndex: 0 })).status, 401)
-  assert.equal((await api({ action: 'studio-audio', token: first.token, preview: true, sceneIndex: 0 }, true)).status, 404)
-  assert.equal((await api({ action: 'studio-audio', token: first.ownerToken, preview: true, sceneIndex: 0 }, true)).status, 200)
+  assert.equal((await api({ action: 'studio-audio', token: first.token, preview: true, sceneIndex: 0 })).status, 404)
+  assert.equal((await api({ action: 'studio-audio', token: first.ownerToken, preview: true, sceneIndex: 0 })).status, 200)
   await generate(first, 1)
   assert.equal((await audio(first, 1)).status, 404, 'Future scene unavailable')
   await api({ action: 'next', token: first.token, sessionToken })
@@ -230,7 +229,7 @@ async function main() {
   assert.equal((await generate(stale)).status, 409)
   const beforeDeleteUsed = used()
   const deletedKeys = (await db.studio({ operation: 'status', storyId: first.id })).records.map(row => row.object_key)
-  assert.equal((await api({ action: 'delete', token: first.ownerToken }, true)).status, 200)
+  assert.equal((await api({ action: 'delete', token: first.ownerToken })).status, 200)
   assert.equal((await audio(first)).status, 404)
   assert.equal((await status(first)).status, 404)
   assert.equal(used(), beforeDeleteUsed, 'Deleting stories cannot reset the budget')
@@ -245,7 +244,7 @@ async function main() {
     }
   }), /expired or story was deleted/)
   assert.ok(await store.read(lateKey, studio.STUDIO_MAX_BYTES), 'An in-flight write may finish after deletion')
-  assert.equal((await api({ action: 'studio-audio', token: deletedDuringWrite.ownerToken, preview: true, sceneIndex: 0 }, true)).status, 404)
+  assert.equal((await api({ action: 'studio-audio', token: deletedDuringWrite.ownerToken, preview: true, sceneIndex: 0 })).status, 404)
   sql(c => c.prepare('UPDATE muse_studio_purge SET retain_until = ?').run(new Date(Date.now() - 1000).toISOString()))
   await assert.rejects(studio.purgeStudioAudio(db, { async remove() { throw new Error('Storage offline') } }), /Storage offline/)
   assert.ok(sql(c => c.prepare('SELECT count(*) AS n FROM muse_studio_purge').get()).n > 0, 'Failed cleanup stays queued')
@@ -260,12 +259,12 @@ async function main() {
   sql(c => c.prepare('UPDATE shared_stories SET expires_at = ? WHERE id = ?').run(new Date(Date.now() - 1000).toISOString(), expired.id))
   assert.equal((await audio(expired)).status, 404)
   assert.equal(await store.read(expiredKey, studio.STUDIO_MAX_BYTES), null, 'Expired-link request itself sweeps eligible cached bytes')
-  assert.equal((await api({ action: 'studio-audio', token: expired.ownerToken, preview: true, sceneIndex: 0 }, true)).status, 404)
+  assert.equal((await api({ action: 'studio-audio', token: expired.ownerToken, preview: true, sceneIndex: 0 })).status, 404)
   const deletedOnRequest = await insert()
   await generate(deletedOnRequest)
   const deletedOnRequestKey = (await db.studio({ operation: 'status', storyId: deletedOnRequest.id })).records[0].object_key
   sql(c => c.prepare('UPDATE muse_studio_audio SET created_at = ? WHERE story_id = ?').run(new Date(Date.now() - 360000).toISOString(), deletedOnRequest.id))
-  assert.equal((await api({ action: 'delete', token: deletedOnRequest.ownerToken }, true)).status, 200)
+  assert.equal((await api({ action: 'delete', token: deletedOnRequest.ownerToken })).status, 200)
   assert.equal(await store.read(deletedOnRequestKey, studio.STUDIO_MAX_BYTES), null, 'Delete request itself purges eligible bytes')
   const rotatedDuringRead = await insert()
   await generate(rotatedDuringRead)
@@ -312,8 +311,8 @@ async function main() {
   assert.deepEqual(Buffer.from(googleAudio.body), googleMp3)
   assert.equal((await generate(googleStory)).status, 200)
   assert.equal(googleCalls, 1, 'Saved Google gift recordings replay without provider charges')
-  assert.equal((await api({ action: 'studio-generate', token: googleStory.ownerToken, sceneIndex: 1, consentVersion: 'muse-ai-v1' })).status, 401, 'Recipients cannot authorize paid Google synthesis')
-  console.log('PASS Google prepared gift synthesis, private cached replay and creator-only generation')
+  assert.equal((await api({ action: 'studio-generate', token: googleStory.ownerToken, sceneIndex: 1, consentVersion: 'muse-ai-v1' })).status, 400, 'An invalid consent version cannot authorize paid Google synthesis')
+  console.log('PASS Google prepared gift synthesis, private cached replay and account-owner generation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => {
   global.fetch = savedFetch

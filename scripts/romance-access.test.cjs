@@ -21,7 +21,6 @@ async function main() {
   process.env.MUSE_SQLITE_PATH = path.join(output, 'stories.sqlite')
   process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
   process.env.MUSE_MEDIA_PATH = path.join(output, 'media')
-  process.env.MUSE_CREATOR_ACCESS_CODE = 'romance-fixture-creator-code'
   delete process.env.VERCEL
   delete process.env.SUPABASE_SERVICE_ROLE_KEY
   delete process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -50,7 +49,7 @@ async function main() {
       json(value) { res.body = value; res.end(); return res }
     })
     await handler({
-      method: 'POST', headers: { host: 'localhost:3000', ...(owner ? { 'x-muse-creator-code': process.env.MUSE_CREATOR_ACCESS_CODE } : {}) },
+      method: 'POST', headers: { host: 'localhost:3000' },
       socket: { remoteAddress: `10.91.0.${address++}` }, body: { consentVersion: '2026-10-18', ...body }
     }, res)
     return { status: res.statusCode, body: res.body }

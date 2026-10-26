@@ -5,7 +5,8 @@ const destinations = [
   { href: '/myself', label: 'Myself', routes: ['/myself'] },
   { href: '/story?new=1', label: 'Create a story', routes: ['/story'] },
   { href: '/shared#new', label: 'Create a gift story', routes: ['/shared', '/couples'] },
-  { href: '/library', label: 'Saved stories', routes: ['/library'] }
+  { href: '/library', label: 'Saved stories', routes: ['/library'] },
+  { href: '/account', label: 'Account', routes: ['/account'] }
 ]
 
 export default function SiteNavigation({ pathname, recipient = false, onCreateGift }: {

@@ -113,6 +113,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/sharedStoryMedia')) return { formatMediaSize: () => '5 MB', SHARED_MEDIA_ATTEMPTS_PER_STORY: 6, validateVoiceBytes: () => ({ durationSeconds: 1 }) }
     if (id.endsWith('/sharedStoryGift')) return { validateVoiceBytes: () => ({ durationSeconds: 1 }) }
+    if (id.endsWith('/accountClient')) return { accountFetch: fetchMock, accountAuthorization: async () => null }
     throw new Error('Unexpected UI dependency ' + id)
   }
   const fetchMock = async (_url, options) => {

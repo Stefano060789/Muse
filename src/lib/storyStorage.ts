@@ -23,11 +23,11 @@ export type StoryRecord = {
 }
 
 const dataDir = path.join(process.cwd(), 'data')
-const dataFile = path.join(dataDir, 'story-state.json')
+const accountFile = (accountId: string) => path.join(dataDir, `story-state-${createHash('sha256').update(accountId).digest('hex')}.json`)
 
-export async function readStoryState(): Promise<StoryRecord | null> {
+export async function readStoryState(accountId: string): Promise<StoryRecord | null> {
   try {
-    const text = await fs.promises.readFile(dataFile, 'utf8')
+    const text = await fs.promises.readFile(accountFile(accountId), 'utf8')
     if (!text.trim()) return null
     return JSON.parse(text) as StoryRecord
   } catch {
@@ -35,7 +35,8 @@ export async function readStoryState(): Promise<StoryRecord | null> {
   }
 }
 
-export async function writeStoryState(story: StoryRecord) {
+export async function writeStoryState(story: StoryRecord, accountId: string) {
   await fs.promises.mkdir(dataDir, { recursive: true })
-  await fs.promises.writeFile(dataFile, JSON.stringify(story, null, 2), 'utf8')
+  await fs.promises.writeFile(accountFile(accountId), JSON.stringify(story, null, 2), 'utf8')
 }
+import { createHash } from 'crypto'

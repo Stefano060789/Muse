@@ -33,6 +33,7 @@ import {
   formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
   type SharedMediaKind, type SharedMediaSummary
 } from '../lib/sharedStoryMedia'
+import { accountAuthorization, accountFetch } from '../lib/accountClient'
 
 type PlayerResponse = { player: SharedStoryPlayer; sessionToken: string }
 type RomanceNotice = { romance: StoryRomance; language?: SharedStoryBrief['language'] }
@@ -109,18 +110,18 @@ async function recipientAnswerDraftKey(token: string, kind: 'answer' | 'action',
   return `muse-shared-recipient-draft:${storyId}:${kind}:${revision}`
 }
 
-async function request<T>(body: Record<string, unknown>, creatorCode = '', signal?: AbortSignal): Promise<T> {
-  const response = await fetch('/api/shared-story', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) }, body: JSON.stringify(body), signal
+async function request<T>(body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  const response = await accountFetch('/api/shared-story', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data.error || 'Could not complete the story request.')
   return data as T
 }
 
-async function requestStudioAudio(body: Record<string, unknown>, signal: AbortSignal, creatorCode = ''): Promise<Blob> {
-  const response = await fetch('/api/shared-story', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) },
+async function requestStudioAudio(body: Record<string, unknown>, signal: AbortSignal): Promise<Blob> {
+  const response = await accountFetch('/api/shared-story', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal
   })
   if (!response.ok) {
@@ -137,9 +138,9 @@ const allowedMediaUrl = (url: URL) => url.protocol === 'https:' || (url.protocol
 
 // Final media arrives either as a short-lived private signed URL (hosted) or as
 // an authenticated same-origin byte stream (local), turned into a blob: URL.
-async function requestMedia(body: Record<string, unknown>, creatorCode = ''): Promise<{ url: string; blob: boolean }> {
-  const response = await fetch('/api/shared-story', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...(creatorCode ? { 'x-muse-creator-code': creatorCode } : {}) }, body: JSON.stringify(body)
+async function requestMedia(body: Record<string, unknown>): Promise<{ url: string; blob: boolean }> {
+  const response = await accountFetch('/api/shared-story', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   })
   if ((response.headers.get('content-type') || '').startsWith('application/json')) {
     const data = await response.json()
@@ -152,8 +153,9 @@ async function requestMedia(body: Record<string, unknown>, creatorCode = ''): Pr
   return { url: URL.createObjectURL(await response.blob()), blob: true }
 }
 
-// The creator code is attached only to Muse's own upload route, never to storage hosts.
-function putFile(target: UploadTarget, file: File, creatorCode: string, onProgress: (percent: number) => void): Promise<void> {
+// The account token is attached only to Muse's own upload route, never to storage hosts.
+async function putFile(target: UploadTarget, file: File, onProgress: (percent: number) => void): Promise<void> {
+  const authorization = await accountAuthorization()
   return new Promise((resolve, reject) => {
     const url = new URL(target.url, window.location.origin)
     const sameOrigin = url.origin === window.location.origin
@@ -164,7 +166,7 @@ function putFile(target: UploadTarget, file: File, creatorCode: string, onProgre
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', url.toString())
     for (const [name, value] of Object.entries(target.headers)) xhr.setRequestHeader(name, value)
-    if (sameOrigin && creatorCode) xhr.setRequestHeader('x-muse-creator-code', creatorCode)
+    if (sameOrigin && authorization) xhr.setRequestHeader('Authorization', authorization)
     xhr.timeout = 10 * 60 * 1000
     xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)) }
     xhr.onload = () => {
@@ -212,8 +214,6 @@ export default function SharedStoryPage() {
   const [origin, setOrigin] = useState('')
   const [tunnelAddress, setTunnelAddress] = useState('')
   const [publicOrigin, setPublicOrigin] = useState('')
-  const [creatorCodeInput, setCreatorCodeInput] = useState('')
-  const [creatorCode, setCreatorCode] = useState('')
   const [mediaFile, setMediaFile] = useState<File | null>(null)
   const [upload, setUpload] = useState<UploadState>(idleUpload)
   const [ownerMedia, setOwnerMedia] = useState<SharedMediaSummary | null>(null)
@@ -244,7 +244,6 @@ export default function SharedStoryPage() {
   const [studioScene, setStudioScene] = useState(0)
   const objectUrls = useRef<string[]>([])
   const lastMediaRefresh = useRef(0)
-  const creatorLocked = process.env.NEXT_PUBLIC_MUSE_CREATOR_LOCKED === 'true'
   const narrator = useNarration(player || creator?.content || {}, undefined, {
     progress: player?.adventure ? player.adventure.actionsUsed / 12
       : player ? player.sceneIndex / Math.max(1, player.sceneCount - 1) : 0,
@@ -370,7 +369,6 @@ export default function SharedStoryPage() {
           }
           return
         }
-        if (creatorLocked && !creatorCode) return
         const libraryResult = loadStoryLibrary()
         if (libraryResult.error) setNotice(libraryResult.error)
         const reuseOwner = fragment.get('reuse')
@@ -392,7 +390,7 @@ export default function SharedStoryPage() {
         const saved = matching?.kind === 'shared' ? matching.story : latestCreatorStory(libraryResult)
         const ownerToken = fragment.get('manage') || (fragment.has('new') ? null : saved?.ownerToken)
         if (ownerToken) {
-          const { media, mediaRequired: _required, voice, replies: savedReplies, ...result } = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'> & MediaState & GiftState>({ action: 'manage', token: ownerToken }, creatorCode)
+          const { media, mediaRequired: _required, voice, replies: savedReplies, ...result } = await request<Omit<CreatorStory, 'ownerToken' | 'playToken'> & MediaState & GiftState>({ action: 'manage', token: ownerToken })
           if (!active) return
           const restored = { ...result, ownerToken, ...(saved?.ownerToken === ownerToken ? { playToken: saved.playToken } : {}) }
           setCreator(restored)
@@ -423,7 +421,7 @@ export default function SharedStoryPage() {
     }
     void initialize()
     return () => { active = false }
-  }, [creatorCode, creatorLocked])
+  }, [])
 
   useEffect(() => {
     if (!playToken || !player || (romanceNotice && !romanceAccepted)) return
@@ -637,10 +635,10 @@ export default function SharedStoryPage() {
     try {
       validateVoiceBytes(new Uint8Array(await file.arrayBuffer()))
       const declaration = parseMediaDeclaration({ mime: file.type, size: file.size })
-      const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'media-start', token: story.ownerToken, media: { mime: declaration.mime, size: declaration.size } }, creatorCode)
+      const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'media-start', token: story.ownerToken, media: { mime: declaration.mime, size: declaration.size } })
       uploadId = started.uploadId
-      await putFile(started.upload, file, creatorCode, progress => setUpload({ phase: 'uploading', progress }))
-      const finished = await request<MediaState>({ action: 'media-finish', token: story.ownerToken, uploadId }, creatorCode)
+      await putFile(started.upload, file, progress => setUpload({ phase: 'uploading', progress }))
+      const finished = await request<MediaState>({ action: 'media-finish', token: story.ownerToken, uploadId })
       uploadId = ''
       setOwnerMedia(finished.media)
       setOwnerPreview(null)
@@ -657,7 +655,7 @@ export default function SharedStoryPage() {
       setNotice(`Your ${mediaLabel(declaration.kind)} is attached privately. It unlocks only after a correct answer.`)
       return true
     } catch (error) {
-      if (uploadId) void request({ action: 'media-cancel', token: story.ownerToken, uploadId }, creatorCode).catch(() => undefined)
+      if (uploadId) void request({ action: 'media-cancel', token: story.ownerToken, uploadId }).catch(() => undefined)
       setUpload({ phase: 'failed', progress: 0, error: `${error instanceof Error ? error.message : 'The upload failed.'} Your story is saved; retry the upload without generating it again.` })
       return false
     }
@@ -669,7 +667,7 @@ export default function SharedStoryPage() {
     setBusy(true)
     setError('')
     try {
-      const result = await request<MediaState>({ action: 'media-delete', token: creator.ownerToken }, creatorCode)
+      const result = await request<MediaState>({ action: 'media-delete', token: creator.ownerToken })
       setOwnerMedia(result.media)
       setOwnerPreview(null)
       setNotice('The photo or video was removed and deleted from private storage.')
@@ -684,7 +682,7 @@ export default function SharedStoryPage() {
     if (!creator || !ownerMedia) return
     setOwnerPreview({ kind: ownerMedia.kind, state: 'loading' })
     try {
-      const result = await requestMedia({ action: 'media-preview', token: creator.ownerToken }, creatorCode)
+      const result = await requestMedia({ action: 'media-preview', token: creator.ownerToken })
       setOwnerPreview({ kind: ownerMedia.kind, state: 'ready', url: mediaUrl(result) })
     } catch {
       setOwnerPreview({ kind: ownerMedia.kind, state: 'error' })
@@ -696,10 +694,10 @@ export default function SharedStoryPage() {
       setVoiceError('')
       let uploadId = ''
       try {
-        const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'voice-start', token: story.ownerToken, voice: { mime: 'audio/wav', size: file.size } }, creatorCode)
+        const started = await request<{ uploadId: string; upload: UploadTarget }>({ action: 'voice-start', token: story.ownerToken, voice: { mime: 'audio/wav', size: file.size } })
         uploadId = started.uploadId
-        await putFile(started.upload, file, creatorCode, () => undefined)
-        const finished = await request<GiftState>({ action: 'voice-finish', token: story.ownerToken, uploadId }, creatorCode)
+        await putFile(started.upload, file, () => undefined)
+        const finished = await request<GiftState>({ action: 'voice-finish', token: story.ownerToken, uploadId })
         uploadId = ''
         setOwnerVoice(finished.voice ?? null)
         setVoiceFile(null)
@@ -708,7 +706,7 @@ export default function SharedStoryPage() {
       } catch (error) {
         setVoiceError(`${error instanceof Error ? error.message : 'Could not upload the recording.'} Your story is saved. Retry without generating again.`)
         if (uploadId) {
-          try { await request({ action: 'voice-cancel', token: story.ownerToken, uploadId }, creatorCode) }
+          try { await request({ action: 'voice-cancel', token: story.ownerToken, uploadId }) }
           catch { setVoiceError(current => `${current} The unfinished upload could not be cancelled; it will expire automatically.`) }
         }
       } finally { setVoiceUploading(false) }
@@ -717,7 +715,7 @@ export default function SharedStoryPage() {
     const loadVoice = async (owner = false) => {
       setVoiceError('')
       try {
-        const result = await requestMedia(owner && creator ? { action: 'voice-preview', token: creator.ownerToken } : { action: 'voice', token: playToken, sessionToken, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, owner ? creatorCode : '')
+        const result = await requestMedia(owner && creator ? { action: 'voice-preview', token: creator.ownerToken } : { action: 'voice', token: playToken, sessionToken, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
         setVoiceUrl(mediaUrl(result))
       } catch (error) { setVoiceError(error instanceof Error ? error.message : 'Could not load the voice message. Try again.') }
     }
@@ -726,7 +724,7 @@ export default function SharedStoryPage() {
       if (!creator || !window.confirm('Remove your stored voice message? The written story and other media will remain.')) return
       setBusy(true)
       try {
-        await request({ action: 'voice-delete', token: creator.ownerToken }, creatorCode)
+        await request({ action: 'voice-delete', token: creator.ownerToken })
         setOwnerVoice(null); setVoiceUrl(''); setVoiceError('')
       } catch (error) { setVoiceError(error instanceof Error ? error.message : 'Could not remove the voice message.') }
       finally { setBusy(false) }
@@ -746,7 +744,7 @@ export default function SharedStoryPage() {
       if (!creator) return
       setBusy(true); setError('')
       try {
-        const result = await request<GiftState>({ action: 'manage', token: creator.ownerToken }, creatorCode)
+        const result = await request<GiftState>({ action: 'manage', token: creator.ownerToken })
         setReplies(result.replies ?? [])
       } catch (error) { setError(error instanceof Error ? error.message : 'Could not load replies.') }
       finally { setBusy(false) }
@@ -832,7 +830,7 @@ export default function SharedStoryPage() {
         ...(brief.romance ? { romanceConfirmed } : {}),
         ...(voiceFile ? { finalVoice: { mime: 'audio/wav', size: voiceFile.size } } : {}),
         ...(declaration ? { finalMedia: { mime: declaration.mime, size: declaration.size } } : {})
-      }, creatorCode)
+      })
       setBrief(story.brief)
       setAssistanceHintsText((story.brief.assistanceHints ?? []).join('\n'))
       setAlternativeAnswersText((story.brief.alternativeAnswers ?? []).join('\n'))
@@ -939,15 +937,15 @@ export default function SharedStoryPage() {
     narrator.stop()
     try {
       if (action === 'share') {
-        const result = await request<{ playToken: string }>({ action, token: creator.ownerToken }, creatorCode)
+        const result = await request<{ playToken: string }>({ action, token: creator.ownerToken })
         const saved = storeCreator({ ...creator, playToken: result.playToken })
         if (saved) setNotice('New recipient link created. Any previous recipient link no longer works.')
       } else if (action === 'title') {
-        const result = await request<{ content: CreatorStory['content'] }>({ action, token: creator.ownerToken, title: titleDraft.trim() }, creatorCode)
+        const result = await request<{ content: CreatorStory['content'] }>({ action, token: creator.ownerToken, title: titleDraft.trim() })
         storeCreator({ ...creator, content: result.content })
         setNotice('Story title updated.')
       } else {
-        await request({ action, token: creator.ownerToken }, creatorCode)
+        await request({ action, token: creator.ownerToken })
         setCreator(null)
         setOwnerMedia(null)
         setOwnerPreview(null)
@@ -1017,18 +1015,7 @@ export default function SharedStoryPage() {
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}</p> : null}
         {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
-        {creatorLocked && !playToken ? <section style={cardStyle} aria-label="Private creator access">
-          <h2>Private creator access</h2>
-          <p>Code required to create or manage stories; never saved. Keep it and your management link private.</p>
-          <label>Creator access code<input type="password" autoComplete="off" value={creatorCodeInput} onChange={event => setCreatorCodeInput(event.target.value)} style={fieldStyle} /></label>
-          <button style={{ ...buttonStyle, marginTop: '0.75rem' }} onClick={() => {
-            if (creatorCodeInput.length < 16 || creatorCodeInput.length > 512) { setError('Enter a creator access code of 16 to 512 characters.'); return }
-            setError('')
-            setCreatorCode(creatorCodeInput)
-            setCreatorCodeInput('')
-          }}>Use creator access code</button>
-          {creatorCode ? <p role="status">Code entered; checked on your next request.</p> : null}
-        </section> : null}
+        {!playToken && !creator ? <p style={cardStyle}>Create and manage gift stories with your <Link href="/account">Muse account</Link>. Recipients can open their story link without an account.</p> : null}
         {!playToken && !showGiftCover && !(romanceNotice && !romanceAccepted) ? <details style={{ marginBottom: '1rem' }}>
           <summary>Audio and microphone settings</summary>
           {playToken ? <p lang={recipientLanguage.code} dir={recipientLanguage.dir}>{recipientText.settingsDisclosure}</p> : null}
@@ -1058,7 +1045,7 @@ export default function SharedStoryPage() {
               </div>
             </>}
           </section>
-        ) : creatorLocked && !playToken && !creatorCode ? <p>Recipients need only their story link.</p> : playToken ? player ? (
+        ) : playToken ? player ? (
           <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             <details lang="en" dir="ltr" style={{ marginBottom: '1rem' }}>
               <summary>About this private story</summary>
@@ -1268,9 +1255,9 @@ export default function SharedStoryPage() {
                   onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                   sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
                   disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
-                  check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, creatorCode, signal), sceneIndex)}
-                  generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, creatorCode, signal), sceneIndex)}
-                  load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: creator.ownerToken, preview: true, sceneIndex }, signal, creatorCode)} />
+                  check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, signal), sceneIndex)}
+                  generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, signal), sceneIndex)}
+                  load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: creator.ownerToken, preview: true, sceneIndex }, signal)} />
               </> : <p>Studio recordings cover prepared stories only. Live AI turns use the separate device voice.</p>}
             </article>
             {creator.content.scenes.map((scene, index) => (
@@ -1336,7 +1323,7 @@ export default function SharedStoryPage() {
             </details>
             <GiftProgress key={creator.ownerToken} sceneCount={creator.content.scenes.length} adventure={Boolean(creator.brief.adventure)}
               load={async () => {
-                const result = await request<{ progress: SharedStoryProgress }>({ action: 'progress', token: creator.ownerToken }, creatorCode)
+                const result = await request<{ progress: SharedStoryProgress }>({ action: 'progress', token: creator.ownerToken })
                 return result.progress
               }} />
             {creator.brief.gift?.allowReply ? <details style={cardStyle}>

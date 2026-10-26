@@ -22,7 +22,7 @@ async function main() {
   process.env.STORY_STORAGE='sqlite'
   process.env.MUSE_OPERATIONS_SQLITE_PATH=path.join(output,'operations.sqlite')
   process.env.MUSE_AI_DAILY_ATTEMPT_CAP='100'
-  process.env.MUSE_CREATOR_ACCESS_CODE='fixture-operations-creator-code'
+  process.env.MUSE_OPERATIONS_ACCESS_CODE='fixture-operations-access-code'
   delete process.env.VERCEL
   delete process.env.SUPABASE_SERVICE_ROLE_KEY
   const ops=require(path.join(output,'lib','operations.js'))
@@ -70,7 +70,7 @@ async function main() {
   })
   await check('distributed request and failed-creator throttles ignore spoofed client headers locally',async()=>{
     now+=86400000
-    const req={headers:{host:'localhost:3000','x-forwarded-for':'spoof'},socket:{remoteAddress:'client-1'},body:{action:'create'}}
+    const req={url:'/api/operations',headers:{host:'localhost:3000','x-forwarded-for':'spoof'},socket:{remoteAddress:'client-1'},body:{action:'create'}}
     for(let i=0;i<20;i++) assert.equal(await ops.apiSafety(req,response()),true)
     const res=response();assert.equal(await ops.apiSafety(req,res),false);assert.equal(res.code,429);assert.ok(res.headers['Retry-After'])
     const hostile=response();assert.equal(await ops.apiSafety({...req,headers:{...req.headers,origin:'https://hostile.invalid'}},hostile),false);assert.equal(hostile.code,403)
@@ -101,10 +101,10 @@ async function main() {
   await check('operations status is private, no-store and explicitly blocks public readiness',async()=>{
     const req={method:'GET',headers:{host:'localhost:3000'},socket:{remoteAddress:'operator'}}
     let res=response();await status(req,res);assert.equal(res.code,401)
-    res=response();await status({...req,headers:{...req.headers,'x-muse-creator-code':process.env.MUSE_CREATOR_ACCESS_CODE}},res)
+    res=response();await status({...req,headers:{...req.headers,'x-muse-operations-code':process.env.MUSE_OPERATIONS_ACCESS_CODE}},res)
     assert.equal(res.code,200);assert.equal(res.headers['Cache-Control'],'no-store')
     assert.equal(res.body.publicBetaReady,false);assert.ok(res.body.blockers.length>=3)
-    assert.ok(!JSON.stringify(res.body).includes(process.env.MUSE_CREATOR_ACCESS_CODE))
+    assert.ok(!JSON.stringify(res.body).includes(process.env.MUSE_OPERATIONS_ACCESS_CODE))
   })
   await check('independent processes compete atomically for the last daily reservations',async()=>{
     process.env.MUSE_OPERATIONS_SQLITE_PATH=path.join(output,'concurrent.sqlite')

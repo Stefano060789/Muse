@@ -229,7 +229,7 @@ export function restoreLibraryCreatorStories(values: unknown[], store?: BrowserS
           existing.id = story.ownerToken
           existing.story = story
         } else {
-          existing.story = { ...story, recovered: false, ownerToken: existing.story.ownerToken, playToken: existing.story.playToken || story.playToken }
+          existing.story = { ...story, recovered: false, ownerToken: existing.story.ownerToken, playToken: story.playToken || existing.story.playToken }
         }
       } else {
         library.entries.push({ kind: 'shared', id: story.ownerToken, updatedAt: new Date().toISOString(), story })

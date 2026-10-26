@@ -2,20 +2,21 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import type { StoredStory } from './storyRepository'
 import { SharedStoryError } from './sharedStory'
 
-// Recovery capabilities are scoped to a story, role, current link hash and
-// deployment administrator code; recovering never rotates existing links.
-export function recoveryKey(story: StoredStory, role: 'owner' | 'play'): string {
-  const code = process.env.MUSE_CREATOR_ACCESS_CODE
-  if (!code || code.length < 16 || code.length > 512) {
-    throw new SharedStoryError('Server recovery requires a configured private Creator access code.', 503)
+// Account recovery capabilities are scoped to one story, role and owner.
+export function recoveryKey(story: StoredStory, role: 'owner' | 'play', accountId: string): string {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    (process.env.NODE_ENV !== 'production' && process.env.STORY_STORAGE === 'sqlite' ? 'muse-local-development-account-recovery' : '')
+  if (!secret || !story.owner_id || story.owner_id !== accountId) {
+    throw new SharedStoryError('Account story recovery is not configured.', 503)
   }
-  return createHmac('sha256', code)
-    .update(JSON.stringify(['muse-recovery-v1', story.id, role, role === 'owner' ? story.owner_hash : story.play_hash]))
+  return createHmac('sha256', secret)
+    .update(JSON.stringify(['muse-account-recovery-v1', accountId, story.id, role, role === 'owner' ? story.owner_hash : story.play_hash]))
     .digest('hex')
 }
 
-export function matchesRecoveryKey(value: string, story: StoredStory, role: 'owner' | 'play'): boolean {
-  const code = process.env.MUSE_CREATOR_ACCESS_CODE
-  if (!code || code.length < 16 || code.length > 512 || !/^[0-9a-f]{64}$/.test(value)) return false
-  return timingSafeEqual(Buffer.from(value, 'hex'), Buffer.from(recoveryKey(story, role), 'hex'))
+export function matchesRecoveryKey(value: string, story: StoredStory, role: 'owner' | 'play', accountId: string): boolean {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    (process.env.NODE_ENV !== 'production' && process.env.STORY_STORAGE === 'sqlite' ? 'muse-local-development-account-recovery' : '')
+  if (!secret || !/^[0-9a-f]{64}$/.test(value) || story.owner_id !== accountId) return false
+  return timingSafeEqual(Buffer.from(value, 'hex'), Buffer.from(recoveryKey(story, role, accountId), 'hex'))
 }

@@ -90,8 +90,8 @@ async function main() {
   assert.deepEqual(google.calls, [], 'Google mount does not spend or fetch')
   assert.ok(!google.nodes().some(node => node.type === 'h2'), 'Recipient playback has no duplicate narration heading')
   assert.ok(google.nodes().some(node => node.type === 'details' && !node.props.open), 'Provider explanations stay collapsed')
-  assert.ok(google.nodes().some(node => node.type === 'p' && /quiet local ambience/.test(flatten(node).join(' '))),
-    'Recipients are told that scene ambience accompanies explicit playback')
+  assert.ok(google.nodes().some(node => node.type === 'p' && /synthetic local ambience/.test(flatten(node).join(' ')) && /text cues/.test(flatten(node).join(' '))),
+    'Recipients are told that text cues select synthetic ambience for explicit playback')
   google.button('Load scene recording').props.onClick()
   await google.flush()
   assert.ok(google.nodes().some(node => node.type === 'audio' && node.props.controls && !node.props.autoPlay))

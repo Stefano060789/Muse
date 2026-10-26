@@ -36,7 +36,7 @@ BEGIN
     max(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', julianday(old.created_at) + 5.0 / 1440.0)));
 END;
 CREATE TABLE IF NOT EXISTS shared_stories (
-  id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
+  id TEXT PRIMARY KEY, owner_id TEXT, owner_hash TEXT NOT NULL, play_hash TEXT NOT NULL,
   brief TEXT NOT NULL, content TEXT NOT NULL, answer_normalized TEXT NOT NULL,
   alternative_answers_normalized TEXT NOT NULL DEFAULT '[]',
   expires_at TEXT NOT NULL DEFAULT '${PERMANENT_STORY_EXPIRY}', media_attempts INTEGER NOT NULL DEFAULT 0, voice_attempts INTEGER NOT NULL DEFAULT 0
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS muse_adventure_budgets (
   bucket TEXT PRIMARY KEY, used INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS muse_personal_journeys (
-  id TEXT PRIMARY KEY, capability_hash TEXT NOT NULL, record TEXT NOT NULL,
+  id TEXT PRIMARY KEY, owner_id TEXT, capability_hash TEXT NOT NULL, record TEXT NOT NULL,
   expires_at TEXT NOT NULL DEFAULT '${PERMANENT_STORY_EXPIRY}'
 );
 CREATE TABLE IF NOT EXISTS muse_personal_journey_requests (
@@ -207,6 +207,8 @@ export class SqliteStoryRepository implements StoryRepository {
       if (!columns('shared_stories').includes('voice_attempts')) {
         db.exec('ALTER TABLE shared_stories ADD COLUMN voice_attempts INTEGER NOT NULL DEFAULT 0')
       }
+      if (!columns('shared_stories').includes('owner_id')) db.exec('ALTER TABLE shared_stories ADD COLUMN owner_id TEXT')
+      if (!columns('muse_personal_journeys').includes('owner_id')) db.exec('ALTER TABLE muse_personal_journeys ADD COLUMN owner_id TEXT')
       if (!columns('shared_story_sessions').includes('revealed_hints')) {
         db.exec('ALTER TABLE shared_story_sessions ADD COLUMN revealed_hints INTEGER NOT NULL DEFAULT 0')
       }
@@ -246,8 +248,8 @@ export class SqliteStoryRepository implements StoryRepository {
 
   async insert(story: StoredStory) {
     this.transaction(db => {
-      db.prepare('INSERT INTO shared_stories (id, owner_hash, play_hash, brief, content, answer_normalized, alternative_answers_normalized, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(story.id, story.owner_hash, story.play_hash, JSON.stringify(story.brief), JSON.stringify(story.content), story.answer_normalized, JSON.stringify((story.brief.alternativeAnswers ?? []).map(normalizeSharedAnswer)), story.expires_at)
+      db.prepare('INSERT INTO shared_stories (id, owner_id, owner_hash, play_hash, brief, content, answer_normalized, alternative_answers_normalized, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(story.id, story.owner_id ?? null, story.owner_hash, story.play_hash, JSON.stringify(story.brief), JSON.stringify(story.content), story.answer_normalized, JSON.stringify((story.brief.alternativeAnswers ?? []).map(normalizeSharedAnswer)), story.expires_at)
     })
   }
 
@@ -265,9 +267,9 @@ export class SqliteStoryRepository implements StoryRepository {
     })
   }
 
-  async listRetained(after: string | null, limit: number) {
+  async listRetained(ownerId: string, after: string | null, limit: number) {
     return this.transaction(db => {
-      const rows = db.prepare('SELECT * FROM shared_stories WHERE (? IS NULL OR id > ?) ORDER BY id LIMIT ?').all(after, after, limit)
+      const rows = db.prepare('SELECT * FROM shared_stories WHERE owner_id = ? AND (? IS NULL OR id > ?) ORDER BY id LIMIT ?').all(ownerId, after, after, limit)
       return rows.map(row => ({
         ...row, brief: JSON.parse(String(row.brief)), content: JSON.parse(String(row.content)),
         alternative_answers_normalized: JSON.parse(String(row.alternative_answers_normalized))
@@ -275,12 +277,25 @@ export class SqliteStoryRepository implements StoryRepository {
     })
   }
 
+  async claimStoryOwner(id: string, ownerId: string) {
+    return this.transaction(db => {
+      db.prepare('UPDATE shared_stories SET owner_id = ? WHERE id = ? AND owner_id IS NULL').run(ownerId, id)
+      const row = db.prepare('SELECT owner_id FROM shared_stories WHERE id = ?').get(id)
+      return row?.owner_id === ownerId
+    })
+  }
+
   async delete(id: string) {
     this.transaction(db => { db.prepare('DELETE FROM shared_stories WHERE id = ?').run(id) })
   }
 
-  async deletePersonalJourney(id: string, capabilityHash: string) {
-    return this.transaction(db => Number(db.prepare('DELETE FROM muse_personal_journeys WHERE id=? AND capability_hash=?').run(id, capabilityHash).changes) > 0)
+  async deletePersonalJourney(id: string, _capabilityHash: string, ownerId: string) {
+    return this.transaction(db => Number(db.prepare('DELETE FROM muse_personal_journeys WHERE id=? AND owner_id=?').run(id, ownerId).changes) > 0)
+  }
+
+  async listPersonalJourneys(ownerId: string) {
+    return this.transaction(db => db.prepare('SELECT record FROM muse_personal_journeys WHERE owner_id = ? ORDER BY id')
+      .all(ownerId).map(row => JSON.parse(String(row.record)) as JourneyRecord))
   }
 
   async rotate(id: string, playHash: string) {
@@ -459,12 +474,13 @@ export class SqliteStoryRepository implements StoryRepository {
           expiresAt: null, opening: null, used: 0, turn: null,
           lastAction: '', scenes: [], responses: [], creationStatus: 'pending'
         }
-        db.prepare('INSERT INTO muse_personal_journeys VALUES (?, ?, ?, ?)').run(input.id, input.capabilityHash, JSON.stringify(record), PERMANENT_STORY_EXPIRY)
+        db.prepare('INSERT INTO muse_personal_journeys (id, owner_id, capability_hash, record, expires_at) VALUES (?, ?, ?, ?, ?)')
+          .run(input.id, input.accountId, input.capabilityHash, JSON.stringify(record), PERMANENT_STORY_EXPIRY)
         db.prepare("INSERT INTO muse_personal_journey_requests VALUES (?, ?, ?, 'create', 'pending', ?, 0)")
           .run(input.id, input.requestId, input.fingerprint, now)
         return { record, snapshot: journeySnapshot(record, true), status: 'reserved' }
       }
-      if (!row || row.capability_hash !== input.capabilityHash) return null
+      if (!row || row.owner_id !== input.accountId) return null
       const record = JSON.parse(String(row.record)) as JourneyRecord
       const stale = db.prepare("SELECT kind FROM muse_personal_journey_requests WHERE journey_id = ? AND status = 'pending' AND reserved_at <= ?").all(input.id, now - 90000)
       db.prepare("UPDATE muse_personal_journey_requests SET status = 'failed' WHERE journey_id = ? AND status = 'pending' AND reserved_at <= ?").run(input.id, now - 90000)
