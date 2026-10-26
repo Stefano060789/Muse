@@ -8,9 +8,10 @@ import { requireAccount } from '../../lib/accountAuth'
 import { adventureGlobalCap } from '../../lib/sharedAdventure'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
+import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
-  parseJourneyAction, parseJourneyInput, publicJourney, type JourneyOperation
+  parseJourneyAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
 } from '../../lib/personalJourney'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
@@ -65,8 +66,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(publicJourney(await db.personalJourney({ ...common, operation: 'view' }), capability))
       }
       let operation: JourneyOperation
-      if (body.action === 'create') {
-        const input = parseJourneyInput(body)
+      if (body.action === 'create' || body.action === 'continue') {
+        let input: JourneyInput
+        if (body.action === 'continue') {
+          const sourceId = journeyIdentifier(body.sourceId)
+          if (sourceId === id) throw new SharedStoryError('A new chapter must have its own story ID.')
+          const parent = await db.personalJourney({
+            ...common, id: sourceId, capabilityHash: journeyHash(journeyCapability(body.sourceCapability)), operation: 'view'
+          })
+          if (parent.snapshot.pending) throw new SharedStoryError('Wait for the current chapter to finish.', 409)
+          try {
+            requireRomanceConfirmation(parent.record.input.romance, body.romanceConfirmed)
+          } catch (error) {
+            if (error instanceof StoryRomanceError) throw new SharedStoryError(error.message, error.status)
+            throw error
+          }
+          input = nextChapterInput(parent.record, body.duration)
+        } else input = parseJourneyInput(body)
         operation = {
           ...common, operation: 'create', requestId: id, input,
           fingerprint: journeyHash(JSON.stringify(input))

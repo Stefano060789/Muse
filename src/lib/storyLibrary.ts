@@ -56,6 +56,16 @@ function narration(input: Record<string, unknown>): NarrationMetadata {
 
 export function validatePersonalStory(value: unknown): PersonalStory {
   const input = record(value)
+  let chapter: PersonalStory['chapter']
+  if (input.chapter !== undefined) {
+    const saved = record(input.chapter)
+    if (!Number.isSafeInteger(saved.number) || Number(saved.number) < 2) throw new Error('Invalid story chapter.')
+    chapter = {
+      number: Number(saved.number), rootId: identifier(saved.rootId),
+      parentId: identifier(saved.parentId), parentTitle: text(saved.parentTitle, 160)
+    }
+    if (chapter.parentId === input.id) throw new Error('Invalid chapter parent.')
+  }
   const romance = parseStoryRomance(input.romance)
   const language = parseStoryLanguage(input.language)
   assertStoryNarrationLanguage(input.narrationLanguage, language)
@@ -89,6 +99,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   return {
     ...(language ? { language } : {}),
     ...(romance ? { romance } : {}),
+    ...(chapter ? { chapter } : {}),
     id: identifier(input.id), mood, title: text(input.title), description: text(input.description),
     currentStep: input.currentStep, createdAt: date(input.createdAt), responses: strings(input.responses), scenes,
     ...(journey ? { journey } : {}),

@@ -156,7 +156,8 @@ export default function LibraryPage() {
                   ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted'
                   : entry.story.responses.length >= entry.story.scenes.length
                 return <>
-                  <p>{completed ? 'Completed' : `In progress · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
+                  <p>{completed ? 'Completed' : entry.story.journey ? `In progress · Scene ${entry.story.currentStep + 1}` : `In progress · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
+                  {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
                   <details>
                     <summary>Story details</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}

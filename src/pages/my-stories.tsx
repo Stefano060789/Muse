@@ -60,7 +60,7 @@ export default function MyStoriesPage() {
   const open = (entry: PersonalEntry, completed: boolean) => {
     try {
       selectPersonalStory(entry.id)
-      window.location.assign(completed ? '/story?read=1' : '/story')
+      window.location.assign(completed && entry.story.journey?.status !== 'concluded' ? '/story?read=1' : '/story')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not open this story.')
     }
@@ -84,8 +84,9 @@ export default function MyStoriesPage() {
               : entry.story.responses.length >= entry.story.scenes.length
             return <article className="atelier-card" key={entry.id} style={{ marginTop: '1rem' }}>
               <h3>{entry.story.title}</h3>
+              {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
               <p>{entry.story.journey?.status === 'exhausted' ? 'Attempt limit reached - available scenes saved' : completed ? 'Completed' : 'In progress'}</p>
-              <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{completed ? 'Read story' : 'Continue story'}</button>
+              <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{entry.story.journey?.status === 'concluded' ? 'Read or continue with a new chapter' : completed ? 'Read story' : 'Continue story'}</button>
             </article>
           })}
         </section>

@@ -12,6 +12,9 @@ export type StoryLanguageCode = typeof STORY_LANGUAGES[number]['code']
 export function storyLanguage(code?: StoryLanguageCode) {
   return STORY_LANGUAGES.find(language => language.code === code) ?? STORY_LANGUAGES[0]
 }
+export function personalSceneTitle(number: number, code?: StoryLanguageCode): string {
+  return `${copies[code ?? 'en-US'].scene} ${number}`
+}
 
 export function parseStoryLanguage(value: unknown): StoryLanguageCode | undefined {
   if (value === undefined) return undefined

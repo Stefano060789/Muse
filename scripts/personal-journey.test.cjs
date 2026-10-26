@@ -482,6 +482,92 @@ async function main() {
     assert.ok(inspect(db => db.prepare('SELECT count(*) total FROM muse_personal_journey_requests WHERE journey_id = ?').get(creation.id).total) > 0)
     assert.equal(calls, before)
   })
+  await check('new chapters preserve authoritative completed context, independent allowances and idempotent creation', async () => {
+    const parent = savedCreations[0].creation
+    const original = await api({ mode: 'journey', action: 'resume', id: parent.id, capability: parent.capability })
+    assert.equal(original.body.snapshot.status, 'concluded')
+    const body = {
+      ...newCreation(5), action: 'continue', sourceId: parent.id, sourceCapability: parent.capability,
+      chapter: { number: 999, state: { progress: 'INJECTED_CONTEXT' } },
+      mood: 'adventure', need: 'INJECTED_NEED', profileKeypoints: ['INJECTED_PROFILE']
+    }
+    const before = calls
+    assert.equal((await api({ ...body, consentVersion: undefined })).status, 400)
+    assert.equal((await api({ ...body, sourceId: body.id })).status, 400)
+    assert.equal((await api({ ...body, duration: 2 })).status, 400)
+    assert.equal((await api({ ...body, sourceId: randomUUID() })).status, 404)
+    assert.equal(calls, before)
+    let release, notify
+    hold = new Promise(resolve => { release = resolve })
+    const arrived = new Promise(resolve => { notify = resolve })
+    received = notify
+    const pendingChild = api(body)
+    await arrived
+    const duplicatePending = await api(body)
+    assert.equal(duplicatePending.body.snapshot.pending, true)
+    assert.equal(calls, before + 1, 'Concurrent duplicate chapter confirmation generates only once')
+    release(); hold = null
+    const created = await pendingChild
+    assert.equal(created.status, 200)
+    const child = created.body.story
+    assert.equal(calls, before + 1)
+    assert.equal(child.journey.revision, 0)
+    assert.equal(child.journey.maxTurns, 3)
+    assert.equal(child.journey.status, 'active')
+    assert.deepEqual(child.chapter, { number: 2, rootId: parent.id, parentId: parent.id, parentTitle: original.body.story.title })
+    assert.equal(child.mood, original.body.story.mood)
+    assert.deepEqual(requests.at(-1).input.chapter.state, state)
+    assert.equal(requests.at(-1).input.chapter.previousEnding, conclusion)
+    assert.equal(requests.at(-1).input.chapter.recentActions.length, 3)
+    assert.ok(requests.at(-1).payload.messages[0].content.includes('not a restart'))
+    assert.ok(!JSON.stringify(requests.at(-1).input).includes('INJECTED_'))
+    assert.ok(!JSON.stringify(child.chapter).includes('previousEnding'), 'Public chapter metadata excludes internal continuity payload')
+    assert.deepEqual(library.validatePersonalStory(child).chapter, child.chapter)
+    for (const patch of [{ number: 1 }, { number: 2.5 }, { rootId: '' }, { parentId: child.id }, { parentTitle: 4 }]) {
+      assert.throws(() => library.validatePersonalStory({ ...child, chapter: { ...child.chapter, ...patch } }))
+    }
+    assert.equal((await api(body)).body.story.id, child.id)
+    assert.equal(calls, before + 1, 'Duplicate confirmed request never generates another opening')
+    assert.deepEqual((await api({ mode: 'journey', action: 'resume', id: parent.id, capability: parent.capability })).body.story, original.body.story)
+    assert.equal((await api({ ...newCreation(), action: 'continue', sourceId: child.id, sourceCapability: child.journey.capability })).status, 409)
+    assert.equal((await api({ ...newCreation(), action: 'continue', sourceId: concurrency.story.id, sourceCapability: concurrency.story.journey.capability })).status, 409, 'An exhausted chapter is not a completed ending')
+    let completed = created
+    for (let revision = 0; revision < 3; revision++) completed = await api(responseBody(completed.body))
+    assert.equal(completed.body.snapshot.status, 'concluded')
+    assert.equal(completed.body.story.scenes[1].title, 'Scene 2')
+    const grandchild = await api({ ...newCreation(), action: 'continue', sourceId: child.id, sourceCapability: child.journey.capability })
+    assert.equal(grandchild.status, 200)
+    assert.equal(grandchild.body.story.chapter.number, 3)
+    assert.equal(grandchild.body.story.chapter.rootId, parent.id)
+    assert.equal(grandchild.body.story.chapter.parentId, child.id)
+    const cloud = await api({ mode: 'journey', action: 'library' })
+    assert.equal(cloud.body.stories.find(story => story.id === child.id).chapter.number, 2)
+    const record = await storyRepository().personalJourney({ operation: 'view', id: grandchild.body.story.id, accountId: 'local-development', capabilityHash: journey.journeyHash(grandchild.body.story.journey.capability), cap: 1000 })
+    assert.equal(record.record.input.chapter.previousEnding, conclusion)
+    assert.equal(record.record.input.chapter.recentActions.length, 3, 'Continuity stays bounded instead of nesting all previous chapters')
+    const failedBody = { ...newCreation(), action: 'continue', sourceId: child.id, sourceCapability: child.journey.capability }
+    providerMode = 'network'
+    const failure = await api(failedBody)
+    assert.equal(failure.status, 503)
+    providerMode = 'ok'
+    const callsAfterFailure = calls
+    assert.equal((await api(failedBody)).body.snapshot.status, 'failed')
+    assert.equal(calls, callsAfterFailure, 'Failed chapter opening is consumed, not automatically retried')
+    assert.equal((await api({ mode: 'journey', action: 'resume', id: child.id, capability: child.journey.capability })).body.snapshot.status, 'concluded')
+    const projection = journey.publicJourney({
+      record: { ...record.record, scenes: [{ title: 'First', body: narration, question: '', choices: [] }, { title: 'Scene 2 of 2', body: narration, question: '', choices: [] }], input: { ...record.record.input, language: 'en-US' } },
+      snapshot: record.snapshot
+    }, 'a'.repeat(64))
+    assert.equal(projection.story.scenes[1].title, 'Scene 2', 'Old growing totals are repaired when restored')
+    const romanticCreation = { ...newCreation(), romance: 'sweet', romanceConfirmed: true }
+    let romantic = await api(romanticCreation)
+    for (let revision = 0; revision < 3; revision++) romantic = await api(responseBody(romantic.body))
+    const romanticChild = { ...newCreation(), action: 'continue', sourceId: romanticCreation.id, sourceCapability: romanticCreation.capability }
+    const beforeConfirmation = calls
+    for (const romanceConfirmed of [undefined, false, 'true']) assert.equal((await api({ ...romanticChild, romanceConfirmed })).status, 400)
+    assert.equal(calls, beforeConfirmation, 'Inherited romance requires fresh explicit adult/boundary confirmation')
+    assert.equal((await api({ ...romanticChild, romanceConfirmed: true })).body.story.romance, 'sweet')
+  })
   console.log(`\n${passed} personal journey checks passed; ${calls + childCalls} mocked provider calls, zero real AI/hosted database requests.`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => {

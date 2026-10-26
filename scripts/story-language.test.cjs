@@ -276,7 +276,8 @@ async function main() {
       const continued = await api({ ...saved, action: 'respond', revision: 0, requestId: randomUUID(), text: 'Use English now', language: 'en-US' })
       assert.equal(continued.statusCode, 200, JSON.stringify(continued.body))
       assert.equal(continued.body.story.language, code)
-      assert.equal(continued.body.story.scenes[1].title, language.recipientCopy(code).scene(2, 2))
+      const sceneTitles = { 'en-US': 'Scene 2', 'zh-CN': '场景 2', 'hi-IN': 'दृश्य 2', 'es-ES': 'Escena 2', 'ar-SA': 'المشهد 2' }
+      assert.equal(continued.body.story.scenes[1].title, sceneTitles[code], 'Unfolding scenes have a localized stable number without a changing total')
       promptIncludes(code)
       assert.equal(JSON.parse(request.messages[1].content).language, code)
       const record = (await storyRepository().personalJourney({ operation: 'view', id: saved.id, accountId: 'local-development', capabilityHash: journey.journeyHash(saved.capability), cap: 1000 })).record

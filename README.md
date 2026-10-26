@@ -167,8 +167,20 @@ Live-adventure scenes cannot use prepared recordings.
 
 The **My stories** navigation opens `/my-stories`, with a new-story action and
 personal stories to resume. Account stories sync on opening when signed in, with
-an explicit sync action for retrying. Completed stories can be reread; generating
-a new chapter from a completed story is not yet supported.
+an explicit sync action for retrying. Completed account-backed chapters offer
+**Continue with a new chapter** outside Archive. Choose a duration and explicitly
+confirm AI processing and a fresh normal creation/response allowance; romance
+boundaries, when present, also need confirmation. No generation happens just by
+opening this option. The server loads the account-owned completed chapter and
+inherits its settings, ending, latest state and three recent actions; client-supplied
+continuity is never trusted. Each chapter is a separate saved story linked to its
+parent and root, so previous chapters remain unchanged and can be reread. Retrying
+the same request reconciles saved progress instead of spending another AI call;
+failed attempts are not automatically retried or refunded. A separately confirmed
+continuation from an older chapter can start another branch. Unfinished/exhausted
+journeys and legacy browser-only saves cannot start a new chapter this way.
+Chapter metadata uses existing JSON storage; no database migration is required.
+Scenes use stable numbers while unfolding, not a growing "Scene 2 of 2" total.
 **Archive** (`/library`) keeps the saved collection and gift management tools.
 Personal entries open a reading-only view of saved scenes, with no response
 submission controls. Starting or continuing personal adventures belongs in

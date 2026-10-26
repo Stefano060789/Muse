@@ -36,6 +36,7 @@ async function main() {
   const removals = []
   let responseGate
   let accountRequest
+  let chapterResponse
   let failureStatus = 503, failureSnapshot
   const browserEvents = new Map()
   let cloudProvider = 'browser', cloudConsent = false
@@ -105,6 +106,10 @@ async function main() {
     module, module.exports, mockRequire, browser, accountRequest = async (_url, options) => {
       const body = JSON.parse(options.body)
       requests.push(body)
+      if (body.action === 'continue' && chapterResponse) {
+        if (chapterResponse.story) loadedStory = chapterResponse.story
+        return { ok: true, json: async () => chapterResponse }
+      }
       if (body.action === 'delete') return { ok: deletionSuccess, json: async () => deletionSuccess ? { deleted: true } : { error: 'Deletion denied' } }
       if (body.action === 'respond' && responseGate) await responseGate
       if (respondSuccessfully) return { ok: true, json: async () => ({
@@ -394,12 +399,65 @@ async function main() {
   assert.deepEqual(Object.keys(keepsake.props.story).sort(), ['creatorName', 'recipientName', 'scenes', 'title'],
     'Keepsakes receive text only, not answers or capabilities')
   assert.ok(!JSON.stringify(keepsake.props.story).includes('test-capability'))
+  loadedStory = { ...loadedStory, journey: {
+    capability: 'parent-capability', revision: 3, maxTurns: 3, duration: 5, status: 'concluded', choiceMode: 'free'
+  } }
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your chapter is complete.'))
+  const parentStory = structuredClone(loadedStory)
+  const beforeChapterForm = requests.length
+  await click('Continue with a new chapter')
+  assert.equal(requests.length, beforeChapterForm, 'Opening the new-chapter form never spends an allowance')
+  assert.equal(find('button', 'Confirm and start next chapter').props.disabled, true)
+  await click('Confirm and start next chapter')
+  assert.equal(requests.length, beforeChapterForm, 'Even an invoked disabled handler refuses generation without consent')
+  const chapterConsent = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('new normal creation'))
+  assert.ok(chapterConsent())
+  chapterConsent().props.onChange(true)
+  await flush()
+  assert.equal(find('button', 'Confirm and start next chapter').props.disabled, false)
+  respondSuccessfully = false
+  failureSnapshot = { status: 'failed', pending: false }
+  await click('Confirm and start next chapter')
+  const failedChapterRequest = requests.findLast(body => body.action === 'continue')
+  assert.ok(failedChapterRequest)
+  assert.notEqual(failedChapterRequest.id, parentStory.id)
+  assert.equal(failedChapterRequest.sourceId, parentStory.id)
+  assert.equal(failedChapterRequest.sourceCapability, parentStory.journey.capability)
+  assert.equal(failedChapterRequest.duration, 5)
+  assert.equal(failedChapterRequest.consentVersion, consentVersion)
+  assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Durable failure releases the pending child, not the parent')
+  assert.deepEqual(loadedStory, parentStory, 'Failed child creation preserves the completed parent')
+  assert.ok(nodes().some(node => node.type === 'h1' && label(node) === parentStory.title))
+  const afterChapterFailure = requests.length
+  await flush()
+  assert.equal(requests.length, afterChapterFailure, 'Failed chapter is not automatically regenerated')
+  chapterResponse = { status: 'done', snapshot: { status: 'active', pending: false }, story: {
+    ...parentStory, id: 'next-chapter', title: 'Beyond the garden', responses: [], currentStep: 0,
+    chapter: { number: 2, rootId: parentStory.id, parentId: parentStory.id, parentTitle: parentStory.title },
+    journey: { ...parentStory.journey, capability: 'child-capability', revision: 0, status: 'active' }
+  } }
+  respondSuccessfully = true
+  failureSnapshot = undefined
+  const confirmChapter = find('button', 'Confirm and start next chapter')
+  confirmChapter.props.onClick()
+  confirmChapter.props.onClick()
+  await flush()
+  assert.equal(requests.filter(body => body.action === 'continue').length, 2, 'Double-click confirmation reserves only one new attempt')
+  assert.ok(nodes().some(node => node.type === 'h1' && label(node) === 'Beyond the garden'))
+  assert.ok(nodes().some(node => node.type === 'button' && label(node) === 'Read previous chapter'))
+  assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Successful child creation clears preparation')
+  assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true, 'Confirmation covers the new chapter responses')
+  loadedStory = parentStory
+  chapterResponse = undefined
   loadedStory = { ...loadedStory, responses: [], currentStep: 0 }
   browser.location = { search: '?read=1' }
   slots.length = 0; effects.length = 0
   const beforeArchiveReading = requests.length
   await flush()
-  assert.equal(requests.length, beforeArchiveReading, 'Reading the archive never generates a legacy continuation')
+  assert.equal(requests.length, beforeArchiveReading + 1, 'An archived account chapter performs only a safe progress restore')
+  assert.equal(requests.at(-1).action, 'resume')
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Archived story'))
   assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Garden'), 'Archive includes every saved scene')
   const modeControl = nodes().find(node => node.type === '../components/StoryModeControl')
@@ -408,11 +466,12 @@ async function main() {
   modeControl.props.onChange('listen')
   await flush()
   assert.ok(nodes().some(node => node.type === '../components/NarrationControls'), 'Listen mode exposes audio settings')
-  assert.equal(requests.length, beforeArchiveReading, 'Changing experience never generates story text or audio')
+  assert.equal(requests.length, beforeArchiveReading + 1, 'Changing experience never generates story text or audio')
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
   await flush()
   assert.ok(!nodes().some(node => node.props['aria-label'] === 'Editable response'), 'Archive hides unfinished-story response controls')
   assert.ok(!nodes().some(node => node.type === '../components/ExplicitConsent'), 'Archive never offers story-generation consent')
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Continue with a new chapter'), 'Even a completed chapter is read-only inside Archive')
   assert.ok(nodes().some(node => node.props.href === '/my-stories'), 'Archive reading points continuation back to My stories')
   browser.location = { search: '?new=1' }
   slots.length = 0; effects.length = 0

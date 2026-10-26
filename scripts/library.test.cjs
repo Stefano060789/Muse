@@ -384,7 +384,7 @@ try {
     try {
       const tree = ui.render(), card = nodes(tree).find(node => node.type === 'article')
       const progress = nodes(card).find(node => node.type === 'p' && textOf(node).includes('In progress'))
-      assert.match(textOf(progress), /In progress · Scene 1 of 1/)
+      assert.equal(textOf(progress), 'In progress · Scene 1')
       assert.doesNotMatch(textOf(progress), /attempt|active|reconcil|status/i)
       assert.match(textOf(nodes(card).find(node => node.type === 'details')), /up to\s+3\s+story steps/)
       assert.ok(textOf(nodes(card).find(node => node.type === 'details')).includes('in this browser'))

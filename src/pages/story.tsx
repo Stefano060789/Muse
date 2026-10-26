@@ -16,7 +16,7 @@ import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact
 import { STORY_LANGUAGES, storyLanguage, type StoryLanguageCode } from '../lib/storyLanguage'
 import RomanceOptions from '../components/RomanceOptions'
 import { requireRomanceConfirmation, romanceCopy, type StoryRomance } from '../lib/storyRomance'
-import { removeLibraryEntry } from '../lib/storyLibrary'
+import { removeLibraryEntry, loadStoryLibrary, selectPersonalStory } from '../lib/storyLibrary'
 import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
@@ -59,6 +59,10 @@ export default function StoryPage() {
   const [rereading, setRereading] = useState(false)
   const [archiveReading, setArchiveReading] = useState(false)
   const [storyMode, setStoryMode] = useState<StoryMode>('read')
+  const [chapterFormOpen, setChapterFormOpen] = useState(false)
+  const [chapterConsent, setChapterConsent] = useState(false)
+  const [chapterDuration, setChapterDuration] = useState(10)
+  const [chapterRomanceConfirmed, setChapterRomanceConfirmed] = useState(false)
   const [answerLoaded, setAnswerLoaded] = useState<string | null>(null)
   const draftWritable = useRef(true)
   const answerWritable = useRef(true)
@@ -137,6 +141,9 @@ export default function StoryPage() {
   useEffect(() => {
     setAnswerLoaded(null)
     setRereading(false)
+    setChapterFormOpen(false)
+    setChapterConsent(false)
+    setChapterRomanceConfirmed(false)
     answerWritable.current = true
     if (!story) return
     try {
@@ -305,6 +312,56 @@ export default function StoryPage() {
   }
 
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status) : story.responses.length >= story.scenes.length))
+  const continueChapter = async () => {
+    if (!story?.journey || story.journey.status !== 'concluded' || archiveReading || requestLock.current || preparation) return
+    if (!hasExplicitConsent(chapterConsent)) {
+      setStoryError('Confirm AI processing and the new chapter allowance before continuing.')
+      return
+    }
+    try { requireRomanceConfirmation(story.romance, chapterRomanceConfirmed) } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Confirm the romance boundaries before continuing.')
+      return
+    }
+    requestLock.current = true
+    setIsGenerating(true); setStoryError(''); setReconciliationBlocked(false)
+    stopSpeaking(); interaction.cancelRecording()
+    try {
+      const saved = {
+        id: crypto.randomUUID(),
+        capability: Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
+      }
+      window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
+      setPreparation(saved)
+      await requestJourney({
+        action: 'continue', ...saved, sourceId: story.id, sourceCapability: story.journey.capability,
+        duration: chapterDuration, consentVersion: MUSE_AI_CONSENT_VERSION,
+        ...(story.romance ? { romanceConfirmed: chapterRomanceConfirmed } : {})
+      })
+      setResponseDraft('')
+      setAiConsent(true)
+      setChapterConsent(false)
+    } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Could not start the next chapter. Your finished chapter is kept.')
+    } finally {
+      requestLock.current = false
+      setIsGenerating(false)
+    }
+  }
+  const openPreviousChapter = () => {
+    if (!story?.chapter) return
+    stopSpeaking()
+    try {
+      const parentId = story.chapter.parentId
+      const result = loadStoryLibrary()
+      if (result.error) throw new Error(result.error)
+      const previous = result.library.entries.find(entry => entry.kind === 'personal' && entry.id === parentId)
+      if (!previous) throw new Error('The previous chapter is not in this browser. Sync account stories in My stories to restore it.')
+      selectPersonalStory(previous.id)
+      window.location.assign('/story?read=1')
+    } catch (error) {
+      setStoryError(error instanceof Error ? error.message : 'Could not open the previous chapter.')
+    }
+  }
 
   const choose = async (choice: string) => {
     if (!story || requestLock.current || finished || archiveReading) return
@@ -506,6 +563,7 @@ export default function StoryPage() {
           ) : (
             <section className="atelier-reading">
               <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
+              {story.chapter ? <p>Chapter {story.chapter.number} <button type="button" onClick={openPreviousChapter}>Read previous chapter</button></p> : null}
               <StoryModeControl mode={storyMode} onChange={mode => { narrator.stop(); stopRecording(); setStoryMode(mode) }} />
               {storyMode === 'listen' ? <details>
                 <summary>Audio settings</summary>
@@ -571,9 +629,26 @@ export default function StoryPage() {
                 <p><Link href="/my-stories">Back to My stories</Link></p>
               </section> : null}
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
-                <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : 'Your story is complete.'}</h2>
+                <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : story.journey ? 'Your chapter is complete.' : 'Your story is complete.'}</h2>
                 <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'Take a moment. You can return to this story whenever you like.'}</p>
                 <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
+                {story.journey?.status === 'concluded' ? <section aria-label="Continue with a new chapter">
+                  <button type="button" disabled={isGenerating || Boolean(preparation)} onClick={() => {
+                    setChapterFormOpen(value => !value); setChapterConsent(false); setChapterRomanceConfirmed(false)
+                    setChapterDuration(story.journey?.duration ?? 10)
+                  }}>{chapterFormOpen ? 'Cancel new chapter' : 'Continue with a new chapter'}</button>
+                  {chapterFormOpen ? <div>
+                    <p>The finished chapter stays saved. Muse will continue its world, discoveries and relationships in a new chapter with its own normal allowance. Nothing is generated until you confirm below.</p>
+                    <label>New chapter length<select aria-label="New chapter length" value={chapterDuration} disabled={isGenerating} onChange={event => { setChapterDuration(Number(event.target.value)); setChapterConsent(false) }}>
+                      {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
+                    </select></label>
+                    <ExplicitConsent checked={chapterConsent} onChange={setChapterConsent}>
+                      Send this chapter&apos;s ending, story settings, saved memories, recent actions and journey state to Muse&apos;s AI provider to create the next chapter. This starts a new normal creation attempt and response allowance; failures consume attempts with no automatic retries or refunds. The completed chapter is unchanged. This consent applies to the new chapter and its responses.
+                    </ExplicitConsent>
+                    {story.romance ? <label><input type="checkbox" checked={chapterRomanceConfirmed} disabled={isGenerating} onChange={event => setChapterRomanceConfirmed(event.target.checked)} />{romanceCopy(story.language).creatorConfirmation}</label> : null}
+                    <button type="button" disabled={!chapterConsent || isGenerating || Boolean(preparation) || Boolean(story.romance && !chapterRomanceConfirmed)} onClick={() => void continueChapter()}>{isGenerating ? 'Starting next chapter...' : 'Confirm and start next chapter'}</button>
+                  </div> : null}
+                </section> : null}
                 <StoryKeepsake story={{ title: story.title, creatorName: 'Muse', recipientName: 'you', scenes: story.scenes }} />
                 <p className="atelier-note">The keepsake includes available story text, not your private answers, personal touches or access links.</p>
                 {rereading ? savedScenes : null}
