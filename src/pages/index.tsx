@@ -94,9 +94,9 @@ export default function Home() {
               </article>
               <article className="atelier-card atelier-creation-choice">
                 <p className="atelier-eyebrow">For someone else</p>
-                <h2>Gift story</h2>
-                <p>Write a story idea, add personal clues and a surprise, then share a private link with someone.</p>
-                <Link href="/shared#new" className="atelier-button atelier-secondary">Create a gift story</Link>
+                <h2>Share a story &amp; play together</h2>
+                <p>Create an interactive story and send someone a private link. To take turns together, choose “Play together” during setup; that option is for sharing one device.</p>
+                <Link href="/shared#new" className="atelier-button atelier-secondary">Create &amp; share a story</Link>
               </article>
             </div>
             <Link href="/demo" className="atelier-sample-link">Try a 2-minute sample</Link>

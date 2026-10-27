@@ -1535,8 +1535,8 @@ export default function SharedStoryPage() {
         ) : (
           <section>
             <p className="atelier-eyebrow">A story to give</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create a gift story for someone else</h1>
-            <p className="atelier-subtitle">This story is for someone else. Write your story idea and setting, add personal clues, then choose a surprise to share by private link.</p>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create and share a story</h1>
+            <p className="atelier-subtitle">Create an interactive story, then send someone its private link so they can play. Want to take turns together? Choose “Play together” in the adventure options; you will share one device.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
