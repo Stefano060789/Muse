@@ -57,10 +57,11 @@ export default function MyStoriesPage() {
       window.removeEventListener('focus', refresh)
     }
   }, [])
-  const open = (entry: PersonalEntry, completed: boolean) => {
+  const open = (entry: PersonalEntry, completed: boolean, action?: 'read' | 'continue') => {
     try {
       selectPersonalStory(entry.id)
-      window.location.assign(completed && entry.story.journey?.status !== 'concluded' ? '/story?read=1' : '/story')
+      window.location.assign(action === 'continue' ? '/story?continue=1'
+        : action === 'read' || (completed && entry.story.journey?.status !== 'concluded') ? '/story?read=1' : '/story')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not open this story.')
     }
@@ -79,15 +80,23 @@ export default function MyStoriesPage() {
           {error ? <p role="alert">{error} <Link href="/account">Check your account</Link>.</p> : null}
           {syncError ? <p role="alert">{syncError} <Link href="/account">Check your account</Link>.</p> : null}
           {!ready ? <p role="status">Loading your stories...</p> : !entries.length ? <p>No personal stories here yet. Start your first adventure above, or sync your account stories.</p> : entries.map(entry => {
+            const journey = entry.story.journey
+            const chapterNumber = journey ? entry.story.chapter?.number ?? 1 : undefined
             const completed = entry.story.journey
               ? ['concluded', 'exhausted'].includes(entry.story.journey.status)
               : entry.story.responses.length >= entry.story.scenes.length ||
                 (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
             return <article className="atelier-card" key={entry.id} style={{ marginTop: '1rem' }}>
               <h3>{entry.story.title}</h3>
-              {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
-              <p>{entry.story.journey?.status === 'exhausted' ? 'Attempt limit reached - available scenes saved' : completed ? 'Completed' : 'In progress'}</p>
-              <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{entry.story.journey?.status === 'concluded' ? 'Read or continue with a new chapter' : completed ? 'Read story' : 'Continue story'}</button>
+              {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `Chapter ${chapterNumber} · Following ${entry.story.chapter.parentTitle}` : `Chapter ${chapterNumber}`}</p> : null}
+              <p>{journey?.status === 'concluded' ? `Chapter ${chapterNumber} · Completed`
+                : journey?.status === 'exhausted' ? `Chapter ${chapterNumber} · Attempt limit reached; saved scenes available`
+                  : journey ? `Chapter ${chapterNumber} · In progress`
+                    : completed ? 'Story completed' : 'In progress'}</p>
+              {journey?.status === 'concluded' ? <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => open(entry, true, 'read')}>Read Chapter {chapterNumber}</button>
+                <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>Continue to Chapter {(chapterNumber ?? 1) + 1}</button>
+              </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? 'Read saved scenes' : completed ? 'Read story' : 'Continue story'}</button>}
             </article>
           })}
         </section>

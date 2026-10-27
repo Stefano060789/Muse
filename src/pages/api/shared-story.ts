@@ -20,6 +20,7 @@ import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRo
 import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } from '../../lib/studioNarration'
 import { PERMANENT_STORY_EXPIRY, publicStoryExpiry } from '../../lib/storyRetention'
 import { matchesRecoveryKey, recoveryKey } from '../../lib/creatorRecovery'
+import { reserveBillingUsage } from '../../lib/billing'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
@@ -27,7 +28,14 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio']
-const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'title', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+const OWNER_ACTIONS = ['library', 'manage', 'progress', 'share', 'title', 'follow-up', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+
+function followUpField(value: unknown, label: string, maximum: number): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > maximum) {
+    throw new SharedStoryError(`${label} is required (maximum ${maximum} characters).`)
+  }
+  return value.trim()
+}
 
 async function storyProgress(db: StoryRepository, story: StoredStory) {
   return {
@@ -164,7 +172,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })))
       return res.status(200).json({ stories, next: page.length > 20 ? page[19].id : null })
     }
-    if (action === 'create' || action === 'adventure' || action === 'studio-generate') requireProviderConsent(body)
+    if (action === 'create' || action === 'adventure' || action === 'studio-generate' || action === 'follow-up') requireProviderConsent(body)
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
@@ -186,6 +194,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await purgeMedia(db, undefined, true)
       }
       if (brief.adventure) await db.adventure({ operation: 'ready', storyId: '', sessionHash: '', playHash: '', cap: adventureGlobalCap() })
+      await reserveBillingUsage(account!.id, `story:${randomUUID()}`, 'story')
       await reserveRequest(db, req, 'generate')
       // Reservations also delete expired stories; remove their queued media objects.
       await purgeMedia(db)
@@ -262,6 +271,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         media: mediaSummary(await db.mediaReady(id)), voice: voiceSummary(voice),
         replies: story.brief.gift ? await db.giftReplies(id) : [],
         mediaRequired: !story.brief.message
+      })
+    }
+    if (action === 'follow-up') {
+      if (!story.brief.gift?.allowReply) throw new SharedStoryError('This gift does not allow recipient replies.', 403)
+      if (typeof body.reply !== 'string' || body.reply.length > 1000 || !body.reply.trim() ||
+          typeof body.replyCreatedAt !== 'string' || !Number.isFinite(Date.parse(body.replyCreatedAt))) {
+        throw new SharedStoryError('Select a saved recipient reply to continue.')
+      }
+      const savedReply = (await db.giftReplies(id)).find(reply =>
+        reply.createdAt === body.replyCreatedAt && reply.message === body.reply)
+      if (!savedReply) throw new SharedStoryError('That reply has changed or is no longer available. Refresh replies and try again.', 409)
+      const direction = followUpField(body.direction, 'Next chapter idea', 600)
+      const goal = followUpField(body.goal, 'What the recipient should discover', 600)
+      const solution = followUpField(body.solution, 'Secret answer', 200)
+      const message = followUpField(body.message, 'Final message', 2000)
+      const nextBrief = parseSharedStoryBrief({
+        ...(story.brief.romance ? { romance: story.brief.romance } : {}),
+        ...(story.brief.language ? { language: story.brief.language } : {}),
+        creatorName: story.brief.creatorName, recipientName: story.brief.recipientName,
+        narration: story.brief.narration, setting: direction, recipientHints: '',
+        goal, solution, answerType: story.brief.answerType, message,
+        durationMinutes: story.brief.durationMinutes,
+        assistanceHints: [], alternativeAnswers: [],
+        ...(story.brief.unlockPolicy ? { unlockPolicy: story.brief.unlockPolicy } : {}),
+        ...(story.brief.adventure ? { adventure: story.brief.adventure } : {}),
+        gift: {
+          ...story.brief.gift,
+          dedication: 'Your reply inspired this next story. I made it for you.'
+        }
+      })
+      requireRomanceConfirmation(nextBrief.romance, body.romanceConfirmed)
+      sharedStoryProviderConfig()
+      await reserveBillingUsage(account!.id, `story:${randomUUID()}`, 'story')
+      await reserveRequest(db, req, 'generate')
+      const lastScene = story.content.scenes[story.content.scenes.length - 1]
+      if (!lastScene) throw new SharedStoryError('The original story has no ending to continue from.', 409)
+      const content = await generateSharedStory(nextBrief, {
+        previousTitle: story.content.title,
+        previousEnding: `${lastScene.title}: ${lastScene.body}`,
+        recipientReply: savedReply.message
+      })
+      const nextId = randomUUID()
+      const ownerKey = secret()
+      const playKey = secret()
+      await db.insert({
+        id: nextId, owner_hash: hash(ownerKey), play_hash: hash(playKey), owner_id: account!.id,
+        brief: nextBrief, content, answer_normalized: normalizeSharedAnswer(nextBrief.solution),
+        alternative_answers_normalized: [], expires_at: PERMANENT_STORY_EXPIRY
+      })
+      await reportOperation('story-created')
+      return res.status(201).json({
+        ownerToken: `${nextId}.${ownerKey}`, playToken: `${nextId}.${playKey}`,
+        brief: nextBrief, content, expiresAt: null, media: null, voice: null, mediaRequired: false
       })
     }
     if (action === 'title') {
@@ -505,6 +567,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const currentView = (await db.adventure(base)).view
         const authoritativeChoices = currentView.turn ? currentView.turn.choices : story.content.scenes[0]?.choices
         const submission = parseAdventureAction(body, story.brief, authoritativeChoices, body.revision !== currentView.revision)
+        if (story.owner_id && submission.revision === currentView.revision) {
+          await reserveBillingUsage(story.owner_id, `interaction:${id}:${submission.fingerprint}`, 'interaction')
+        }
         sharedStoryProviderConfig()
         const reservation = { ...base, ...submission, operation: 'reserve' as const }
         const reserved = await db.adventure(reservation)

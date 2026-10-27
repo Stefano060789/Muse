@@ -49,7 +49,7 @@ export type StoryTemplate = {
 export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
 
 export type PersonalStory = NarrationMetadata & {
-  chapter?: { number: number; rootId: string; parentId: string; parentTitle: string }
+  chapter?: { number: number; rootId: string; parentId?: string; parentTitle?: string }
   romance?: StoryRomance
   language?: StoryLanguageCode
   journey?: JourneySnapshot & { capability: string }

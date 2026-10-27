@@ -42,8 +42,8 @@ function mount(file, dependencies, browser) {
     'next/head': { __esModule: true, default: 'Head' },
     'next/link': { __esModule: true, default: 'Link' },
     '../components/InstallApp': { __esModule: true, default: 'InstallApp' },
-    '../components/HoldToSpeakButton': { __esModule: true, default: 'HoldToSpeakButton' },
-    './HoldToSpeakButton': { __esModule: true, default: 'HoldToSpeakButton' },
+    '../components/DictationButton': { __esModule: true, default: 'DictationButton' },
+    './DictationButton': { __esModule: true, default: 'DictationButton' },
     '../lib/storyLibrary': dependencies.storyLibrary,
     '../lib/profile': dependencies.profile,
     '../lib/useStoryInteraction': dependencies.useStoryInteraction,
@@ -144,13 +144,14 @@ function main() {
       entry('completed', '2026-10-17T00:00:00.000Z', true)
     ])
     const tree = ui.flushEffects()
+    assert.ok(text(tree).includes('Muse turns your memories, interests, and relationships into stories you can keep building together.'))
     assert.ok(text(tree).includes('Story newer-active'))
     assert.ok(text(tree).includes('Scene 2 of 3'))
     assert.equal(button(tree, 'Continue story').props.type, 'button')
     button(tree, 'Continue story').props.onClick()
     assert.deepEqual(ui.selected, ['newer-active'])
     assert.deepEqual(ui.assigned, ['/story'])
-    assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/story?new=1'))
+    assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/my-stories'))
   }
   {
     const ui = homeLibrary([entry('finished', '2026-10-17T00:00:00.000Z', true)])

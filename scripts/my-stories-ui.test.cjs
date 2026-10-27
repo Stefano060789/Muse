@@ -10,13 +10,14 @@ function flatten(node) {
   if (Array.isArray(node)) return node.flatMap(flatten)
   return typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [node]
 }
-const label = node => flatten(node.props?.children).filter(value => typeof value === 'string').join('')
+const label = node => flatten(node.props?.children).filter(value => ['string', 'number'].includes(typeof value)).join('')
 async function mount({ signedIn = false, responseError = '', invalid = false, selectionError = false, cacheError = false } = {}) {
   const state = [], effects = [], requests = [], navigations = [], selections = [], listeners = new Map()
   let cursor = 0, tree
   const entries = [
     { kind: 'personal', id: 'active', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Active story', journey: { status: 'active' } } },
     { kind: 'personal', id: 'done', updatedAt: '2026-10-25T01:00:00Z', story: { title: 'Completed story', journey: { status: 'concluded' } } },
+    { kind: 'personal', id: 'child', updatedAt: '2026-10-24T12:00:00Z', story: { title: 'Next chapter', chapter: { number: 2, rootId: 'done', parentId: 'done', parentTitle: 'Completed story' }, journey: { status: 'active' } } },
     { kind: 'personal', id: 'exhausted', updatedAt: '2026-10-24T01:00:00Z', story: { title: 'Saved scenes', journey: { status: 'exhausted' } } },
     { kind: 'shared', id: 'gift', updatedAt: '2026-10-26T02:00:00Z', story: { title: 'Private gift' } }
   ]
@@ -77,14 +78,16 @@ async function main() {
   assert.ok(hub.nodes().some(node => node.props.href === '/story?new=1'))
   assert.ok(hub.nodes().some(node => node.props.href === '/library'))
   assert.ok(!hub.nodes().some(node => label(node) === 'Private gift'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · In progress'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 2 · In progress'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · Completed'))
+  await hub.click('Continue to Chapter 2')
+  assert.deepEqual(hub.navigations.at(-1), '/story?continue=1', 'A completed chapter exposes a direct next-chapter action')
+  await hub.click('Read Chapter 1')
+  assert.deepEqual(hub.navigations.at(-1), '/story?read=1')
   await hub.click('Continue story')
-  assert.deepEqual(hub.selections, ['active'])
-  assert.deepEqual(hub.navigations, ['/story'])
-  await hub.click('Read or continue with a new chapter')
-  assert.equal(hub.selections.at(-1), 'done')
-  assert.equal(hub.navigations.at(-1), '/story', 'Completed account journeys open the new-chapter action outside Archive')
-  await hub.click('Read story')
-  assert.equal(hub.navigations.at(-1), '/story?read=1')
+  assert.equal(hub.selections.at(-1), 'active')
+  assert.deepEqual(hub.navigations, ['/story?continue=1', '/story?read=1', '/story'])
   const account = await mount({ signedIn: true })
   assert.equal(account.requests.length, 1)
   assert.deepEqual(account.requests[0], { mode: 'journey', action: 'library' })

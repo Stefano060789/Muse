@@ -8,27 +8,24 @@ revisit before making spend decisions.
 
 ## Positioning statement
 
-> **For readers who process life through story, Muse is the daily companion
-> that writes to you in the voice of what you love — personalized to your
-> favorite books, films, and poetry, and gently attuned to your cycle —
-> instead of generic affirmations everyone else gets.**
+> **Muse turns your memories, interests, and relationships into stories you
+> can keep building together.**
 
-Short pitch (App Store / landing page): **"Your daily story, written for
-you."**
+Short pitch (landing page): **"Personal stories that grow with you. Gift
+stories that bring you closer."**
 
-Positioning deliberately leads with **taste-personalization**, not with
-"period app" or "AI wellness companion" — both of those framings drop Muse
-into crowded categories with entrenched incumbents and weak differentiation.
+Lead with ongoing personal meaning and shared experiences, not generic AI
+story generation. Personalization must remain optional, visible and editable;
+the product should not imply that it infers sensitive traits.
 
-## Target audience (v1)
+## Audience to validate
 
-Women, roughly 20–38, who already identify as readers/story-lovers — active
-on Goodreads/StoryGraph/Bookstagram/BookTok, or already journaling — and who
-already pay for at least one wellness or self-improvement subscription.
+Start research with people who already enjoy personalized fiction, journaling,
+audio stories, or meaningful gifts, plus couples/friends who like reflective
+conversation. Treat these as test segments, not a confirmed demographic.
 
-Explicitly not targeted in v1: general "anyone stressed," men, B2B/enterprise
-wellness, or a mass-market "everyone" audience — those are exactly the
-segments Calm/Headspace/Flo already own on brand budget alone.
+Validate who returns to continue stories and who pays for one special gift
+before narrowing the audience or investing in broad acquisition.
 
 ## Competitive landscape (verified against live products)
 
@@ -82,17 +79,26 @@ products offer today.
 
 ## Pricing (v1)
 
-Ship **Free + one paid tier only** — a 3-tier ladder is a v2 optimization
-once real retention data exists.
+Keep a clear free experience, a one-time gift purchase for occasional use,
+and one monthly subscription for recurring story-making. Offer annual only
+after monthly retention and willingness-to-pay are validated.
 
-| Tier | Price (typical range for this category) | Includes |
+| Tier | Proposed price | Includes |
 |---|---|---|
-| **Free** | $0 | Daily text message, tone selector, one voice archetype, no audio |
-| **Paid** | ~$6–8/mo or ~$45–60/yr | + rituals, + audio narration, + cycle-aware tone, + literary citations, + Commonplace Book |
+| **Free** | €0 | Handcrafted sample, receive and finish gifts, and keep existing stories |
+| **Muse Plus trial** | €0 for 30 days | 10 story creations and 120 AI interactions; no card, no automatic charge; starts at account signup |
+| **One-off Long Gift** | €5.99 per gift | One 20-minute, 9-scene shareable gift story; up to 60 live interactions in one playthrough (proposed limit) |
+| **Muse Plus** | €8.99/mo | 10 creations and 120 AI interactions monthly; chapters, selected personal touches, and planned optional puzzles/shared experiences |
+| **Muse Plus Annual** | €89.99/year, later | Same monthly allowance, refreshed monthly; launch only after validation |
 
-Later, once validated: split the paid tier into Plus/Premium per
-[SCOPE.md](SCOPE.md#business-model-summary), and add the printed-keepsake
-one-time purchase and recommendation affiliate revenue as secondary streams.
+Keep browser narration and ambience inside the main experience. Exclude premium
+cloud AI narration until provider costs, usage caps and margin are validated.
+Every recipient should be able to open and finish a gift for free. Do not put
+a story's meaningful ending behind a subscription gate.
+The proposed 60-action Long Gift cap and one-off purchase flow are not yet
+implemented; the current live playthrough limit is 12 actions, and creators
+can configure the story-wide action budget. Do not sell the Long Gift until
+server-side purchase entitlements and limits are implemented.
 
 ## Retention mechanics (why this keeps customers, not just acquires them)
 

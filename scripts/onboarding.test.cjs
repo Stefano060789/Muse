@@ -208,30 +208,35 @@ check('service worker claims scope but does not intercept/cache private requests
   assert.equal(activated, true)
   events.fetch({ request: { url: 'https://muse.example/shared#play=PRIVATE' }, respondWith() { throw new Error('Private requests must remain network-only') } })
 })
-check('Myself restores, dictates, saves locally and surfaces storage errors', () => {
-  let saved = '', receiver, cancelled = 0, stopped = 0, failSave = false, selectedLanguage
+check('Myself restores, dictates, explores topics and saves editable reflections locally', () => {
+  let saved = '', savedReflection, receiver, cancelled = 0, stopped = 0, failSave = false, selectedLanguage
   const touches = component('src/pages/myself.tsx', {
     '../lib/storyPreferences': { loadStoryPreferences: () => ({ language: 'en-US', duration: 10 }) },
     '../lib/profile': {
       loadMuseProfile: () => ({ about: 'I love gardens.', keypoints: ['I love gardens'] }),
-      saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value, keypoints: [value] } }
+      saveMuseProfile(value) { if (failSave) throw new Error('Storage is full'); saved = value; return { about: value, keypoints: [value] } },
+      saveMuseProfileReflection(topic, value) {
+        if (failSave) throw new Error('Storage is full')
+        savedReflection = { topic, value }
+        return { about: `${topic}: ${value}`, keypoints: [`${topic}: ${value}`] }
+      }
     },
     '../lib/useStoryInteraction': { useStoryInteraction(_before, language) {
       selectedLanguage = language
       return { recordingTarget: '', ready: false, error: '',
         dictate(_target, callback) { receiver = callback }, stopRecording() { stopped++ }, cancelRecording() { cancelled++ } }
     } },
-    '../components/HoldToSpeakButton': { __esModule: true, default: 'hold' },
+    '../components/DictationButton': { __esModule: true, default: 'dictation' },
     '../lib/storyLanguage': { STORY_LANGUAGES: [{ code: 'en-US', label: 'English' }, { code: 'ar-SA', label: 'Arabic' }] }
   })
   touches.render()
-  const field = () => touches.nodes().find(node => node.type === 'textarea')
+  const field = () => touches.nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'About yourself')
   assert.equal(field().props.value, 'I love gardens.')
   touches.nodes().find(node => node.type === 'select').props.onChange({ target: { value: 'ar-SA' } })
   touches.render()
   assert.equal(selectedLanguage, 'ar-SA')
-  const hold = touches.nodes().find(node => node.type === 'hold')
-  hold.props.onStart(); receiver('I enjoy walking outdoors.'); hold.props.onStop()
+  const dictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === 'Start dictation')
+  dictation.props.onStart(); receiver('I enjoy walking outdoors.'); dictation.props.onStop()
   touches.render()
   assert.equal(stopped, 1)
   assert.equal(field().props.value, 'I enjoy walking outdoors.')
@@ -250,6 +255,23 @@ check('Myself restores, dictates, saves locally and surfaces storage errors', ()
   touches.render()
   assert.equal(field().props.value, 'Keep this unsaved text.')
   assert.ok(touches.nodes().some(node => node.props.role === 'alert' && text(node) === 'Storage is full'))
+  failSave = false
+  touches.find('button', 'Show me a topic').props.onClick()
+  touches.render()
+  const topic = touches.nodes().find(node => node.props.role === 'status' && text(node))
+  assert.ok(topic && text(topic).length > 0, 'A topic is shown for reflection')
+  const topicAnswer = () => touches.nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your reflection')
+  const reflectionDictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === 'Speak about it')
+  reflectionDictation.props.onStart()
+  receiver('A friend helped me see things differently.')
+  reflectionDictation.props.onStop()
+  touches.render()
+  assert.equal(topicAnswer().props.value, 'A friend helped me see things differently.')
+  touches.find('button', 'Save this reflection to memories').props.onClick()
+  touches.render()
+  assert.equal(savedReflection.topic, text(topic))
+  assert.equal(savedReflection.value, 'A friend helped me see things differently.')
+  assert.ok(touches.nodes().some(node => text(node).includes('editable personal memory')))
   assert.ok(touches.nodes().some(node => node.props.href === '/story?new=1'))
   assert.ok(touches.nodes().some(node => node.type === 'h1' && text(node) === 'Myself'))
 })

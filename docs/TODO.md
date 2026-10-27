@@ -117,21 +117,24 @@ current MVP.
       requirements before public promotion; self-declaration is not age
       verification and prompt instructions are not complete moderation
 - [ ] Validate boundaries and localized notice comprehension with adult testers
-      across all five languages; no explicit-content support promised
+      across all seven languages; no explicit-content support promised
 - [ ] Commit/push and verify hosted romance behavior after local validation;
       JSON metadata requires no new migration
 
 ### Billing preview
 
 - [x] Add a minimal responsive Plans & Billing page linked from home with
-      proposed Free, EUR 3.99 Gift, EUR 8.99 monthly Plus and EUR 89.99 annual
-      Plus (annual planned for later); 10 creations / 120 interactions monthly
-- [x] Clearly disable purchasing and disclose unchanged prototype access,
-      excluded premium narration and existing 30-day server access
-- [ ] Before paid launch, confirm final prices, taxes, cancellation/refund
-      terms, customer identity, payment provider and measured delivery costs
-- [ ] Implement verified checkout/webhooks and atomic server-side allowances
-      before offering purchases; never trust browser storage for entitlements
+      a no-card 30-day trial, proposed EUR 5.99 One-off Long Gift,
+      EUR 8.99 monthly Plus and EUR 89.99 annual Plus (later)
+- [x] Add server-side trial and monthly story/interaction reservation schema,
+      trial status/usage API, Stripe monthly checkout/webhook and limit upsell
+- [ ] Apply `supabase/billing.sql`; configure Stripe secret, monthly price ID,
+      webhook secret and public app URL, then test checkout and subscription
+      lifecycle in Stripe test mode
+- [ ] Implement one-off Long Gift checkout and enforce its proposed 60-action
+      one-playthrough limit before selling or advertising it
+- [ ] Before paid launch, confirm taxes, cancellation/refund terms, customer
+      identity, backups/recovery and measured AI delivery costs
 
 ### Minimal onboarding and app readiness
 
@@ -145,7 +148,8 @@ current MVP.
       the private link, content or recipient progress
 - [x] Add local pre-send scene review, answer/attachment confirmations and
       pending-upload, missing-reveal and expiry guards; no AI preview calls
-- [x] Add explicit English, Mandarin Chinese, Hindi, Spanish and Arabic story
+- [x] Add explicit English, Mandarin Chinese, Hindi, Spanish, Italian,
+      Ukrainian and Arabic story
       languages, language-preserving continuation and localized recipient
       instructions; scope Arabic RTL to story content
 - [x] Pass focused automated checks, TypeScript and production build; browser
@@ -157,7 +161,7 @@ current MVP.
 - [ ] Verify real Android installation and iPhone Add to Home Screen,
       standalone launch and actual device voices/dictation; keep internet
       requirement and browser-local storage limitations visible
-- [ ] Test generated clue quality and naturalness with speakers of all five
+- [ ] Test generated clue quality and naturalness with speakers of all seven
       languages; mocked validation is not multilingual quality certification
 
 ### Gift experience rollout (15 October 2026)

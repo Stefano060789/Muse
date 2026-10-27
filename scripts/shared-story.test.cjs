@@ -16,6 +16,7 @@ async function check(name, run) {
 }
 
 async function main() {
+  process.env.NODE_ENV = 'test'
   process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
@@ -163,6 +164,17 @@ async function main() {
     assert.equal(skipped.canSkip, false)
     assert.equal(skipped.message, brief.message)
     assert.ok(!JSON.stringify(skipped).includes(brief.solution))
+  })
+  await check('pass-and-play turn taking is optional, strictly parsed and generator-directed', async () => {
+    const teamBrief = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 12, turnTaking: true } })
+    assert.deepEqual(teamBrief.adventure, { actionBudget: 12, choiceMode: 'free', turnTaking: true })
+    assert.throws(() => parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 12, turnTaking: 'yes' } }))
+    process.env.LLM_API_KEY = 'test-key'
+    process.env.LLM_PROVIDER = 'GROQ'
+    global.fetch = async (url, options) => providerMock(url, options)
+    assert.deepEqual(await generateSharedStory(teamBrief), content)
+    assert.match(providerRequest.messages[0].content, /pass-and-play story for two people sharing one device/)
+    assert.deepEqual(JSON.parse(providerRequest.messages[1].content), teamBrief)
   })
   await check('generation sends a structured brief to the actual Groq chat API', async () => {
     process.env.LLM_API_KEY = 'test-key'
@@ -317,6 +329,7 @@ async function main() {
   let adventureProgressFailure = false
   const adventureProgressQueries = []
   let state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
+  const followUpReply = { message: 'A voluntary reflection about my grandmother’s garden.', createdAt: '2026-10-15T00:00:00.000Z' }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://muse-test.supabase.co'
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
@@ -360,6 +373,12 @@ async function main() {
       assert.equal(location.searchParams.get('limit'), '1')
       return json([{ current_scene: 1 }])
     }
+    if (location.pathname === '/rest/v1/shared_story_replies') {
+      return json(location.searchParams.get('select') === 'message,created_at'
+        ? [{ message: followUpReply.message, created_at: followUpReply.createdAt }]
+        : [])
+    }
+    if (location.pathname === '/rest/v1/shared_story_voice') return json([])
     if (location.pathname.endsWith('/rpc/reserve_shared_story_request')) return json(allowRequest)
     if (location.pathname.endsWith('/rpc/advance_shared_story')) {
       assert.equal(body.expected_play_hash, stored.play_hash)
@@ -543,6 +562,35 @@ async function main() {
     assert.equal(solved.body.player.solved, true)
     assert.equal(solved.body.player.message, brief.message)
     assert.ok(!JSON.stringify(solved.body).includes(brief.solution))
+  })
+  await check('creator-approved follow-up uses an exact stored reply and fresh consent, without changing the original', async () => {
+    const original = stored
+    stored = { ...stored, brief: { ...stored.brief, gift: { occasion: 'surprise', dedication: '', allowReply: true } } }
+    const payload = {
+      action: 'follow-up', token: created.body.ownerToken,
+      reply: followUpReply.message, replyCreatedAt: followUpReply.createdAt,
+      direction: 'A warm garden mystery', goal: 'Find the next seed packet',
+      solution: 'beneath the stone', message: 'Our garden keeps growing.'
+    }
+    const before = runtimeProviderCalls
+    assert.equal((await api({ ...payload, consentVersion: undefined })).status, 400, 'No follow-up generation without fresh AI consent')
+    assert.equal(runtimeProviderCalls, before)
+    assert.equal((await api({ ...payload, token: created.body.playToken })).status, 404, 'Recipient capability cannot create a follow-up')
+    assert.equal((await api({ ...payload, reply: 'stale reply' })).status, 409, 'Only the reply still stored for this story can be selected')
+    const result = await api(payload)
+    assert.equal(result.status, 201)
+    assert.notEqual(result.body.ownerToken, created.body.ownerToken)
+    assert.notEqual(result.body.playToken, created.body.playToken)
+    assert.equal(result.body.brief.goal, payload.goal)
+    assert.equal(result.body.brief.solution, payload.solution)
+    assert.equal(result.body.brief.message, payload.message)
+    assert.equal(result.body.brief.recipientHints, '', 'Previous private profile hints are not carried forward')
+    const sent = JSON.parse(providerRequest.messages[0].content)
+    assert.equal(sent.followUpContext.recipientReply, followUpReply.message)
+    assert.match(sent.followUpContext.previousEnding, /Discovery 3/)
+    assert.ok(!JSON.stringify(sent).includes(brief.solution), 'The previous secret answer is not forwarded into the follow-up prompt')
+    assert.deepEqual(stored.brief, result.body.brief)
+    stored = original
   })
   await check('recipient cannot delete or replace the creator link', async () => {
     for (const action of ['delete', 'share']) assert.equal((await api({ action, token: created.body.playToken })).status, 404)

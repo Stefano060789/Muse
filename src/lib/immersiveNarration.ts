@@ -41,14 +41,21 @@ export function storySoundscape(text: string, selection: Soundscape): AmbientSou
   if (selection !== 'auto') return selection
   // Match only the text being narrated, never a private brief or future scene.
   const visible = text.toLowerCase()
-  if (/\b(rain(?:ing|fall(?:ing)?|drops?)?|drizzle|rainfall|pioggia|piove|regen|regnet)\b/.test(visible)) return 'rain'
-  if (/\b(ocean|sea|waves?|river|stream|mare|onde|fiume|meer|wellen|fluss)\b/.test(visible)) return 'water'
-  if (/\b(wind|breeze|vento|brezza|brise)\b/.test(visible)) return 'wind'
-  if (/\b(crowd|crowded|bustling|cafe|caf\u00e9|marketplace|folla|mercato|menschenmenge|marktplatz)\b/.test(visible)) return 'crowd'
-  if (/\b(traffic|cars?|street|road|city|traffico|auto|strada|verkehr|stadtverkehr|autos)\b/.test(visible)) return 'traffic'
-  if (/\b(myster(?:y|ious)|suspense|enigma|mister(?:o|iosa?|iosi)|geheimnisvoll|mysteri\u00f6s|r\u00e4tselhaft)\b/.test(visible)) return 'mystery'
-  if (/\b(forest|woods|garden|mountain|meadow|outdoors|leaves|trees|wald|garten|berge|bosco|foresta|giardino)\b/.test(visible)) return 'wind'
-  return 'none'
+  if (/\b(rain(?:ing|fall(?:ing)?|drops?)?|drizzle|rainfall|pioggia|piove|regen|regnet)\b/.test(visible) ||
+      ['дощ', 'дощить', 'дощу', 'дожд', 'बारिश', 'वर्षा'].some(cue => visible.includes(cue))) return 'rain'
+  if (/\b(ocean|sea|waves?|river|stream|mare|onde|fiume|meer|wellen|fluss)\b/.test(visible) ||
+      ['мор', 'хвил', 'річк', 'океан', 'नदी', 'समुद्र', 'लहर'].some(cue => visible.includes(cue))) return 'water'
+  if (/\b(wind|breeze|vento|brezza|brise)\b/.test(visible) ||
+      ['вітер', 'вітрець', 'ветер', 'вітерець', ' हवा', 'हवा'].some(cue => visible.includes(cue.trim()))) return 'wind'
+  if (/\b(crowd|crowded|bustling|cafe|caf\u00e9|marketplace|folla|mercato|menschenmenge|marktplatz)\b/.test(visible) ||
+      ['натовп', 'ринок', 'кафе', 'толп', 'рынок', 'भीड़', 'बाज़ार'].some(cue => visible.includes(cue))) return 'crowd'
+  if (/\b(traffic|cars?|street|road|city|traffico|auto|strada|verkehr|stadtverkehr|autos)\b/.test(visible) ||
+      ['трафік', 'автомобіл', 'вулиц', 'дорог', 'міст', 'трафик', 'дорог', 'улиц', 'यातायात', 'सड़क'].some(cue => visible.includes(cue))) return 'traffic'
+  if (/\b(myster(?:y|ious)|suspense|enigma|mister(?:o|iosa?|iosi)|geheimnisvoll|mysteri\u00f6s|r\u00e4tselhaft)\b/.test(visible) ||
+      ['таємниц', 'загад', ' रहस्य', 'रहस्य'].some(cue => visible.includes(cue.trim()))) return 'mystery'
+  if (/\b(forest|woods|garden|mountain|meadow|outdoors|leaves|trees|wald|garten|berge|bosco|foresta|giardino)\b/.test(visible) ||
+      ['ліс', 'сад', 'гори', 'дерев', 'ліст', 'जंगल', 'बगीचा', 'पेड़'].some(cue => visible.includes(cue))) return 'wind'
+  return 'wind'
 }
 
 const clamp = (number: number, min: number, max: number) => Math.min(max, Math.max(min, number))

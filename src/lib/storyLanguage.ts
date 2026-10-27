@@ -4,6 +4,8 @@ export const STORY_LANGUAGES = [
   { code: 'zh-CN', label: 'Mandarin Chinese · 简体中文', dir: 'ltr' },
   { code: 'hi-IN', label: 'Hindi · हिन्दी', dir: 'ltr' },
   { code: 'es-ES', label: 'Spanish · Español', dir: 'ltr' },
+  { code: 'it-IT', label: 'Italian · Italiano', dir: 'ltr' },
+  { code: 'uk-UA', label: 'Ukrainian · Українська', dir: 'ltr' },
   { code: 'ar-SA', label: 'Arabic · العربية', dir: 'rtl' }
 ] as const
 
@@ -53,7 +55,11 @@ const english = {
   voiceMessage: 'Voice message', finalAnswer: 'Final answer', answerPlaceholder: 'Type your answer…',
   hintsRemaining: 'Hints remaining', actionsRemaining: 'Actions remaining',
   dedication: 'Dedication', keepsake: 'Save keepsake', reportProblem: 'Report a problem',
-  narrationUnavailable: 'A voice for this language may not be installed on your device.'
+  narrationUnavailable: 'A voice for this language may not be installed on your device.',
+  readScene: 'Read this scene', readDescription: 'Show the full text. No audio.',
+  listenScene: 'Listen to this scene', listenDescription: 'Start the voice and follow the words as they appear.',
+  experiencePrompt: 'How would you like to experience this scene?', switchExperience: 'You can switch at any time.',
+  dictateAnswer: 'Dictate your answer', dictateAction: 'Dictate your action', stopDictation: 'Stop and use text'
 }
 type RecipientLabels = { [Key in keyof typeof english]: string }
 const copies: Record<StoryLanguageCode, RecipientLabels> = {
@@ -72,7 +78,11 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     voiceMessage: '语音留言', finalAnswer: '最终答案', answerPlaceholder: '输入你的答案…',
     hintsRemaining: '剩余提示', actionsRemaining: '剩余行动',
     dedication: '赠言', keepsake: '保存纪念', reportProblem: '报告问题',
-    narrationUnavailable: '你的设备可能尚未安装此语言的语音。'
+    narrationUnavailable: '你的设备可能尚未安装此语言的语音。',
+    readScene: '阅读这一幕', readDescription: '显示完整文字，不播放音频。',
+    listenScene: '聆听这一幕', listenDescription: '开始播放语音，并跟随逐渐显示的文字。',
+    experiencePrompt: '你想如何体验这一幕？', switchExperience: '你可以随时切换。',
+    dictateAnswer: '口述答案', dictateAction: '口述行动', stopDictation: '停止并使用文字'
   },
   'hi-IN': {
     gift: 'आपके लिए एक कहानी', openGift: 'अपना उपहार खोलें', openingGift: 'उपहार खुल रहा है…',
@@ -88,7 +98,11 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     voiceMessage: 'आवाज़ वाला संदेश', finalAnswer: 'अंतिम उत्तर', answerPlaceholder: 'अपना उत्तर लिखें…',
     hintsRemaining: 'बाकी संकेत', actionsRemaining: 'बाकी कदम',
     dedication: 'समर्पण', keepsake: 'यादगार सहेजें', reportProblem: 'समस्या बताएँ',
-    narrationUnavailable: 'आपके उपकरण पर इस भाषा की आवाज़ शायद उपलब्ध न हो।'
+    narrationUnavailable: 'आपके उपकरण पर इस भाषा की आवाज़ शायद उपलब्ध न हो।',
+    readScene: 'यह दृश्य पढ़ें', readDescription: 'पूरा पाठ दिखाएँ। ऑडियो नहीं।',
+    listenScene: 'यह दृश्य सुनें', listenDescription: 'आवाज़ शुरू करें और साथ-साथ दिखने वाले शब्द पढ़ें।',
+    experiencePrompt: 'आप इस दृश्य को कैसे देखना चाहेंगे?', switchExperience: 'आप कभी भी बदल सकते हैं।',
+    dictateAnswer: 'अपना उत्तर बोलें', dictateAction: 'अपना कदम बोलें', stopDictation: 'रोकें और पाठ इस्तेमाल करें'
   },
   'es-ES': {
     gift: 'Una historia para ti', openGift: 'Abre tu regalo', openingGift: 'Abriendo tu regalo…',
@@ -104,7 +118,51 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     voiceMessage: 'Mensaje de voz', finalAnswer: 'Respuesta final', answerPlaceholder: 'Escribe tu respuesta…',
     hintsRemaining: 'Pistas restantes', actionsRemaining: 'Acciones restantes',
     dedication: 'Dedicatoria', keepsake: 'Guardar recuerdo', reportProblem: 'Informar de un problema',
-    narrationUnavailable: 'Puede que tu dispositivo no tenga instalada una voz para este idioma.'
+    narrationUnavailable: 'Puede que tu dispositivo no tenga instalada una voz para este idioma.',
+    readScene: 'Leer esta escena', readDescription: 'Mostrar todo el texto. Sin audio.',
+    listenScene: 'Escuchar esta escena', listenDescription: 'Iniciar la voz y seguir las palabras mientras aparecen.',
+    experiencePrompt: '¿Cómo quieres disfrutar de esta escena?', switchExperience: 'Puedes cambiar en cualquier momento.',
+    dictateAnswer: 'Dictar respuesta', dictateAction: 'Dictar acción', stopDictation: 'Detener y usar el texto'
+  },
+  'it-IT': {
+    gift: 'Una storia regalo per te', openGift: 'Apri la tua storia regalo', openingGift: 'Apertura della storia…',
+    from: 'Da', for: 'Per', read: 'Leggi', listen: 'Ascolta', pause: 'Pausa', resume: 'Riprendi',
+    stop: 'Ferma', guess: 'La tua risposta', submitGuess: 'Prova la risposta', next: 'Avanti',
+    hints: 'Indizi', hint: 'Chiedi un indizio', skip: 'Rivela il messaggio', reply: 'Rispondi',
+    sendReply: 'Invia la risposta', replyPlaceholder: 'Scrivi un ringraziamento…', replySent: 'Risposta inviata',
+    start: 'Inizia la storia', continue: 'Continua', back: 'Indietro', close: 'Chiudi',
+    loading: 'Caricamento…', scene: 'Scena', discoveries: 'Scoperte', inventory: 'Oggetti',
+    relationships: 'Relazioni', progress: 'Progressi', action: 'Che cosa fai?',
+    actionPlaceholder: 'Descrivi la prossima azione…', sendAction: 'Continua l’avventura',
+    solved: 'Hai risolto il mistero!', revealed: 'Il tuo messaggio', playVoice: 'Ascolta il messaggio vocale',
+    voiceMessage: 'Messaggio vocale', finalAnswer: 'Risposta finale', answerPlaceholder: 'Scrivi la risposta…',
+    hintsRemaining: 'Indizi rimasti', actionsRemaining: 'Azioni rimaste',
+    dedication: 'Dedica', keepsake: 'Salva ricordo', reportProblem: 'Segnala un problema',
+    narrationUnavailable: 'Potrebbe non essere installata una voce per questa lingua sul dispositivo.',
+    readScene: 'Leggi questa scena', readDescription: 'Mostra tutto il testo, senza audio.',
+    listenScene: 'Ascolta questa scena', listenDescription: 'Avvia la voce e segui le parole mentre appaiono.',
+    experiencePrompt: 'Come vuoi vivere questa scena?', switchExperience: 'Puoi cambiare modalità in qualsiasi momento.',
+    dictateAnswer: 'Detta la risposta', dictateAction: 'Detta la tua azione', stopDictation: 'Ferma e usa il testo'
+  },
+  'uk-UA': {
+    gift: 'Історія-подарунок для тебе', openGift: 'Відкрити історію-подарунок', openingGift: 'Відкриваємо історію…',
+    from: 'Від', for: 'Для', read: 'Читати', listen: 'Слухати', pause: 'Пауза', resume: 'Продовжити',
+    stop: 'Зупинити', guess: 'Твоя відповідь', submitGuess: 'Перевірити відповідь', next: 'Далі',
+    hints: 'Підказки', hint: 'Отримати підказку', skip: 'Відкрити повідомлення', reply: 'Відповісти',
+    sendReply: 'Надіслати відповідь', replyPlaceholder: 'Напиши слова подяки…', replySent: 'Відповідь надіслано',
+    start: 'Почати історію', continue: 'Продовжити', back: 'Назад', close: 'Закрити',
+    loading: 'Завантаження…', scene: 'Сцена', discoveries: 'Знахідки', inventory: 'Речі',
+    relationships: 'Стосунки', progress: 'Прогрес', action: 'Що ти робиш?',
+    actionPlaceholder: 'Опиши наступну дію…', sendAction: 'Продовжити пригоду',
+    solved: 'Ти розгадав таємницю!', revealed: 'Твоє повідомлення', playVoice: 'Прослухати голосове повідомлення',
+    voiceMessage: 'Голосове повідомлення', finalAnswer: 'Остаточна відповідь', answerPlaceholder: 'Введи свою відповідь…',
+    hintsRemaining: 'Залишилося підказок', actionsRemaining: 'Залишилося дій',
+    dedication: 'Присвята', keepsake: 'Зберегти на згадку', reportProblem: 'Повідомити про проблему',
+    narrationUnavailable: 'На твоєму пристрої може не бути встановлено голос для цієї мови.',
+    readScene: 'Читати цю сцену', readDescription: 'Показати весь текст без аудіо.',
+    listenScene: 'Слухати цю сцену', listenDescription: 'Увімкнути озвучення й стежити за словами, що з’являються.',
+    experiencePrompt: 'Як ти хочеш пережити цю сцену?', switchExperience: 'Режим можна змінити будь-коли.',
+    dictateAnswer: 'Продиктувати відповідь', dictateAction: 'Продиктувати дію', stopDictation: 'Зупинити й використати текст'
   },
   'ar-SA': {
     gift: 'قصة من أجلك', openGift: 'افتح هديتك', openingGift: 'جارٍ فتح هديتك…',
@@ -120,7 +178,11 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     voiceMessage: 'رسالة صوتية', finalAnswer: 'الإجابة النهائية', answerPlaceholder: 'اكتب إجابتك…',
     hintsRemaining: 'التلميحات المتبقية', actionsRemaining: 'الخطوات المتبقية',
     dedication: 'إهداء', keepsake: 'احفظ التذكار', reportProblem: 'أبلغ عن مشكلة',
-    narrationUnavailable: 'قد لا يكون صوت لهذه اللغة مثبتًا على جهازك.'
+    narrationUnavailable: 'قد لا يكون صوت لهذه اللغة مثبتًا على جهازك.',
+    readScene: 'اقرأ هذا المشهد', readDescription: 'اعرض النص كاملًا دون صوت.',
+    listenScene: 'استمع إلى هذا المشهد', listenDescription: 'ابدأ الصوت وتابع الكلمات أثناء ظهورها.',
+    experiencePrompt: 'كيف تود الاستمتاع بهذا المشهد؟', switchExperience: 'يمكنك التبديل في أي وقت.',
+    dictateAnswer: 'أملِ إجابتك', dictateAction: 'أملِ خطوتك', stopDictation: 'أوقف واستخدم النص'
   }
 }
 
@@ -180,6 +242,32 @@ const extraCopies: Record<StoryLanguageCode, ExtraLabels> = {
     needHelp: '¿Necesitas un poco de ayuda?', pauseHelp: 'Tómate tu tiempo. No hay cuenta atrás.', hintTitle: 'Pistas', showHint: 'Mostrar una pista',
     hintRemaining: 'Quedan {count}', conclusion: 'El desenlace'
   },
+  'it-IT': {
+    surprise: 'La tua sorpresa', playMessage: 'Ascolta il tuo messaggio', skipConfirm: 'Rivelare il messaggio senza risolvere il mistero? Puoi comunque leggere la storia.',
+    madeForYou: 'Creata apposta per te', forYou: 'Per {name}', from: 'Da {name}', duration: 'Circa {minutes} minuti',
+    openStory: 'Apri la tua storia', noAccount: 'Non serve un account.', storyFrom: 'Una storia di {creator} per {recipient}',
+    tapPlay: 'Quando vuoi ascoltare, premi Riproduci.', skipped: 'Il tuo messaggio è pronto.', voiceTitle: 'Un messaggio vocale per te',
+    reloadVoice: 'Ricarica il messaggio vocale', loadVoice: 'Carica il messaggio vocale', replyPrivacy: 'La tua risposta sarà condivisa in privato con {name}.',
+    replyLabel: 'La tua risposta', updateReply: 'Modifica la risposta', makeStory: 'Crea una storia per qualcuno', scene: 'Scena {number} di {total}',
+    clue: 'Indizio', playScene: 'Ascolta questa scena', tryAnswer: 'Prova la tua risposta', earlier: 'Indizi precedenti', answer: 'La tua risposta finale',
+    guessHelp: 'Usa gli indizi per trovare la risposta esatta.', skipHelp: 'Puoi rivelare il messaggio senza risolvere il mistero.',
+    solveHelp: 'Risolvi il mistero per rivelare il messaggio.', needHelp: 'Ti serve una mano?', pauseHelp: 'Prenditi il tempo che vuoi. Non c’è un conto alla rovescia.',
+    hintTitle: 'Indizi', showHint: 'Mostra un indizio', hintRemaining: '{count} rimasti', conclusion: 'Conclusione'
+  },
+  'uk-UA': {
+    surprise: 'Твій сюрприз', playMessage: 'Прослухати повідомлення', skipConfirm: 'Відкрити повідомлення без розгадки? Історію все одно можна прочитати.',
+    madeForYou: 'Створено спеціально для тебе', forYou: 'Для {name}', from: 'Від {name}', duration: 'Приблизно {minutes} хвилин',
+    openStory: 'Відкрити свою історію', noAccount: 'Обліковий запис не потрібен.', storyFrom: 'Історія від {creator} для {recipient}',
+    tapPlay: 'Натисни «Відтворити», коли будеш готовий слухати.', skipped: 'Твоє повідомлення готове.', voiceTitle: 'Голосове повідомлення для тебе',
+    reloadVoice: 'Завантажити голосове повідомлення ще раз', loadVoice: 'Завантажити голосове повідомлення',
+    replyPrivacy: 'Твоя відповідь буде приватно передана користувачу {name}.', replyLabel: 'Твоя відповідь',
+    updateReply: 'Змінити відповідь', makeStory: 'Створити історію для когось', scene: 'Сцена {number} із {total}',
+    clue: 'Підказка', playScene: 'Слухати цю сцену', tryAnswer: 'Перевірити відповідь', earlier: 'Попередні підказки',
+    answer: 'Твоя остаточна відповідь', guessHelp: 'Знайди точну відповідь за підказками.',
+    skipHelp: 'Можна відкрити повідомлення, не розгадуючи таємницю.', solveHelp: 'Розгадай таємницю, щоб відкрити повідомлення.',
+    needHelp: 'Потрібна допомога?', pauseHelp: 'Не поспішай. Зворотного відліку немає.',
+    hintTitle: 'Підказки', showHint: 'Показати підказку', hintRemaining: 'Залишилося: {count}', conclusion: 'Завершення'
+  },
   'ar-SA': {
     surprise: 'مفاجأتك', playMessage: 'استمع إلى رسالتك', skipConfirm: 'هل تريد كشف الرسالة دون حل اللغز؟ يمكنك متابعة قراءة القصة.',
     madeForYou: 'صُنعت خصيصًا لك', forYou: 'إلى {name}', from: 'من {name}', duration: 'حوالي {minutes} دقيقة',
@@ -205,7 +293,8 @@ const adventureEnglish = {
   loadingStory: 'Opening your private story…', working: 'Working…', noHints: 'The sender has not added any hints.',
   allHints: 'All available hints have been revealed.', hintHelp: 'Hints use no guesses and do not advance the story.',
   reviewAnswer: 'Review before sending. Up to 30 guesses.', dictateAnswer: 'Dictate your answer',
-  stopDictation: 'Stop dictation', listening: 'Listening — speak now.', startingMicrophone: 'Starting microphone — please wait.',
+  stopDictation: 'Stop dictation', finishingDictation: 'Finishing dictation…',
+  listening: 'Listening — speak now.', startingMicrophone: 'Starting microphone — please wait.',
   requestError: 'This request could not complete. Check your connection and try again.',
   actionError: 'This attempt could not complete. Refresh progress before submitting again; no automatic retry is made.',
   voiceError: 'The voice message could not play. Reload it or try your device browser.',
@@ -225,7 +314,7 @@ const adventureCopies: Record<StoryLanguageCode, AdventureLabels> = {
     actionConsent: '我理解此行动将发送给Muse配置的AI提供商以生成下一幕，共享故事将保存在Muse服务器上，直到被删除，不会自动过期。',
     loadingStory: '正在打开你的私人故事…', working: '正在处理…', noHints: '发送者尚未添加提示。',
     allHints: '所有可用提示均已显示。', hintHelp: '提示不占用猜测次数，也不会推进故事。',
-    reviewAnswer: '发送前请检查。最多可猜30次。', dictateAnswer: '口述答案', stopDictation: '停止听写',
+    reviewAnswer: '发送前请检查。最多可猜30次。', dictateAnswer: '口述答案', stopDictation: '停止听写', finishingDictation: '正在完成听写…',
     listening: '正在聆听，请开始说话。', startingMicrophone: '正在启动麦克风，请稍候。',
     requestError: '请求未能完成。请检查网络连接后重试。',
     actionError: '此次尝试未能完成。再次提交前请刷新进度；系统不会自动重试。',
@@ -244,7 +333,8 @@ const adventureCopies: Record<StoryLanguageCode, AdventureLabels> = {
     loadingStory: 'आपकी निजी कहानी खुल रही है…', working: 'काम जारी है…', noHints: 'भेजने वाले ने कोई संकेत नहीं जोड़ा है।',
     allHints: 'सभी उपलब्ध संकेत दिखा दिए गए हैं।', hintHelp: 'संकेत लेने से उत्तर के प्रयास कम नहीं होते और कहानी आगे नहीं बढ़ती।',
     reviewAnswer: 'भेजने से पहले जाँच लें। अधिकतम 30 उत्तर आज़मा सकते हैं।', dictateAnswer: 'अपना उत्तर बोलें',
-    stopDictation: 'बोलकर लिखना रोकें', listening: 'सुन रहे हैं — अब बोलें।', startingMicrophone: 'माइक्रोफ़ोन शुरू हो रहा है — कृपया रुकें।',
+    stopDictation: 'बोलकर लिखना रोकें', finishingDictation: 'बोलकर लिखे शब्द पूरे हो रहे हैं…',
+    listening: 'सुन रहे हैं — अब बोलें।', startingMicrophone: 'माइक्रोफ़ोन शुरू हो रहा है — कृपया रुकें।',
     requestError: 'यह अनुरोध पूरा नहीं हो सका। अपना कनेक्शन जाँचकर फिर कोशिश करें।',
     actionError: 'यह प्रयास पूरा नहीं हो सका। फिर भेजने से पहले प्रगति जाँचें; अपने आप दोबारा प्रयास नहीं किया जाएगा।',
     voiceError: 'आवाज़ वाला संदेश नहीं चल सका। फिर लोड करें या उपकरण के ब्राउज़र में कोशिश करें।',
@@ -263,13 +353,54 @@ const adventureCopies: Record<StoryLanguageCode, AdventureLabels> = {
     loadingStory: 'Abriendo tu historia privada…', working: 'Procesando…', noHints: 'La persona que te la envió no ha añadido pistas.',
     allHints: 'Ya se han mostrado todas las pistas disponibles.', hintHelp: 'Las pistas no consumen respuestas ni hacen avanzar la historia.',
     reviewAnswer: 'Revisa antes de enviar. Hasta 30 respuestas.', dictateAnswer: 'Dictar tu respuesta',
-    stopDictation: 'Detener dictado', listening: 'Escuchando: habla ahora.', startingMicrophone: 'Iniciando micrófono: espera un momento.',
+    stopDictation: 'Detener dictado', finishingDictation: 'Terminando el dictado…',
+    listening: 'Escuchando: habla ahora.', startingMicrophone: 'Iniciando micrófono: espera un momento.',
     requestError: 'No se pudo completar la solicitud. Comprueba tu conexión y vuelve a intentarlo.',
     actionError: 'No se pudo completar este intento. Actualiza el progreso antes de volver a enviar; no hay reintentos automáticos.',
     voiceError: 'No se pudo reproducir el mensaje de voz. Vuelve a cargarlo o prueba el navegador de tu dispositivo.',
     settingsDisclosure: 'Los ajustes opcionales y la información de privacidad se muestran actualmente en inglés.',
     actionsLeft: 'Acciones restantes', sharedBudget: 'Presupuesto compartido de IA',
     helpContact: 'Revisa las pistas anteriores o contacta con quien te envió el enlace en la misma conversación. Muse no envía mensajes al remitente.'
+  },
+  'it-IT': {
+    adventureContinues: 'La tua avventura continua', yourJourney: 'Il tuo viaggio', playAdventure: 'Ascolta l’avventura',
+    submitAction: 'Invia l’azione (usa un tentativo)', refreshAdventure: 'Aggiorna i progressi dell’avventura',
+    pendingAction: 'Elaborazione in corso. I tentativi interrotti scadono entro 90 secondi senza rimborso.',
+    retrySubmission: 'Riprova lo stesso invio / controlla lo stato',
+    actionLimit: 'Hai raggiunto il limite di azioni. Chiedi indizi o prova la risposta finale. Puoi comunque ascoltare.',
+    actionCost: 'Ogni azione usa un tentativo, anche se non riesce. Risposte, indizi e audio del browser non ne usano.',
+    actionConsent: 'Capisco che questa azione viene inviata al provider AI configurato da Muse per generare il turno successivo e che la storia condivisa resta sul server di Muse finché non viene eliminata, senza scadenza automatica.',
+    loadingStory: 'Apertura della tua storia privata…', working: 'Elaborazione…', noHints: 'Il mittente non ha aggiunto indizi.',
+    allHints: 'Sono stati mostrati tutti gli indizi disponibili.', hintHelp: 'Gli indizi non consumano tentativi e non fanno avanzare la storia.',
+    reviewAnswer: 'Controlla prima di inviare. Fino a 30 risposte.', dictateAnswer: 'Detta la risposta', stopDictation: 'Ferma dettatura',
+    finishingDictation: 'Completamento della dettatura…',
+    listening: 'In ascolto: parla ora.', startingMicrophone: 'Avvio del microfono: attendi.',
+    requestError: 'Impossibile completare la richiesta. Controlla la connessione e riprova.',
+    actionError: 'Impossibile completare questo tentativo. Aggiorna i progressi prima di inviare di nuovo; non ci sono nuovi tentativi automatici.',
+    voiceError: 'Impossibile riprodurre il messaggio vocale. Ricaricalo o prova il browser del dispositivo.',
+    settingsDisclosure: 'Le impostazioni facoltative e le informazioni sulla privacy sono attualmente in inglese.',
+    actionsLeft: 'Azioni rimaste', sharedBudget: 'Budget AI condiviso',
+    helpContact: 'Rileggi gli indizi precedenti o contatta il mittente nella conversazione in cui ha inviato il link. Muse non invia messaggi al mittente.'
+  },
+  'uk-UA': {
+    adventureContinues: 'Пригода триває', yourJourney: 'Твоя подорож', playAdventure: 'Слухати пригоду',
+    submitAction: 'Надіслати дію (використовує одну спробу)', refreshAdventure: 'Оновити прогрес пригоди',
+    pendingAction: 'Обробка триває. Перервані спроби завершуються протягом 90 секунд без повернення.',
+    retrySubmission: 'Повторити ту саму дію / перевірити стан',
+    actionLimit: 'Досягнуто ліміту дій. Скористайся підказками або спробуй остаточну відповідь. Слухати все ще можна.',
+    actionCost: 'Кожна дія використовує одну спробу, навіть якщо не вдається. Відповіді, підказки й аудіо браузера спроб не використовують.',
+    actionConsent: 'Я розумію, що цю дію буде надіслано налаштованому в Muse постачальнику ШІ для створення наступного ходу, а спільна історія зберігатиметься на сервері Muse до видалення без автоматичного завершення строку зберігання.',
+    loadingStory: 'Відкриваємо приватну історію…', working: 'Обробка…', noHints: 'Відправник не додав підказок.',
+    allHints: 'Усі доступні підказки вже відкрито.', hintHelp: 'Підказки не витрачають спроб і не просувають історію.',
+    reviewAnswer: 'Перевір перед надсиланням. До 30 відповідей.', dictateAnswer: 'Продиктувати відповідь', stopDictation: 'Зупинити диктування',
+    finishingDictation: 'Завершення диктування…',
+    listening: 'Слухаю — говори.', startingMicrophone: 'Запускаю мікрофон — зачекай.',
+    requestError: 'Не вдалося виконати запит. Перевір з’єднання й повтори спробу.',
+    actionError: 'Не вдалося виконати цю спробу. Перед повторним надсиланням онови прогрес; автоматичних повторів немає.',
+    voiceError: 'Не вдалося відтворити голосове повідомлення. Завантаж його ще раз або спробуй браузер на пристрої.',
+    settingsDisclosure: 'Додаткові налаштування та інформація про приватність наразі показуються англійською.',
+    actionsLeft: 'Залишилося дій', sharedBudget: 'Спільний ліміт ШІ',
+    helpContact: 'Переглянь попередні підказки або зв’яжися з відправником у розмові, де отримав посилання. Muse не надсилає повідомлень відправнику.'
   },
   'ar-SA': {
     adventureContinues: 'مغامرتك مستمرة', yourJourney: 'رحلتك', playAdventure: 'استمع إلى المغامرة',
@@ -282,6 +413,7 @@ const adventureCopies: Record<StoryLanguageCode, AdventureLabels> = {
     loadingStory: 'جارٍ فتح قصتك الخاصة…', working: 'جارٍ العمل…', noHints: 'لم يضف المرسل أي تلميحات.',
     allHints: 'تم عرض جميع التلميحات المتاحة.', hintHelp: 'لا تستهلك التلميحات محاولات الإجابة ولا تقدم القصة.',
     reviewAnswer: 'راجع قبل الإرسال. حتى 30 محاولة إجابة.', dictateAnswer: 'أملِ إجابتك', stopDictation: 'أوقف الإملاء',
+    finishingDictation: 'جارٍ إنهاء الإملاء…',
     listening: 'جارٍ الاستماع — تحدث الآن.', startingMicrophone: 'جارٍ تشغيل الميكروفون — يرجى الانتظار.',
     requestError: 'تعذر إكمال الطلب. تحقق من اتصالك وحاول مجددًا.',
     actionError: 'تعذر إكمال هذه المحاولة. حدّث التقدم قبل الإرسال مجددًا؛ لا توجد إعادة محاولة تلقائية.',
@@ -326,6 +458,24 @@ const supplementaryCopies: Record<StoryLanguageCode, SupplementaryLabels> = {
     revealLoading: 'Cargando tu sorpresa…', revealError: 'No se pudo cargar tu sorpresa.',
     retry: 'Volver a intentarlo', surprisePhoto: 'La foto sorpresa del remitente', surpriseVideo: 'El vídeo sorpresa del remitente',
     feedbackSolved: 'Lo has resuelto.', feedbackWrong: 'Todavía no. Explora las pistas y vuelve a intentarlo.', feedbackSkipped: 'Revelado sin resolver el misterio', dictateAction: 'Dictar acción'
+  },
+  'it-IT': {
+    contactSender: 'Rileggi gli indizi precedenti o contatta {name} nella conversazione in cui ti ha inviato il link. Muse non invia messaggi al mittente.',
+    adventureBudget: 'Azioni rimaste: {actionsRemaining}/12. Budget AI condiviso: {budgetRemaining}/{budget}.',
+    noBudget: 'Il budget AI condiviso è esaurito. Puoi ancora chiedere indizi o provare la risposta finale.',
+    revealLoading: 'Caricamento della sorpresa…', revealError: 'Impossibile caricare la sorpresa.',
+    retry: 'Riprova', surprisePhoto: 'La foto sorpresa del mittente', surpriseVideo: 'Il video sorpresa del mittente',
+    feedbackSolved: 'Hai risolto il mistero.', feedbackWrong: 'Non è ancora giusto. Esplora gli indizi e riprova.',
+    feedbackSkipped: 'Messaggio rivelato senza risolvere', dictateAction: 'Detta l’azione'
+  },
+  'uk-UA': {
+    contactSender: 'Переглянь попередні підказки або зв’яжися з {name} у розмові, де отримав посилання. Muse не надсилає повідомлень відправнику.',
+    adventureBudget: 'Залишилося дій: {actionsRemaining}/12. Спільний ліміт ШІ: {budgetRemaining}/{budget}.',
+    noBudget: 'Спільний ліміт ШІ вичерпано. Ти все ще можеш скористатися підказками або спробувати остаточну відповідь.',
+    revealLoading: 'Завантаження сюрпризу…', revealError: 'Не вдалося завантажити сюрприз.',
+    retry: 'Спробувати ще раз', surprisePhoto: 'Фото-сюрприз відправника', surpriseVideo: 'Відео-сюрприз відправника',
+    feedbackSolved: 'Ти розгадав таємницю.', feedbackWrong: 'Ще не правильно. Досліди підказки й спробуй знову.',
+    feedbackSkipped: 'Повідомлення відкрито без розгадки', dictateAction: 'Продиктувати дію'
   },
   'ar-SA': {
     contactSender: 'راجع الأدلة السابقة أو تواصل مع {name} في المحادثة التي أرسل فيها الرابط. لا يرسل Muse رسائل إلى المرسل.',

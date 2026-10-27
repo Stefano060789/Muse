@@ -9,6 +9,7 @@ import { adventureGlobalCap } from '../../lib/sharedAdventure'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
 import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
+import { reserveBillingUsage } from '../../lib/billing'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
   parseJourneyAction, parseJourneyClosingAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
@@ -97,6 +98,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (reserved.status !== 'reserved') return res.status(200).json(publicJourney(reserved, capability))
       try {
         storyProviderConfig()
+        await reserveBillingUsage(account.id,
+          operation.operation === 'create' ? `story:${operation.id}` : `interaction:${operation.id}:${operation.requestId}`,
+          operation.operation === 'create' ? 'story' : 'interaction')
         if (operation.operation === 'create') await reserveStoryRequest(db, req, 'generate')
         const generated = operation.operation === 'create'
           ? { opening: await generateJourneyOpening(reserved.record.input) }
@@ -124,6 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const input = parsePersonalStoryRequest(req.body)
     storyProviderConfig()
+    await reserveBillingUsage(account.id, `story:${randomBytes(16).toString('hex')}`, 'story')
     await reserveStoryRequest(storyDatabase(), req, 'generate')
     const story = await generatePersonalStory(input)
     await reportOperation('story-created')

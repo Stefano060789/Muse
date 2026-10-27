@@ -66,8 +66,8 @@ async function main() {
     assert.match(request.messages[0].content, new RegExp(`authoritative story language.*${code}`))
     assert.match(request.messages[0].content, /choice.*state metadata/)
   }
-  await check('browser-safe catalog has all five complete recipient label sets and scoped Arabic direction', () => {
-    assert.deepEqual(codes, ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'ar-SA'])
+  await check('browser-safe catalog has all seven complete recipient label sets and scoped Arabic direction', () => {
+    assert.deepEqual(codes, ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'it-IT', 'uk-UA', 'ar-SA'])
     assert.equal(language.storyLanguage().code, 'en-US')
     assert.equal(language.storyLanguage('ar-SA').dir, 'rtl')
     const keys = Object.keys(language.recipientCopy()).sort()
@@ -76,7 +76,9 @@ async function main() {
       'next', 'needHelp', 'hint', 'skip', 'solved', 'skipped', 'surprise', 'reply', 'replyLabel',
       'sendReply', 'updateReply', 'replySent', 'makeStory', 'clue', 'earlier', 'playScene',
       'playMessage', 'loadVoice', 'reloadVoice', 'voiceTitle', 'pauseHelp', 'skipHelp',
-      'solveHelp', 'guessHelp', 'hintTitle', 'showHint', 'skipConfirm', 'dictateAction'
+      'solveHelp', 'guessHelp', 'hintTitle', 'showHint', 'skipConfirm', 'dictateAction',
+      'readScene', 'readDescription', 'listenScene', 'listenDescription', 'experiencePrompt',
+      'switchExperience', 'dictateAnswer', 'stopDictation'
     ]
     for (const code of codes) {
       const copy = language.recipientCopy(code)
@@ -128,7 +130,7 @@ async function main() {
       assert.equal(shared.sharedStoryPlayerView({ ...brief, language: code }, sharedContent(code), state, unknown).feedback, unknown)
     }
   })
-  await check('all five shared and legacy personal languages persist and appear in one-call prompts', async () => {
+  await check('all seven shared and legacy personal languages persist and appear in one-call prompts', async () => {
     for (const code of codes) {
       const parsed = shared.parseSharedStoryBrief({ ...brief, language: code })
       response = sharedContent(code)
@@ -276,7 +278,7 @@ async function main() {
       const continued = await api({ ...saved, action: 'respond', revision: 0, requestId: randomUUID(), text: 'Use English now', language: 'en-US' })
       assert.equal(continued.statusCode, 200, JSON.stringify(continued.body))
       assert.equal(continued.body.story.language, code)
-      const sceneTitles = { 'en-US': 'Scene 2', 'zh-CN': '场景 2', 'hi-IN': 'दृश्य 2', 'es-ES': 'Escena 2', 'ar-SA': 'المشهد 2' }
+      const sceneTitles = { 'en-US': 'Scene 2', 'zh-CN': '场景 2', 'hi-IN': 'दृश्य 2', 'es-ES': 'Escena 2', 'it-IT': 'Scena 2', 'uk-UA': 'Сцена 2', 'ar-SA': 'المشهد 2' }
       assert.equal(continued.body.story.scenes[1].title, sceneTitles[code], 'Unfolding scenes have a localized stable number without a changing total')
       promptIncludes(code)
       assert.equal(JSON.parse(request.messages[1].content).language, code)

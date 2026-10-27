@@ -8,7 +8,8 @@ import NarrationControls, { NarrationButton } from '../components/NarrationContr
 import ReadAlongText from '../components/ReadAlongText'
 import StoryModeControl, { type StoryMode } from '../components/StoryModeControl'
 import StoryPassage from '../components/StoryPassage'
-import HoldToSpeakButton from '../components/HoldToSpeakButton'
+import DictationButton from '../components/DictationButton'
+import { recipientCopy } from '../lib/storyLanguage'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
@@ -96,6 +97,7 @@ export default function StoryPage() {
   useEffect(() => {
     try {
       setArchiveReading(new URLSearchParams(window.location?.search || '').get('read') === '1')
+      setChapterFormOpen(new URLSearchParams(window.location?.search || '').get('continue') === '1')
       setStory(new URLSearchParams(window.location?.search || '').get('new') === '1' ? null : loadPersonalStory())
       const profile = loadMuseProfile()
       setProfileReady(Boolean(profile))
@@ -519,7 +521,7 @@ export default function StoryPage() {
       <Head><title>{story ? 'Muse - Your story' : 'Muse - Create a story'}</title><meta name="description" content="A personalized interactive story shaped by what you need today." /></Head>
       <main className="atelier-page">
         <div className="atelier-shell atelier-shell--narrow">
-          {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}</p> : null}
+          {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {draftError ? <p role="alert">{draftError}</p> : null}
           {draftNotice && (!story || responseDraft) ? <p role="status">{draftNotice}</p> : null}
@@ -576,10 +578,10 @@ export default function StoryPage() {
                 <label>What should Muse remember?
                   <textarea aria-label="Personal touches" value={profileDraft} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setProfileDraft(event.target.value) }} maxLength={4000} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit' }} />
                 </label>
-                <HoldToSpeakButton label="Hold to speak personal touches" recording={interaction.recordingTarget === 'profile'}
+                <DictationButton label="Dictate personal touches" stopLabel="Stop and use text" stoppingLabel="Finishing dictation…" recording={interaction.recordingTarget === 'profile' || interaction.stoppingTarget === 'profile'} stopping={interaction.stoppingTarget === 'profile'} disabled={creationStep !== 1 || isGenerating || Boolean(preparation) || Boolean(interaction.stoppingTarget)}
                   onStart={() => interaction.dictate('profile', value => setProfileDraft(value.slice(0, 4000)))}
-                  onStop={() => stopRecording('profile')} disabled={creationStep !== 1 || isGenerating || Boolean(preparation)} />
-                <p className="atelier-note">Voice input may use an online speech service. Release to finish, then edit before saving.</p>
+                  onStop={() => stopRecording('profile')} />
+                <p className="atelier-note">Voice input may use an online speech service. Tap Stop to finish, then edit before saving.</p>
                 <button type="button" disabled={!profileDraft.trim() || isGenerating} onClick={savePersonalTouches}>Save personal touches</button>
                 {profileReady ? <label style={{ display: 'block', marginTop: '1rem' }}><input type="checkbox" checked={useProfile} disabled={isGenerating} onChange={(event) => { setUseProfile(event.target.checked); setAiConsent(false) }} /> Include my latest five saved memories in this story</label> : null}
               </details>
@@ -612,8 +614,9 @@ export default function StoryPage() {
           ) : (
             <section className="atelier-reading">
               <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
-              {story.chapter ? <p>Chapter {story.chapter.number} <button type="button" onClick={openPreviousChapter}>Read previous chapter</button></p> : null}
-              <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
+              {story.journey ? <p>{story.chapter?.parentTitle ? `Chapter ${story.chapter.number} · Following ${story.chapter.parentTitle}` : `Chapter ${story.chapter?.number ?? 1}`}
+                {story.chapter?.parentId ? <> <button type="button" onClick={openPreviousChapter}>Read previous chapter</button></> : null}</p> : story.chapter ? <p>Chapter {story.chapter.number} <button type="button" onClick={openPreviousChapter}>Read previous chapter</button></p> : null}
+              <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientCopy(story.language)} language={story.language ?? 'en'} direction={story.language ? storyLanguage(story.language).dir : 'ltr'} />
               {storyMode === 'listen' ? <details>
                 <summary>Audio settings</summary>
                 <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
@@ -666,7 +669,7 @@ export default function StoryPage() {
                 </label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? 'Muse is writing the next scene...' : 'Continue with my answer →'}</button>
-                  <HoldToSpeakButton label="Hold to speak your answer" releaseLabel="Release to stop" recording={isRecording} onStart={startDictation} onStop={() => stopRecording('response')} disabled={isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
+                  <DictationButton label="Dictate your answer" stopLabel="Stop and use answer" stoppingLabel="Finishing dictation…" recording={isRecording || interaction.stoppingTarget === 'response'} stopping={interaction.stoppingTarget === 'response'} onStart={startDictation} onStop={() => stopRecording('response')} disabled={isGenerating || finished || Boolean(interaction.stoppingTarget) || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
                 </div>
                 {isRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
                 {isRecording ? <button type="button" onClick={() => interaction.cancelRecording()}>Stop microphone and type</button> : null}
@@ -686,16 +689,17 @@ export default function StoryPage() {
                 <p><Link href="/my-stories">Back to My stories</Link></p>
               </section> : null}
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
-                <h2>{story.journey?.status === 'exhausted' ? 'Your saved story' : story.journey ? 'Your chapter is complete.' : 'Your story is complete.'}</h2>
+                <h2>{story.journey?.status === 'exhausted' ? `Chapter ${story.chapter?.number ?? 1} · saved scenes`
+                  : story.journey ? `Chapter ${story.chapter?.number ?? 1} complete` : 'Your story is complete.'}</h2>
                 <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'The closing scene is saved above. Choose Read this scene or Listen to this scene to experience the ending. No further answer is needed.'}</p>
                 <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
                 {story.journey?.status === 'concluded' ? <section aria-label="Continue with a new chapter">
                   <button type="button" disabled={isGenerating || Boolean(preparation)} onClick={() => {
                     setChapterFormOpen(value => !value); setChapterConsent(false); setChapterRomanceConfirmed(false)
                     setChapterDuration(story.journey?.duration ?? 10)
-                  }}>{chapterFormOpen ? 'Cancel new chapter' : 'Continue with a new chapter'}</button>
+                  }}>{chapterFormOpen ? 'Cancel' : `Continue to Chapter ${(story.chapter?.number ?? 1) + 1}`}</button>
                   {chapterFormOpen ? <div>
-                    <p>The finished chapter stays saved. Muse will continue its world, discoveries and relationships in a new chapter with its own normal allowance. Nothing is generated until you confirm below.</p>
+                    <p>Chapter {story.chapter?.number ?? 1} stays completed and saved. Muse will continue its world, discoveries and relationships in Chapter {(story.chapter?.number ?? 1) + 1}, with a new normal allowance. Nothing is generated until you confirm below.</p>
                     <label>New chapter length<select aria-label="New chapter length" value={chapterDuration} disabled={isGenerating} onChange={event => { setChapterDuration(Number(event.target.value)); setChapterConsent(false) }}>
                       {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
                     </select></label>

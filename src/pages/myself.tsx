@@ -1,21 +1,35 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { forgetMuseProfile, loadMuseProfile, replaceMuseProfileKeypoints, saveMuseProfile, type MuseProfile } from '../lib/profile'
+import { forgetMuseProfile, loadMuseProfile, replaceMuseProfileKeypoints, saveMuseProfile, saveMuseProfileReflection, type MuseProfile } from '../lib/profile'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
-import HoldToSpeakButton from '../components/HoldToSpeakButton'
+import DictationButton from '../components/DictationButton'
 import { STORY_LANGUAGES, type StoryLanguageCode } from '../lib/storyLanguage'
 import { loadStoryPreferences } from '../lib/storyPreferences'
+
+const DISCOVERY_TOPICS = [
+  'A small tradition that feels like home',
+  'A time someone helped you see things differently',
+  'Something you loved doing as a child',
+  'A place that brings back a vivid memory',
+  'A moment you felt proud of yourself',
+  'A belief or value you have changed your mind about',
+  'A kind gesture you still remember',
+  'Something you hope to experience one day'
+]
 
 export default function MyselfPage() {
   const [about, setAbout] = useState('')
   const [keypoints, setKeypoints] = useState<string[]>([])
+  const [topic, setTopic] = useState('')
+  const [reflection, setReflection] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<string[]>([])
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const interaction = useStoryInteraction(undefined, language)
-  const isRecording = Boolean(interaction.recordingTarget)
+  const isAboutRecording = interaction.recordingTarget === 'about'
+  const isTopicRecording = interaction.recordingTarget === 'topic'
 
   useEffect(() => {
     try {
@@ -55,6 +69,29 @@ export default function MyselfPage() {
     }
   }
 
+  const showTopic = () => {
+    const options = DISCOVERY_TOPICS.filter(option => option !== topic)
+    setTopic(options[Math.floor(Math.random() * options.length)])
+    setReflection('')
+    setMessage('')
+    setError('')
+    interaction.cancelRecording()
+  }
+
+  const saveReflection = () => {
+    interaction.cancelRecording()
+    setError('')
+    setMessage('')
+    try {
+      const profile = saveMuseProfileReflection(topic, reflection)
+      applyProfile(profile)
+      setReflection('')
+      setMessage('Your reflection was saved as an editable personal memory in this browser.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not save this reflection. Your existing memories are unchanged.')
+    }
+  }
+
   const changeMemory = (index: number, remove = false) => {
     setError('')
     setMessage('')
@@ -79,6 +116,8 @@ export default function MyselfPage() {
       setAbout('')
       setKeypoints([])
       setDrafts([])
+      setTopic('')
+      setReflection('')
       setMessage('All profile memories were removed from this browser. Existing stories were not changed.')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not remove your memories.')
@@ -112,12 +151,28 @@ export default function MyselfPage() {
             <p className="atelier-note">Speaking may use an online speech service. Review the text before saving.</p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
               <button onClick={save} disabled={!about.trim()} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>Save personal touches</button>
-              <HoldToSpeakButton recording={isRecording} label="Hold to speak about yourself" releaseLabel="Release to stop" onStart={() => { setMessage(''); interaction.dictate('about', value => setAbout(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
+              <DictationButton recording={isAboutRecording} stopping={interaction.stoppingTarget === 'about'} stoppingLabel="Finishing dictation…" disabled={Boolean(interaction.stoppingTarget)} label="Start dictation" stopLabel="Stop and use transcript" onStart={() => { setMessage(''); interaction.dictate('about', value => setAbout(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isAboutRecording ? '#a14329' : undefined, color: isAboutRecording ? '#fffaf6' : undefined }} />
+            </div>
+            <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid #d9cfc5' }}>
+              <h2 style={{ marginTop: 0 }}>Explore a topic</h2>
+              <p>Choose a gentle conversation prompt, then write or speak about your own experience.</p>
+              <button type="button" onClick={showTopic}>Show me a topic</button>
+              {topic ? <>
+                <p role="status" style={{ fontWeight: 700, lineHeight: 1.6 }}>{topic}</p>
+                <label style={{ display: 'block', fontWeight: 700 }}>Your reflection
+                  <textarea aria-label="Your reflection" value={reflection} maxLength={4000} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setReflection(event.target.value) }} rows={4} placeholder="Take your time. Share only what you want to remember." style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.7rem', padding: '1rem', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
+                </label>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                  <button type="button" onClick={saveReflection} disabled={!reflection.trim()}>Save this reflection to memories</button>
+                  <DictationButton recording={isTopicRecording} stopping={interaction.stoppingTarget === 'topic'} stoppingLabel="Finishing dictation…" disabled={Boolean(interaction.stoppingTarget)} label="Speak about it" stopLabel="Stop and use transcript" onStart={() => { setMessage(''); interaction.dictate('topic', value => setReflection(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('topic')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isTopicRecording ? '#a14329' : undefined, color: isTopicRecording ? '#fffaf6' : undefined }} />
+                </div>
+                <p className="atelier-note">Saved reflections become short, editable memories tagged with this topic. They stay in this browser and are only sent with your consent when you create a personal story.</p>
+              </> : null}
             </div>
             {message ? <p role="status" style={{ lineHeight: 1.6, marginBottom: 0 }}>{message}</p> : null}
             {error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{error}</p> : null}
             {interaction.error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{interaction.error}</p> : null}
-            {isRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
+            {isAboutRecording || isTopicRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
           </section>
           <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
             <h2 style={{ marginTop: 0 }}>Your memories</h2>

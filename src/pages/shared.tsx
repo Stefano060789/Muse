@@ -7,7 +7,7 @@ import { SHARED_STORY_DURATIONS, type SharedStoryBrief, type SharedStoryPlayer }
 import { latestCreatorStory, loadStoryLibrary, removeLibraryEntry, saveLibraryCreatorStory, type CreatorStory } from '../lib/storyLibrary'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import MicrophoneCheck from '../components/MicrophoneCheck'
-import HoldToSpeakButton from '../components/HoldToSpeakButton'
+import DictationButton from '../components/DictationButton'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
@@ -229,6 +229,13 @@ export default function SharedStoryPage() {
   const [voiceUploading, setVoiceUploading] = useState(false)
   const [voiceRecording, setVoiceRecording] = useState(false)
   const [replies, setReplies] = useState<GiftReply[]>([])
+  const [followUpReply, setFollowUpReply] = useState<GiftReply | null>(null)
+  const [followUpDirection, setFollowUpDirection] = useState('')
+  const [followUpGoal, setFollowUpGoal] = useState('')
+  const [followUpSolution, setFollowUpSolution] = useState('')
+  const [followUpMessage, setFollowUpMessage] = useState('')
+  const [followUpConsent, setFollowUpConsent] = useState(false)
+  const [followUpRomanceConfirmed, setFollowUpRomanceConfirmed] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [replySent, setReplySent] = useState(false)
   const [giftOpened, setGiftOpened] = useState(false)
@@ -797,7 +804,35 @@ export default function SharedStoryPage() {
       finally { setBusy(false) }
     }
 
-  const loadRevealMedia = useCallback(async (kind: SharedMediaKind) => {
+    const createFollowUpStory = async () => {
+      if (!creator || !followUpReply || !hasExplicitConsent(followUpConsent)) return
+      setBusy(true); setError(''); setNotice('')
+      try {
+        const { media: _media, mediaRequired: _required, voice: _voice, replies: _replies, ...story } =
+          await request<CreatorStory & MediaState & GiftState>({
+            action: 'follow-up', token: creator.ownerToken,
+            reply: followUpReply.message, replyCreatedAt: followUpReply.createdAt,
+            direction: followUpDirection, goal: followUpGoal, solution: followUpSolution,
+            message: followUpMessage, consentVersion: MUSE_AI_CONSENT_VERSION,
+            ...(creator.brief.romance ? { romanceConfirmed: followUpRomanceConfirmed } : {})
+          })
+        setBrief(story.brief)
+        setAssistanceHintsText('')
+        setAlternativeAnswersText('')
+        setOwnerMedia(null); setOwnerVoice(null); setVoiceUrl('')
+        setReplies([])
+        setFollowUpReply(null); setFollowUpConsent(false)
+        setFollowUpRomanceConfirmed(false)
+        setCreatorStep(0); setSendReady('')
+        storeCreator(story)
+        window.history.replaceState(null, '', `/shared#manage=${story.ownerToken}`)
+        setNotice('Follow-up story prepared. Review its clues and recipient experience before sharing.')
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Could not create the follow-up story. The original gift and recipient reply remain unchanged.')
+      } finally { setBusy(false) }
+    }
+
+    const loadRevealMedia = useCallback(async (kind: SharedMediaKind) => {
     setRevealMedia(current => current?.url ? current : { kind, state: 'loading' })
     try {
       const result = await requestMedia({ action: 'media', token: playToken, sessionToken, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
@@ -1020,10 +1055,10 @@ export default function SharedStoryPage() {
   const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | 'answerType' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
-      {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onChange={event => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
-        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onChange={(event) => { updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={Math.max(key === 'setting' || key === 'message' ? 4 : 2, Math.ceil(placeholder.length / 24))} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
-      <HoldToSpeakButton label={`Hold to dictate ${label}`} releaseLabel={`Release to stop ${label}`} recording={interaction.recordingTarget === key} disabled={busy} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
-      {interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
+      {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
+        <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={Math.max(key === 'setting' || key === 'message' ? 4 : 2, Math.ceil(placeholder.length / 24))} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
+      <DictationButton label={`Dictate ${label}`} stopLabel="Stop and use text" recording={interaction.recordingTarget === key || interaction.stoppingTarget === key} stopping={interaction.stoppingTarget === key} disabled={busy || Boolean(interaction.stoppingTarget)} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
+      {interaction.stoppingTarget === key ? <p role="status">{recipientCopy(brief.language).finishingDictation}</p> : interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
     </div>
   )
 
@@ -1063,7 +1098,7 @@ export default function SharedStoryPage() {
       <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} onCreateGift={creator ? () => startNewStory() : undefined} />
       {!playToken && !creator ? <PageIllustration pathname="/shared" /> : null}
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
-        {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}</p> : null}
+        {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}{(error || interaction.error || narrator.error).includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
         {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {!playToken && !creator ? <p style={cardStyle}>Create and manage gift stories with your <Link href="/account">Muse account</Link>. Recipients can open their story link without an account.</p> : null}
@@ -1107,7 +1142,7 @@ export default function SharedStoryPage() {
               <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>
             </article> : <>
             <h1 className="story-reading-title">{player.title}</h1>
-            <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
+            <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientText} language={recipientLanguage.code} direction={recipientLanguage.dir} />
             {storyMode === 'listen' ? <>
               <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
               {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
@@ -1148,6 +1183,9 @@ export default function SharedStoryPage() {
               {player.adventure ? <article style={cardStyle}>
                 <h2>{player.adventure.turn ? recipientText.adventureContinues : passage(player.scene.title)}</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.adventure.turn?.narration || player.scene.body)}</p>
+                {player.adventure.turnTaking ? <p role="status" style={{ fontWeight: 700 }}>
+                  {player.adventure.actionsUsed % 2 === 0 ? player.recipientName : player.creatorName}&apos;s turn. Pass the device so you can choose together.
+                </p> : null}
                 {storyMode === 'listen' ? <details open><summary>Device voice (optional, quality varies)</summary>
                   <p>Prepared cloud recordings do not cover live adventure turns. This option uses your phone&apos;s voice, not Google narration.</p>
                   <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} />
@@ -1170,8 +1208,8 @@ export default function SharedStoryPage() {
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
                   <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
                   <p>{recipientText.reviewGuess}</p>
-                  <HoldToSpeakButton label={`Hold to ${recipientText.dictateAction.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAction.toLowerCase()}`} disabled={busy} recording={interaction.recordingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
-                  {interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
+                  <DictationButton label={recipientText.dictateAction} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || Boolean(interaction.stoppingTarget)} recording={interaction.recordingTarget === 'adventure-action' || interaction.stoppingTarget === 'adventure-action'} stopping={interaction.stoppingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
+                  {interaction.stoppingTarget === 'adventure-action' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                   <button disabled={busy || !recipientDraft.ready || Boolean(player.adventure.pending) || !actionText.trim()} style={primaryStyle}>{recipientText.submitAction}</button>
                 </form> : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
                 {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
@@ -1219,10 +1257,10 @@ export default function SharedStoryPage() {
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button disabled={busy || !recipientDraft.ready || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
-                    <HoldToSpeakButton label={`Hold to ${recipientText.dictateAnswer.toLowerCase()}`} releaseLabel={`Release to stop ${recipientText.dictateAnswer.toLowerCase()}`} disabled={busy || !recipientDraft.ready} recording={interaction.recordingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
+                    <DictationButton label={recipientText.dictateAnswer} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || !recipientDraft.ready || Boolean(interaction.stoppingTarget)} recording={interaction.recordingTarget === 'guess' || interaction.stoppingTarget === 'guess'} stopping={interaction.stoppingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
                   </div>
                   <p>{recipientText.reviewGuess}</p>
-                  {interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
+                  {interaction.stoppingTarget === 'guess' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                 </form> : null}
               </>
             )}
@@ -1279,7 +1317,7 @@ export default function SharedStoryPage() {
               }}>Review and share</button>
               <p><Link href="/library#shared-stories-heading">Go to archive</Link></p>
             </section>
-            <StoryModeControl mode={storyMode} onChange={changeStoryMode} />
+            <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientCopy(creator.brief.language)} language={storyLanguage(creator.brief.language).code} direction={storyLanguage(creator.brief.language).dir} />
             {storyMode === 'listen' ? <article style={cardStyle} aria-label="Listen before sending">
               <h2>Listen before sending</h2>
               {!creator.brief.adventure ? <>
@@ -1405,6 +1443,42 @@ export default function SharedStoryPage() {
               {!replies.length ? <p>No replies yet.</p> : replies.map((reply, index) => <article key={index} style={{ borderTop: '1px solid #d9cfc5', marginTop: 12 }}>
                 <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reply.message}</p>
                 <p><small>{new Date(reply.createdAt).toLocaleString()}</small></p>
+                <button type="button" disabled={busy} style={buttonStyle} onClick={() => {
+                  setFollowUpReply(reply)
+                  setFollowUpDirection('')
+                  setFollowUpGoal('')
+                  setFollowUpSolution('')
+                  setFollowUpMessage('I loved reading your reply. I made this next chapter for you.')
+                  setFollowUpConsent(false)
+                  setFollowUpRomanceConfirmed(false)
+                  setError('')
+                }}>Use this reply for a follow-up</button>
+                {followUpReply?.createdAt === reply.createdAt && followUpReply.message === reply.message ? <section aria-label="Create follow-up story" style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12 }}>
+                  <h3>Continue from their reply</h3>
+                  <p>This creates a separate new gift story. The reply and previous ending are sent to AI only for this generation, after your explicit consent. The original story and reply stay unchanged.</p>
+                  <label style={{ display: 'block', fontWeight: 700 }}>What should the next chapter explore?
+                    <textarea id="follow-up-direction" value={followUpDirection} onChange={event => setFollowUpDirection(event.target.value)} maxLength={600} rows={3} style={fieldStyle} disabled={busy} />
+                  </label>
+                  <label style={{ display: 'block', fontWeight: 700 }}>What should they discover?
+                    <input id="follow-up-goal" value={followUpGoal} onChange={event => setFollowUpGoal(event.target.value)} maxLength={600} style={fieldStyle} disabled={busy} />
+                  </label>
+                  <label style={{ display: 'block', fontWeight: 700 }}>New secret answer
+                    <input id="follow-up-solution" value={followUpSolution} onChange={event => setFollowUpSolution(event.target.value)} maxLength={200} style={fieldStyle} disabled={busy} />
+                  </label>
+                  <label style={{ display: 'block', fontWeight: 700 }}>Message after the reveal
+                    <textarea id="follow-up-message" value={followUpMessage} onChange={event => setFollowUpMessage(event.target.value)} maxLength={2000} rows={3} style={fieldStyle} disabled={busy} />
+                  </label>
+                  {creator.brief.romance ? <label style={{ display: 'block', padding: '0.75rem 0' }}>
+                    <input type="checkbox" checked={followUpRomanceConfirmed} onChange={event => setFollowUpRomanceConfirmed(event.target.checked)} disabled={busy} /> I confirm the existing romance boundaries for this new story.
+                  </label> : null}
+                  <ExplicitConsent checked={followUpConsent} onChange={setFollowUpConsent}>
+                    I reviewed this reply and consent to sending it, the previous story ending, and the new story details to the AI provider to create this follow-up.
+                  </ExplicitConsent>
+                  <button type="button" style={primaryStyle} disabled={busy || !followUpDirection.trim() || !followUpGoal.trim() || !followUpSolution.trim() || !followUpMessage.trim() || !hasExplicitConsent(followUpConsent) || Boolean(creator.brief.romance && !followUpRomanceConfirmed)} onClick={() => void createFollowUpStory()}>
+                    {busy ? 'Creating follow-up…' : 'Create follow-up story'}
+                  </button>
+                  <button type="button" style={buttonStyle} disabled={busy} onClick={() => { setFollowUpReply(null); setFollowUpConsent(false); setFollowUpRomanceConfirmed(false) }}>Cancel</button>
+                </section> : null}
               </article>)}
             </details> : null}
             {!creator.brief.message && !ownerMedia ? <article id="gift-story-share" style={cardStyle}>
@@ -1520,7 +1594,7 @@ export default function SharedStoryPage() {
                 {textField('creatorName', 'Your name', 'Person A', 80)}
                 {textField('recipientName', 'Recipient name', 'Person B', 80)}
                 <div>
-                  <label htmlFor="shared-language" style={{ fontWeight: 700 }}>Story language</label>
+                  <label htmlFor="shared-language" style={{ fontWeight: 700 }}>Story language (independent of your Muse language)</label>
                   <select id="shared-language" value={brief.language ?? ''} disabled={busy} style={fieldStyle} onChange={event => {
                     const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
                     if (!language) return
@@ -1533,7 +1607,7 @@ export default function SharedStoryPage() {
                 </div>
                 <details>
                   <summary>About story language</summary>
-                  <p>Scenes, clues and recipient instructions use this language. Write your dedication, hints, answer and final message in the same language; your words stay unchanged. Settings and errors may remain English.</p>
+                  <p>Choose the language for the generated story and recipient controls. It can differ from your Muse interface language and from the language you write in. Your dedication, hints, answer and final message stay exactly as written. Settings and errors may remain English.</p>
                 </details>
                 <RomanceOptions value={brief.romance} onChange={romance => { updateBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
               </div>
@@ -1565,7 +1639,10 @@ export default function SharedStoryPage() {
                       <input type="radio" name="story-interaction" value={value} checked={(brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic') === value} onChange={() => {
                         updateBrief(current => {
                           const { adventure, ...rest } = current
-                          return value === 'classic' ? rest : { ...rest, adventure: { actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free' } }
+                          return value === 'classic' ? rest : { ...rest, adventure: {
+                            actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free',
+                            ...(adventure?.turnTaking ? { turnTaking: true } : {})
+                          } }
                         })
                         setAiConsent(false)
                       }} />
@@ -1577,6 +1654,13 @@ export default function SharedStoryPage() {
                     <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, adventure: { ...current.adventure!, actionBudget: Number(event.target.value) } })); setAiConsent(false) }} style={fieldStyle} />
                   </label>
                   <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
+                  <label style={{ display: 'block', padding: '0.75rem 0' }}>
+                    <input type="checkbox" checked={Boolean(brief.adventure.turnTaking)} disabled={busy} onChange={event => {
+                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked ? { turnTaking: true } : { turnTaking: undefined }) } }))
+                      setAiConsent(false)
+                    }} /> Play together: alternate turns between {brief.recipientName || 'recipient'} and {brief.creatorName || 'creator'} on one device
+                  </label>
+                  <p>Both people share one device and one story session; turns alternate after each action.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
               </div>
               </fieldset>

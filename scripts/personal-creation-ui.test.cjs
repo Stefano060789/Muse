@@ -153,13 +153,13 @@ async function main() {
   nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
   nodes().find(node => node.props['aria-label'] === 'Personal touches').props.onChange({ target: { value: 'I love gardens' } })
   await flush()
-  const profileHold = nodes().find(node => node.type === '../components/HoldToSpeakButton')
-  profileHold.props.onStart()
+  const profileDictation = nodes().find(node => node.type === '../components/DictationButton')
+  profileDictation.props.onStart()
   transcriptReceiver('I love gardens')
-  profileHold.props.onStop()
+  profileDictation.props.onStop()
   await flush()
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Personal touches').props.value, 'I love gardens',
-    'Inline personal touches retain hold-to-speak')
+    'Inline personal touches retain dictated text')
   await click('Save personal touches')
   assert.equal(profile.about, 'I love gardens')
   assert.equal(nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.checked, true,
@@ -293,12 +293,12 @@ async function main() {
   await flush()
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Editable response').props.value, 'I step inside.',
     'Unsent answers survive remount without being erased during hydration')
-  const holdToSpeak = nodes().find(node => node.type === '../components/HoldToSpeakButton')
-  assert.ok(holdToSpeak)
+  const dictationButton = nodes().find(node => node.type === '../components/DictationButton')
+  assert.ok(dictationButton)
   const stopsBefore = stopRecordingCalls
   const dictatesBefore = dictateCalls
-  holdToSpeak.props.onStop()
-  assert.equal(stopRecordingCalls, stopsBefore + 1, 'Releasing hold-to-speak explicitly ends the active recording')
+  dictationButton.props.onStop()
+  assert.equal(stopRecordingCalls, stopsBefore + 1, 'Stopping dictation explicitly ends the active recording')
   assert.equal(dictateCalls, dictatesBefore, 'Stop listening does not restart dictation')
   loadedStory = { ...loadedStory, language: 'ar-SA', journey: {
     capability: 'test-capability', revision: 0, maxTurns: 3, duration: 5, status: 'active', choiceMode: 'free'
@@ -395,7 +395,7 @@ async function main() {
   assert.equal(closingRequest.revision, 2)
   assert.equal(closingRequest.text, undefined, 'No user writing is required to generate the ending')
   assert.equal(requests.filter(body => body.action === 'conclude').length, 1, 'Double-click cannot reserve two endings')
-  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your chapter is complete.'))
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 complete'))
   assert.ok(!responseField(), 'The generated ending never asks for another response')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Write the closing scene'))
   loadedStory = beforeClosingStory
@@ -449,10 +449,10 @@ async function main() {
   } }
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your chapter is complete.'))
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 complete'))
   const parentStory = structuredClone(loadedStory)
   const beforeChapterForm = requests.length
-  await click('Continue with a new chapter')
+  await click('Continue to Chapter 2')
   assert.equal(requests.length, beforeChapterForm, 'Opening the new-chapter form never spends an allowance')
   assert.equal(find('button', 'Confirm and start next chapter').props.disabled, true)
   await click('Confirm and start next chapter')

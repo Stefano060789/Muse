@@ -78,9 +78,9 @@ async function main() {
       assert.throws(() => romance.requireRomanceConfirmation(value, true))
     }
   })
-  await check('all five languages have complete recipient and creator consent copy', () => {
+  await check('all seven languages have complete recipient and creator consent copy', () => {
     const keys = Object.keys(romance.romanceCopy()).sort()
-    for (const code of ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'ar-SA']) {
+    for (const code of ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'it-IT', 'uk-UA', 'ar-SA']) {
       const copy = romance.romanceCopy(code)
       assert.deepEqual(Object.keys(copy).sort(), keys)
       for (const mode of ['sweet', 'spicy']) {

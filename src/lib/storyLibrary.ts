@@ -59,12 +59,15 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   let chapter: PersonalStory['chapter']
   if (input.chapter !== undefined) {
     const saved = record(input.chapter)
-    if (!Number.isSafeInteger(saved.number) || Number(saved.number) < 2) throw new Error('Invalid story chapter.')
-    chapter = {
-      number: Number(saved.number), rootId: identifier(saved.rootId),
-      parentId: identifier(saved.parentId), parentTitle: text(saved.parentTitle, 160)
+    if (!Number.isSafeInteger(saved.number) || Number(saved.number) < 1) throw new Error('Invalid story chapter.')
+    chapter = { number: Number(saved.number), rootId: identifier(saved.rootId) }
+    if (saved.number === 1) {
+      if (saved.parentId !== undefined || saved.parentTitle !== undefined || chapter.rootId !== input.id) throw new Error('Invalid first chapter.')
+    } else {
+      chapter.parentId = identifier(saved.parentId)
+      chapter.parentTitle = text(saved.parentTitle, 160)
+      if (chapter.parentId === input.id) throw new Error('Invalid chapter parent.')
     }
-    if (chapter.parentId === input.id) throw new Error('Invalid chapter parent.')
   }
   const romance = parseStoryRomance(input.romance)
   const language = parseStoryLanguage(input.language)

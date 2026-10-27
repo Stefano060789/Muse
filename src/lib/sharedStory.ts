@@ -30,7 +30,7 @@ export type SharedStoryBrief = {
   assistanceHints?: string[]
   alternativeAnswers?: string[]
   unlockPolicy?: 'solve' | 'allow-skip'
-  adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode }
+  adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean }
   gift?: SharedStoryGift
 }
 
@@ -133,13 +133,18 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     return value
   }
 
-  function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode } {
+  function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean } {
     const input = record(value)
-    if (Object.keys(input).some(key => key !== 'actionBudget' && key !== 'choiceMode') || !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000) {
+    if (Object.keys(input).some(key => !['actionBudget', 'choiceMode', 'turnTaking'].includes(key)) ||
+        !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000 ||
+        (input.turnTaking !== undefined && typeof input.turnTaking !== 'boolean')) {
       throw new SharedStoryError('Choose an explicit adventure AI action budget from 1 to 1000.')
     }
     const choiceMode = parseStoryChoiceMode(input.choiceMode)
-    return { actionBudget: Number(input.actionBudget), choiceMode }
+    return {
+      actionBudget: Number(input.actionBudget), choiceMode,
+      ...(input.turnTaking === true ? { turnTaking: true } : {})
+    }
   }
   function parseGift(value: unknown): SharedStoryGift {
     const input = record(value)

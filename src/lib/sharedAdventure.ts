@@ -17,6 +17,7 @@ export type AdventureView = {
   revision: number; actionsUsed: number; actionsRemaining: number
   budget: number; budgetRemaining: number; pending: boolean; turn: AdventureTurn | null
   choiceMode?: StoryChoiceMode
+  turnTaking?: boolean
   choices?: string[]
 }
 export type AdventureRequest = {
@@ -141,5 +142,9 @@ export function adventureChoiceView(view: AdventureView, story: StoredStory): Ad
   const choiceMode = story.brief.adventure?.choiceMode ?? 'free'
   const choices = choiceMode === 'suggested' && !view.pending && view.actionsRemaining > 0 && view.budgetRemaining > 0
     ? view.turn?.choices ?? story.content.scenes[0].choices : undefined
-  return { ...view, choiceMode, choices }
+  return {
+    ...view, choiceMode,
+    ...(story.brief.adventure?.turnTaking ? { turnTaking: true } : {}),
+    choices
+  }
 }

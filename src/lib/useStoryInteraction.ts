@@ -22,6 +22,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   const [recordingTarget, setRecordingTarget] = useState('')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [stoppingTarget, setStoppingTarget] = useState('')
   const recognitionRef = useRef<Recognition | null>(null)
   const stopRequestedRef = useRef<Recognition | null>(null)
   const targetRef = useRef('')
@@ -32,6 +33,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     recognitionRef.current = null
     stopRequestedRef.current = null
     targetRef.current = ''
+    setStoppingTarget('')
     if (finishTimer.current) clearTimeout(finishTimer.current)
     finishTimer.current = null
     setRecordingTarget('')
@@ -48,6 +50,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     const recognition = recognitionRef.current
     if (!recognition || stopRequestedRef.current === recognition) return
     stopRequestedRef.current = recognition
+    setStoppingTarget(targetRef.current)
     setRecordingTarget('')
     setReady(false)
     finishTimer.current = setTimeout(() => {
@@ -98,6 +101,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
       const stoppedIntentionally = stopRequestedRef.current === recognition
       stopRequestedRef.current = null
       targetRef.current = ''
+      setStoppingTarget('')
       if (finishTimer.current) clearTimeout(finishTimer.current)
       finishTimer.current = null
       setRecordingTarget('')
@@ -120,6 +124,7 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
       const stoppedIntentionally = stopRequestedRef.current === recognition
       stopRequestedRef.current = null
       targetRef.current = ''
+      setStoppingTarget('')
       if (finishTimer.current) clearTimeout(finishTimer.current)
       finishTimer.current = null
       setRecordingTarget('')
@@ -135,9 +140,10 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     } catch {
       recognitionRef.current = null
       targetRef.current = ''
+      setStoppingTarget('')
       setError('Could not start voice recording. Please type your text or try again.')
     }
   }
 
-  return { recordingTarget, ready, error, dictate, stopRecording, cancelRecording }
+  return { recordingTarget, stoppingTarget, ready, error, dictate, stopRecording, cancelRecording }
 }

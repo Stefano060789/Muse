@@ -59,7 +59,7 @@ export default function Home() {
   return <>
     <Head>
       <title>Muse - A story for you. A gift story for someone.</title>
-      <meta name="description" content="Create an AI-powered story shaped by your choices, or make a personal mystery that reveals a thoughtful gift. Try a free handcrafted sample." />
+      <meta name="description" content="Muse turns your memories, interests, and relationships into personal stories and meaningful gifts you can keep building together." />
     </Head>
     <main className="atelier-page atelier-home">
       <div className="atelier-shell">
@@ -67,7 +67,8 @@ export default function Home() {
           <div>
             <p className="atelier-eyebrow">Small adventures. Personal meaning.</p>
             <h1 id="welcome-title">A story to get lost in.<br /><em>A gift story they&apos;ll remember.</em></h1>
-            <p className="atelier-subtitle">Create an AI-powered story you shape with your choices. Or give someone a personal mystery with a hidden surprise.</p>
+            <p className="atelier-subtitle">Muse turns your memories, interests, and relationships into stories you can keep building together.</p>
+            <p>Create a personal journey, continue it with new chapters, or make a private mystery as a gift. Read or listen, and invite someone into the story when you are ready.</p>
             {libraryReady && !libraryError && returnStory && <section className="atelier-card" aria-label={activeStory ? 'Continue your story' : 'Read your completed story'}>
               <p className="atelier-eyebrow">{activeStory ? 'Continue your story' : 'Your latest completed story'}</p>
               <h2>{returnStory.story.title}</h2>

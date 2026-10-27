@@ -38,6 +38,15 @@ async function main() {
     assert.deepEqual(removed.keypoints, ['Music helps'])
     profile.forgetMuseProfile()
     assert.equal(profile.loadMuseProfile(), null)
+    const reflection = profile.saveMuseProfileReflection('A kind gesture', 'My neighbor brought soup. I felt seen.')
+    assert.deepEqual(reflection.keypoints, [
+      'A kind gesture: My neighbor brought soup',
+      'A kind gesture: I felt seen'
+    ], 'Each short reflection memory retains its conversation topic')
+    assert.ok(reflection.keypoints.every(point => point.length <= 180))
+    assert.throws(() => profile.saveMuseProfileReflection('', 'Some experience'))
+    assert.throws(() => profile.saveMuseProfileReflection('A topic', '   '))
+    profile.forgetMuseProfile()
     assert.throws(() => profile.replaceMuseProfileKeypoints(['']))
     assert.throws(() => profile.replaceMuseProfileKeypoints(['x'.repeat(181)]))
     profile.replaceMuseProfileKeypoints(Array.from({ length: 20 }, (_, i) => `Memory ${i}`))

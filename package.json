@@ -26,7 +26,7 @@
     "test:privacy": "node scripts/privacy-consent.test.cjs",
     "test:backup": "node --test scripts/muse-backup.test.cjs",
     "test:core": "node scripts/core-fixes.test.cjs",
-    "test:dictation": "node scripts/dictation.test.cjs && node scripts/hold-to-speak.test.cjs",
+    "test:dictation": "node scripts/dictation.test.cjs && node scripts/dictation-button.test.cjs",
     "test:library": "node scripts/library.test.cjs",
     "test:gift-experience": "node scripts/gift-experience.test.cjs && node scripts/gift-ui.test.cjs && node scripts/share-gift-story.test.cjs",
     "test:share-gift-story": "node scripts/share-gift-story.test.cjs",

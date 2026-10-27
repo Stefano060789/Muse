@@ -85,6 +85,22 @@ const copies: Record<StoryLanguageCode, RomanceCopy> = {
     creatorConfirmation: 'Tengo 18 años o más, todos los personajes románticos son adultos y el romance es consensuado y no gráfico. Tengo permiso para incluir a cualquier persona real.',
     sweet: 'Dulce · afecto tierno', spicy: 'Intenso · tensión no gráfica'
   },
+  'it-IT': {
+    title: mode => mode === 'sweet' ? 'Romanticismo dolce' : 'Romanticismo intenso · non esplicito',
+    notice: mode => mode === 'sweet' ? 'Questa storia include un affetto delicato tra adulti consenzienti.' : 'Questa storia include tensione romantica non grafica tra adulti consenzienti; l’intimità resta fuori scena.',
+    confirm: 'Ho almeno 18 anni e accetto di aprire una storia romantica. Questo non significa approvare i messaggi, le immagini, l’audio o altri contenuti del mittente.',
+    open: 'Apri la storia romantica', decline: 'Non fa per me', declined: 'Hai rifiutato questa storia romantica. Non è stato aperto alcun contenuto.',
+    creatorConfirmation: 'Ho almeno 18 anni, tutti i personaggi romantici sono adulti e la storia è consensuale e non esplicita. Ho il permesso di includere eventuali persone reali.',
+    sweet: 'Dolce · affetto delicato', spicy: 'Intenso · tensione non grafica'
+  },
+  'uk-UA': {
+    title: mode => mode === 'sweet' ? 'Ніжна романтика' : 'Пристрасна романтика · без відвертих сцен',
+    notice: mode => mode === 'sweet' ? 'У цій історії є ніжні почуття між дорослими за взаємною згодою.' : 'У цій історії є не відверта романтична напруга між дорослими за взаємною згодою; інтимність залишається за кадром.',
+    confirm: 'Мені виповнилося 18 років, і я погоджуюся відкрити романтичну історію. Це не означає схвалення повідомлень, зображень, аудіо чи інших матеріалів відправника.',
+    open: 'Відкрити романтичну історію', decline: 'Не для мене', declined: 'Ти відмовився від цієї романтичної історії. Жодного її вмісту не було відкрито.',
+    creatorConfirmation: 'Мені виповнилося 18 років, усі романтичні персонажі — дорослі, а романтика є взаємною та без відвертих сцен. Я маю дозвіл згадувати реальних людей.',
+    sweet: 'Ніжна · теплі почуття', spicy: 'Пристрасна · не відверта напруга'
+  },
   'ar-SA': {
     title: mode => mode === 'sweet' ? 'رومانسية لطيفة' : 'رومانسية مشوّقة · غير صريحة',
     notice: mode => mode === 'sweet' ? 'تتضمن هذه القصة مودة لطيفة بين بالغين بالتراضي.' : 'تتضمن هذه القصة توترًا رومانسيًا غير تفصيلي بين بالغين بالتراضي، وتنتهي المشاهد قبل تفاصيل العلاقة الحميمة.',

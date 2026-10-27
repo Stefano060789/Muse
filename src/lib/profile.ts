@@ -64,8 +64,26 @@ export function replaceMuseProfileKeypoints(points: string[]): MuseProfile {
 }
 
 export function saveMuseProfile(about: string): MuseProfile {
+  return appendMuseProfileKeypoints(extractProfileKeypoints(about))
+}
+
+export function saveMuseProfileReflection(topic: string, reflection: string): MuseProfile {
+  const prompt = topic.trim()
+  if (!prompt || prompt.length > 100) throw new Error('Choose a topic before saving your reflection.')
+  const memories = extractProfileKeypoints(reflection)
+  if (!memories.length) throw new Error('Add something about this topic before saving it.')
+  const contextualMemories = memories.map((memory) => {
+    const prefix = `${prompt}: `
+    const available = 180 - prefix.length
+    if (available < 1) throw new Error('This topic is too long to save as a memory.')
+    return `${prefix}${memory.length > available ? `${memory.slice(0, available - 3).trimEnd()}...` : memory}`
+  })
+  return appendMuseProfileKeypoints(contextualMemories)
+}
+
+function appendMuseProfileKeypoints(additions: string[]): MuseProfile {
   const previous = loadMuseProfile()
-  const points = [...(previous?.keypoints || []), ...extractProfileKeypoints(about)]
+  const points = [...(previous?.keypoints || []), ...additions]
     .filter((point, index, all) => all.findIndex((candidate) => candidate.toLowerCase() === point.toLowerCase()) === index)
   if (points.length > 20) {
     throw new Error('You have reached 20 memories. Edit or remove existing memories before adding more.')

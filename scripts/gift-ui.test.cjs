@@ -16,6 +16,53 @@ function plainModule(relative) {
 const gifts = plainModule('src/lib/storyGift.ts')
 const language = plainModule('src/lib/storyLanguage.ts')
 const romance = plainModule('src/lib/storyRomance.ts')
+function mountPreSendCheck(initialProps) {
+  let cursor = 0, tree, props = initialProps
+  const slots = [], pending = [], readiness = []
+  const onReady = value => readiness.push(value)
+  const jsx = (type, props) => ({ type, props: props || {} })
+  const react = {
+    useState(initial) {
+      const index = cursor++
+      if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial
+      return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value }]
+    },
+    useEffect(effect, deps) {
+      const index = cursor++, previous = slots[index]
+      if (!previous || !deps || deps.some((value, i) => value !== previous.deps?.[i])) pending.push(() => {
+        previous?.cleanup?.()
+        slots[index].cleanup = effect()
+      })
+      slots[index] = { deps, cleanup: previous?.cleanup }
+    }
+  }
+  const component = { exports: {} }
+  new Function('module', 'exports', 'require', source('src/components/PreSendCheck.tsx'))(
+    component, component.exports, id => {
+      if (id === 'react') return react
+      if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
+      if (id.endsWith('/storyRomance')) return romance
+      if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
+      throw new Error('Unexpected PreSendCheck dependency ' + id)
+    }
+  )
+  const render = () => { cursor = 0; tree = component.exports.default({ ...props, onReady }); return tree }
+  const flush = () => {
+    for (let i = 0; i < 3; i++) {
+      render()
+      for (const effect of pending.splice(0)) effect()
+    }
+    render()
+  }
+  const nodes = () => flatten(tree).filter(value => value && typeof value === 'object')
+  const button = text => nodes().find(node => node.type === 'button' && label(node) === text)
+  const click = text => { const target = button(text); assert.ok(target, 'Missing PreSendCheck button: ' + text); target.props.onClick(); flush() }
+  flush()
+  return {
+    nodes, readiness, click,
+    setProps(value) { props = value; flush() }
+  }
+}
 function flatten(node) {
   if (node === null || node === undefined || typeof node === 'boolean') return []
   if (Array.isArray(node)) return node.flatMap(flatten)
@@ -139,6 +186,12 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
       return { ok: requestCount > 1, json: async () => requestCount > 1 ? { sent: true } : { error: 'Test reply failure' } }
     }
     if (request.action === 'manage') return { ok: true, json: async () => ({ ...owner, voice: { mime: 'audio/wav', size: 32044 }, replies: [{ message: 'A voluntary thanks', createdAt: '2026-10-15T00:00:00.000Z' }], media: null }) }
+    if (request.action === 'follow-up') {
+      owner = { ...owner, ownerToken: 'follow-up-owner-token', playToken: 'follow-up-play-token',
+        brief: { ...owner.brief, setting: request.direction, goal: request.goal, solution: request.solution, message: request.message },
+        content: { ...owner.content, title: 'The Follow-up Story' } }
+      return { ok: true, json: async () => ({ ...owner, media: null, mediaRequired: false, voice: null }) }
+    }
     if (request.action === 'title') {
       if (failures.title) return { ok: false, json: async () => ({ error: 'Test title save failure' }) }
       owner.content = { ...owner.content, title: request.title }
@@ -180,6 +233,66 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
 }
 async function main() {
+  const reviewProps = {
+    story: {
+      ownerToken: 'creator-only-token',
+      brief: {
+        creatorName: 'Creator Example', recipientName: 'Recipient Example',
+        dedication: undefined, gift: { dedication: 'A personal dedication' },
+        durationMinutes: 10, romance: 'sweet', language: 'en-US',
+        message: 'PRIVATE_FINAL_MESSAGE', solution: 'PRIVATE_ANSWER', hints: ['PRIVATE_HINT']
+      },
+      content: {
+        title: 'The Gift Story',
+        scenes: [
+          { title: 'First Scene', body: 'First scene content', clue: 'First clue' },
+          { title: 'Second Scene', body: 'Second scene content', clue: 'Second clue' }
+        ]
+      },
+      expiresAt: null
+    },
+    hasMedia: false, hasVoice: false, uploadPending: false
+  }
+  const preSendReview = mountPreSendCheck(reviewProps)
+  assert.equal(preSendReview.readiness.at(-1), false, 'A new creator review does not satisfy the send gate')
+  preSendReview.click('Preview the recipient experience')
+  const preview = () => preSendReview.nodes().find(node => node.props['aria-label'] === 'Recipient preview')
+  const giftCover = () => preSendReview.nodes().find(node => node.props['aria-label'] === 'Gift cover')
+  assert.ok(preview() && giftCover(), 'The creator preview begins with a distinct gift cover')
+  const coverText = label(giftCover())
+  const coverDetails = ['From Creator Example', 'For Recipient Example', 'The Gift Story', 'A personal dedication', 'About 10 minutes']
+  assert.deepEqual(coverDetails.map(text => coverText.indexOf(text)).sort((a, b) => a - b), coverDetails.map(text => coverText.indexOf(text)),
+    'The cover presents creator, recipient, title, dedication, and duration in order')
+  const previewText = label(preview())
+  assert.ok(previewText.indexOf('Sweet romance') < previewText.indexOf('From Creator Example'),
+    'A romantic story shows its content notice before its cover, matching the recipient flow')
+  for (const disclosure of ['Local-only creator review', 'create a recipient session', 'record recipient progress', 'Private answers', 'messages', 'hints']) {
+    assert.ok(previewText.includes(disclosure), 'Preview explains privacy boundary: ' + disclosure)
+  }
+  for (const privateValue of ['PRIVATE_FINAL_MESSAGE', 'PRIVATE_ANSWER', 'PRIVATE_HINT', 'creator-only-token']) {
+    assert.ok(!previewText.includes(privateValue), 'Creator-only data is not revealed: ' + privateValue)
+  }
+  preSendReview.click('Review story scenes')
+  assert.ok(label(preview()).includes('First scene content'))
+  assert.ok(!label(preview()).includes('Second scene content'), 'Review advances one scene at a time')
+  preSendReview.click('Next scene')
+  assert.ok(label(preview()).includes('Second scene content'))
+  preSendReview.click('Previous scene')
+  assert.ok(label(preview()).includes('First scene content'))
+  preSendReview.click('Next scene')
+  preSendReview.click('I reviewed the clues')
+  assert.equal(preview(), undefined)
+  assert.equal(preSendReview.readiness.at(-1), false, 'Preview completion alone does not bypass the remaining send checks')
+  const reviewChecks = preSendReview.nodes().filter(node => node.type === 'input')
+  assert.equal(reviewChecks.length, 2)
+  reviewChecks[0].props.onChange({ target: { checked: true } })
+  reviewChecks[1].props.onChange({ target: { checked: true } })
+  preSendReview.setProps({ ...reviewProps, hasVoice: true })
+  assert.equal(preSendReview.readiness.at(-1), false, 'Changing required review inputs resets preview and checks')
+  assert.ok(!preSendReview.nodes().some(node => node.props['aria-label'] === 'Recipient preview'))
+  assert.equal(preSendReview.nodes().filter(node => node.type === 'input').some(node => node.props.checked), false)
+  console.log('PASS creator pre-send review shows cover then scenes without creating recipient progress or exposing private data')
+
   const preferenceValues = new Map([['muse-preferences', JSON.stringify({ language: 'es-ES', duration: 15 })]])
   const preferenceCreator = await mount('#new', null, null, {}, preferenceValues)
   assert.equal(preferenceCreator.field('shared-language').props.value, 'es-ES')
@@ -259,10 +372,13 @@ async function main() {
   for (const excluded of ['creatorCode', 'ownerToken', 'playToken', 'aiConsent', 'mediaUrl', 'voiceUrl']) {
     assert.equal(giftDraftRaw().includes(excluded), false, `Gift drafts do not store ${excluded}`)
   }
-  creator.field('shared-language').props.onChange({ target: { value: 'ar-SA' } })
+  creator.field('shared-language').props.onChange({ target: { value: 'uk-UA' } })
   await creator.flush()
   creator.timers.at(-1)()
-  assert.equal(gifts.loadGiftDraft(creator.browser.localStorage).brief.language, 'ar-SA')
+  assert.equal(gifts.loadGiftDraft(creator.browser.localStorage).brief.language, 'uk-UA',
+    'A gift story can explicitly use Ukrainian regardless of the initial language preference')
+  assert.ok(creator.nodes().some(node => label(node).includes('Story language (independent of your Muse language)')))
+  assert.ok(creator.nodes().some(node => label(node).includes('It can differ from your Muse interface language')))
   creator.nodes().find(node => node.type === '../components/RomanceOptions').props.onChange('spicy')
   await creator.flush()
   creator.timers.at(-1)()
@@ -393,6 +509,14 @@ async function main() {
     pending: true, actionsRemaining: 10, budgetRemaining: 20, budget: 30, revision: 0, choiceMode: 'free'
   } }
   const livePlayer = { ...pendingPlayer, adventure: { ...pendingPlayer.adventure, pending: false } }
+  const teamPlayer = { ...livePlayer, adventure: { ...livePlayer.adventure, turnTaking: true, actionsUsed: 0 } }
+  const together = await mount('#play=together-fixture', teamPlayer)
+  assert.ok(together.nodes().some(node => node.props.role === 'status' && label(node).includes("Recipient's turn")),
+    'Pass-and-play starts with the recipient turn')
+  teamPlayer.adventure.actionsUsed = 1
+  together.render()
+  assert.ok(together.nodes().some(node => node.props.role === 'status' && label(node).includes("Sender's turn")),
+    'After an action, the other participant takes the next turn')
   const live = await mount('#play=listen-fixture', livePlayer)
   live.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
   await live.flush()
@@ -532,6 +656,23 @@ async function main() {
   assert.deepEqual(owner.requests.at(-1), { action: 'progress', token: 'fixture' })
   await owner.click('Refresh replies')
   assert.ok(owner.nodes().some(node => label(node) === 'A voluntary thanks'))
+  await owner.click('Use this reply for a follow-up')
+  assert.equal(owner.button('Create follow-up story').props.disabled, true, 'Follow-up cannot generate before creator details and consent')
+  owner.field('follow-up-direction').props.onChange({ target: { value: 'A new observatory mystery inspired by what they shared.' } })
+  owner.field('follow-up-goal').props.onChange({ target: { value: 'Find the next constellation note.' } })
+  owner.field('follow-up-solution').props.onChange({ target: { value: 'the silver star' } })
+  await owner.flush()
+  assert.equal(owner.button('Create follow-up story').props.disabled, true, 'Follow-up requires explicit AI consent')
+  owner.nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await owner.flush()
+  await owner.click('Create follow-up story')
+  const followupRequest = owner.requests.find(request => request.action === 'follow-up')
+  assert.equal(followupRequest.reply, 'A voluntary thanks')
+  assert.equal(followupRequest.direction, 'A new observatory mystery inspired by what they shared.')
+  assert.equal(followupRequest.consentVersion, 'test')
+  assert.ok(owner.nodes().some(node => node.type === 'h1' && label(node) === 'The Follow-up Story'))
+  assert.equal(owner.browser.location.hash, '#manage=follow-up-owner-token')
+  assert.equal(owner.savedStories.at(-1).content.title, 'The Follow-up Story')
   console.log('PASS owner recording upload and manual-only private replies are wired')
   owner.nodes().find(node => node.type === '../components/SiteNavigation').props.onCreateGift()
   await owner.flush()

@@ -57,8 +57,10 @@ Read stops voice and ambience and reveals the full text.
 Settings, hints, keepsakes,
 privacy explanations and the full footer are collapsed; required romance and
 AI-processing consent remain explicit. No create-your-own promotion appears
-after the reveal. Recipient dictation uses the story language, and editing
-cancels late transcripts. Pending live-adventure turns check progress
+after the reveal. Recipient dictation uses the story language. Dictation is
+tap-to-start and tap-to-stop; the control stays in a disabled finishing state
+until the browser delivers final words, and editing cancels late transcripts.
+Pending live-adventure turns check progress
 automatically with read-only open requests (three seconds while pending,
 fifteen after an error), never automatic paid retries.
 Prepared recipient audio starts from Listen, retains native playback controls and shows provider
@@ -103,7 +105,9 @@ AI content. The optional
 account sign-in is required for server-side creation and management.
 Expired/deleted server stories may no longer have available progress.
 **Myself** appears before **Create a story** in the main navigation, with typing,
-hold-to-speak, explicit browser-local saving and memory editing/removal.
+tap-to-start/tap-to-stop dictation, explicit browser-local saving and memory editing/removal.
+Its **Explore a topic** prompts let people reflect by typing or speaking; saving a
+reflection creates short editable memories tagged with the prompt.
 It is optional, not a mandatory step before creation. The latest five memories are included in
 new personal stories by default, disclosed in creation and the AI consent.
 Users can uncheck inclusion in step two or review/remove memories at `/myself`.
@@ -132,9 +136,8 @@ server progress before removing the browser entry, and never refunds attempts.
 Legacy browser-only stories are removed locally. Failed deletion preserves the
 story; a local cleanup failure after server deletion is explicit and retryable.
 Background checks do not explicitly stop narration. The response draft stays editable while
-progress is checked. Hold-to-speak uses the story language; releasing finishes
-dictation, and focusing the response field cancels late transcripts so typing
-is not overwritten.
+progress is checked. Dictation uses the story language; tap Stop to finish, and
+focusing the response field cancels late transcripts so typing is not overwritten.
 **Try a 2-minute sample** opens an original, fictional
 two-scene gift at `/demo`: no runtime AI generation, paid TTS, story storage, or account.
 Sample narration uses three public, prerecorded Google WaveNet MP3s (two scenes
@@ -171,12 +174,24 @@ configured paid narration allowance. Listen plays saved recordings only, never
 automatically prepares paid audio or switches to a device fallback.
 Live-adventure scenes cannot use prepared recordings.
 
+Gift creators can opt into a **same-device, pass-and-play** adventure, which
+alternates turns between the recipient and sender in one shared session; it is
+not synchronized multiplayer across devices. If a gift allows replies, the
+creator can use a recipient's saved reply to prepare a separate follow-up story.
+The creator reviews the reply and explicitly consents before the prior public
+ending, reply, and new story details are sent for AI generation. The original
+gift remains unchanged, and the follow-up receives its own sharing links and
+fresh pre-send review.
+
 ### My stories and archive
 
 The **My stories** navigation opens `/my-stories`, with a new-story action and
-personal stories to resume. Account stories sync on opening when signed in, with
-an explicit sync action for retrying. Completed account-backed chapters offer
-**Continue with a new chapter** outside Archive. Choose a duration and explicitly
+personal stories to resume. New personal journeys start at **Chapter 1**. Each
+story card shows its chapter number and whether it is in progress, completed or
+out of attempts. Completed chapters offer separate **Read Chapter N** and
+**Continue to Chapter N+1** actions; the latter opens the new-chapter confirmation
+without generating until consent. Account stories sync on opening when signed in,
+with an explicit sync action for retrying. Choose a duration and explicitly
 confirm AI processing and a fresh normal creation/response allowance; romance
 boundaries, when present, also need confirmation. No generation happens just by
 opening this option. The server loads the account-owned completed chapter and
@@ -193,15 +208,27 @@ Scenes use stable numbers while unfolding, not a growing "Scene 2 of 2" total.
 Personal entries open a reading-only view of saved scenes, with no response
 submission controls. Starting or continuing personal adventures belongs in
 My stories. Existing `/story` and `/story?new=1` links remain supported.
+Chapter 1 metadata is stored with existing journey JSON; older journeys without
+chapter metadata display as Chapter 1.
+
+Personal story Listen uses scene-matched ambient sound by default. Auto chooses
+rain, water, wind, crowd, traffic or quiet mystery tones from the current scene
+text, with a soft wind bed when no clear cue matches; it supports English,
+Italian, Ukrainian, Hindi and German cues. Background audio is synthesized locally by the
+browser and starts only after Listen, not on page load. Open Audio settings to
+choose another sound, adjust its level, or turn it off.
 
 ### Story languages
 
-New personal and shared stories offer **English, Mandarin Chinese, Hindi,
-Spanish and Arabic**. Generation/continuations and narration metadata follow
+New personal and shared stories offer **English, Mandarin Chinese, Hindi, Spanish, Italian, Ukrainian and Arabic**.
+Generation/continuations and narration metadata follow
 the chosen language, with localized recipient controls and RTL shared-story
 content for Arabic. Sender-written names, hints, answers, dedications and final
 messages are preserved, not translated: write them in the intended language.
-General app navigation, advanced settings and some errors remain English.
+Gift-story language is explicitly independent from the Muse interface language,
+so Ukrainian story content can be selected even when the user's language
+preference is Italian. The general app interface, advanced settings and some
+errors remain English.
 Saved stories without a language retain their existing behavior; reusing or
 restoring a brief preserves its explicit language. No new database migration
 is needed because language is saved inside existing JSON records.
@@ -395,19 +422,45 @@ testing remain release gates. No explicit-content or age-verification
 guarantee is made. Romance metadata uses existing JSON storage; no SQL
 migration is needed.
 
-## Plans and billing preview
+## Plans, trial and billing
 
-`/billing` presents proposed Free, EUR 3.99 one-off Gift, EUR 8.99/month Plus
-and later EUR 89.99/year Plus plans. Plus proposes 10 creations and 120 AI
-interactions per billing month, shared across personal stories and gifts;
-one-off gifts propose up to 12 shared live actions. Premium cloud narration
-is excluded. The home page links to this preview without adding onboarding.
+The home page describes Muse as turning memories, interests and relationships
+into stories people can keep building together. `/billing` presents proposed
+Free, one no-card 30-day Plus trial, EUR 5.99 One-off Long Gift,
+EUR 8.99/month Plus and later EUR 89.99/year Plus plans. The trial starts at
+account creation, provides 10 story creations and 120 AI interactions, does not
+collect a card, and never auto-charges. After the trial, subscribe explicitly
+to continue AI generation; existing stories remain readable and gifts can still
+be received. Plus provides 10 creations and 120 AI interactions per billing
+month, shared across personal stories and gifts. The One-off Long Gift
+proposes one 20-minute, 9-scene story and up to 60 live interactions in one
+playthrough. This proposed limit is not yet enforced: the
+current prototype allows up to 12 actions per playthrough and creator-configured
+story totals. Planned Plus value
+includes optional puzzles with hints/skip, continuing personal stories with
+chapters, and same-device turn-taking. Those future features are not presented
+as currently available. Premium cloud narration is excluded. The home page
+links to this preview without adding onboarding.
 
-All plans are clearly marked as proposed and unavailable to purchase. There
-is no checkout, payment collection, subscription, billing identity or new
-allowance enforcement. Current prototype access and safety limits are
-unchanged. Final taxes/terms, secure customer identity, server-side allowance
-accounting and verified payment integration are required before paid launch.
+All proposed packages include local immersive ambience during Listen. It is
+synthesized in the browser, is not AI-generated audio, and uses no AI
+interaction allowance; scenes start it only after the listener presses Play.
+
+The trial and monthly story/interaction counters are server-enforced after
+applying `supabase/billing.sql`. Monthly Plus checkout uses Stripe and requires
+`STRIPE_SECRET_KEY`, `STRIPE_MONTHLY_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and
+`NEXT_PUBLIC_SITE_URL`. Configure Stripe webhook `/api/stripe-webhook` for
+subscription created, updated and deleted events. The migration starts existing
+accounts' trial on migration and new accounts' trial at signup; the trial
+expires after one calendar month and never charges automatically. Usage-limit
+responses link users to the Plus benefits and opt-in checkout.
+
+Subscription checkout is not operational until valid Stripe credentials,
+price IDs and the Supabase migration are configured. The One-off Long Gift
+purchase flow and its proposed 60-action limit are still not implemented; do
+not sell or advertise it as an active purchase. Final taxes, terms,
+cancellation/refund policy, backup/recovery and end-to-end webhook testing
+remain launch gates.
 
 ## Local setup
 
@@ -899,6 +952,9 @@ saved explicitly; full or blocked browser storage produces a visible message
 and leaves the previous saved profile unchanged. Damaged stored memories are
 reported rather than silently erased. Forgetting profile memories does not
 erase existing stories or retract information already sent to a provider.
+The **Explore a topic** prompts on Myself can be answered by typing or dictation.
+Saving a reflection turns its first five sentences into short editable memories
+tagged with the prompt; review or remove them before creating a story.
 Only the latest five memories are included in new My Story requests by default.
 Users can leave them out in creation; explicit AI-processing consent is still
 required before anything is sent to the story provider.
