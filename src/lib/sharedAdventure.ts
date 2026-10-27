@@ -22,6 +22,7 @@ export type AdventureView = {
 }
 export type AdventureRequest = {
   storyId: string; sessionHash: string; playHash: string
+  cooperativeUserId?: string
   operation: 'ready' | 'view' | 'reserve' | 'finish'
   requestId?: string; fingerprint?: string; revision?: number; cap: number
   turn?: AdventureTurn; failed?: boolean

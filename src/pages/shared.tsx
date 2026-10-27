@@ -193,6 +193,7 @@ export default function SharedStoryPage() {
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
+  const [cooperativeSyncError, setCooperativeSyncError] = useState('')
   const [guess, setGuess] = useState('')
   const [actionText, setActionText] = useState('')
   const [recipientDraft, setRecipientDraft] = useState<RecipientDraftState>({
@@ -526,6 +527,27 @@ export default function SharedStoryPage() {
     })()
     return () => { active = false }
   }, [playToken, player?.sceneIndex, player?.adventure?.revision, Boolean(player?.adventure), Boolean(romanceNotice && !romanceAccepted)])
+
+  useEffect(() => {
+    if (!playToken || !sessionToken || !player?.cooperative || (romanceNotice && !romanceAccepted)) return
+    let active = true
+    const refresh = async () => {
+      try {
+        const result = await request<PlayerResponse>({
+          action: 'open', token: playToken, sessionToken,
+          ...(romanceAccepted ? { romanceConfirmed: true } : {})
+        })
+        if (active) {
+          setPlayer(result.player)
+          setCooperativeSyncError('')
+        }
+      } catch (cause) {
+        if (active) setCooperativeSyncError(cause instanceof Error ? cause.message : 'Could not refresh cooperative progress.')
+      }
+    }
+    const timer = window.setInterval(() => { void refresh() }, 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [playToken, sessionToken, Boolean(player?.cooperative), Boolean(romanceNotice && !romanceAccepted), romanceAccepted])
 
   useEffect(() => {
     if (!recipientDraft.ready || !player) return
@@ -930,7 +952,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const act = async (action: 'guess' | 'next' | 'hint' | 'skip') => {
+  const act = async (action: 'guess' | 'next' | 'hint' | 'skip' | 'cooperative-pass') => {
     if (action === 'skip' && !window.confirm(recipientText.skipConfirm)) return
     setBusy(true)
     setError('')
@@ -1085,7 +1107,8 @@ export default function SharedStoryPage() {
   const selectedOccasion = GIFT_OCCASIONS.find(item => item.id === brief.gift?.occasion)
   const showGiftCover = Boolean(player?.gift && !giftOpened)
   const adventureCanSubmit = Boolean(player?.adventure &&
-    (player.adventure.pending || (player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0)))
+    (player.adventure.pending || (player.adventure.actionsRemaining > 0 && player.adventure.budgetRemaining > 0)) &&
+    (!player.cooperative || player.cooperative.isYourTurn))
 
   return (
     <main className="atelier-page">
@@ -1099,6 +1122,8 @@ export default function SharedStoryPage() {
       {!playToken && !creator ? <PageIllustration pathname="/shared" /> : null}
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}{(error || interaction.error || narrator.error).includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
+        {error.toLowerCase().includes('sign in') && playToken ? <p style={cardStyle}><Link href="/account">Sign in to Muse</Link>, then reopen this private story link to join the cooperative adventure.</p> : null}
+        {cooperativeSyncError ? <p role="alert" style={cardStyle}>{cooperativeSyncError}</p> : null}
         {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
         {!playToken && !creator ? <p style={cardStyle}>Create and manage gift stories with your <Link href="/account">Muse account</Link>. Recipients can open their story link without an account.</p> : null}
@@ -1139,9 +1164,19 @@ export default function SharedStoryPage() {
               {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
               <p>{recipientText.duration(player.durationMinutes)}</p>
               <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>{recipientText.openStory}</button>
-              <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>
+              {player.cooperative ? <p>Cooperative play requires each participant to sign in to a Muse account.</p> : <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>}
             </article> : <>
             <h1 className="story-reading-title">{player.title}</h1>
+            {player.cooperative ? <section className="atelier-card" aria-label="Cooperative story progress">
+              <h2>Playing together</h2>
+              <p>Shared progress · Turn {player.cooperative.turnNumber}</p>
+              <p>{player.cooperative.isYourTurn
+                ? `It is your turn, ${player.cooperative.yourName}.`
+                : `Waiting for ${player.cooperative.currentTurnName} to take or pass their turn.`}</p>
+              <p>Participants: {player.cooperative.members.map(member => member.displayName).join(', ')}</p>
+              {player.cooperative.isYourTurn && !player.solved && !player.skipped ? <button type="button" disabled={busy} onClick={() => void act('cooperative-pass')}>Pass my turn</button> : null}
+              <p className="atelier-note">Progress refreshes automatically while this story is open. Turns follow join order; every participant must sign in.</p>
+            </section> : null}
             <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientText} language={recipientLanguage.code} direction={recipientLanguage.dir} />
             {storyMode === 'listen' ? <>
               <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
@@ -1203,15 +1238,17 @@ export default function SharedStoryPage() {
                 </ExplicitConsent> : null}
                 {adventureCanSubmit ? player.adventure.choiceMode === 'suggested' ? <section aria-label="Suggested actions">
                   <h3>{recipientText.yourAction}</h3>
-                  <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}</div>
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>{player.adventure.choices?.map(choice => <button key={choice} disabled={busy || player.adventure?.pending || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void adventureAction(false, choice)} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}</div>
                   {!player.adventure.choices?.length && !player.adventure.pending ? <p>{recipientText.refreshProgress}</p> : null}
                 </section> : <form onSubmit={event => { event.preventDefault(); void adventureAction() }}>
-                  <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
+                  <label htmlFor="adventure-action">{recipientText.yourAction}<textarea id="adventure-action" value={actionText} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); setActionText(event.target.value); setAiConsent(false) }} maxLength={800} rows={3} style={fieldStyle} disabled={busy || !recipientDraft.ready || Boolean(player.cooperative && !player.cooperative.isYourTurn)} /></label>
                   <p>{recipientText.reviewGuess}</p>
-                  <DictationButton label={recipientText.dictateAction} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || Boolean(interaction.stoppingTarget)} recording={interaction.recordingTarget === 'adventure-action' || interaction.stoppingTarget === 'adventure-action'} stopping={interaction.stoppingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
+                  <DictationButton label={recipientText.dictateAction} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || Boolean(interaction.stoppingTarget) || Boolean(player.cooperative && !player.cooperative.isYourTurn)} recording={interaction.recordingTarget === 'adventure-action' || interaction.stoppingTarget === 'adventure-action'} stopping={interaction.stoppingTarget === 'adventure-action'} onStart={() => interaction.dictate('adventure-action', value => { setActionText(value.slice(0, 800)); setAiConsent(false) })} onStop={() => interaction.stopRecording('adventure-action')} style={buttonStyle} />
                   {interaction.stoppingTarget === 'adventure-action' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'adventure-action' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
-                  <button disabled={busy || !recipientDraft.ready || Boolean(player.adventure.pending) || !actionText.trim()} style={primaryStyle}>{recipientText.submitAction}</button>
-                </form> : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
+                  <button disabled={busy || !recipientDraft.ready || Boolean(player.adventure.pending) || !actionText.trim() || Boolean(player.cooperative && !player.cooperative.isYourTurn)} style={primaryStyle}>{recipientText.submitAction}</button>
+                </form> : player.cooperative && !player.cooperative.isYourTurn
+                  ? <p role="status">Waiting for {player.cooperative.currentTurnName} to take or pass their turn.</p>
+                  : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
                 {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
               </article> : <article style={cardStyle}>
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
@@ -1253,11 +1290,11 @@ export default function SharedStoryPage() {
                 ) : null}
                 {(player.adventure || player.sceneIndex + 1 === player.sceneCount) ? <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
                   {player.answerInstruction ? <p role="note">{player.answerInstruction}</p> : null}
-                  <label style={{ fontWeight: 700 }}>{player.answerType === 'clue' ? 'What did you find?' : player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready} /></label>
+                  <label style={{ fontWeight: 700 }}>{player.answerType === 'clue' ? 'What did you find?' : player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready || Boolean(player.cooperative && !player.cooperative.isYourTurn)} /></label>
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <button disabled={busy || !recipientDraft.ready || !guess.trim()} style={primaryStyle}>{recipientText.tryAnswer}</button>
-                    <DictationButton label={recipientText.dictateAnswer} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || !recipientDraft.ready || Boolean(interaction.stoppingTarget)} recording={interaction.recordingTarget === 'guess' || interaction.stoppingTarget === 'guess'} stopping={interaction.stoppingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
+                    <button disabled={busy || !recipientDraft.ready || !guess.trim() || Boolean(player.cooperative && !player.cooperative.isYourTurn)} style={primaryStyle}>{recipientText.tryAnswer}</button>
+                    <DictationButton label={recipientText.dictateAnswer} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || !recipientDraft.ready || Boolean(interaction.stoppingTarget) || Boolean(player.cooperative && !player.cooperative.isYourTurn)} recording={interaction.recordingTarget === 'guess' || interaction.stoppingTarget === 'guess'} stopping={interaction.stoppingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
                   </div>
                   <p>{recipientText.reviewGuess}</p>
                   {interaction.stoppingTarget === 'guess' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
@@ -1270,7 +1307,7 @@ export default function SharedStoryPage() {
               <p>{recipientText.contactSender(player.creatorName)}</p>
               {player.canSkip ? <>
                 <p>{recipientText.skipHelp}</p>
-                <button disabled={busy} onClick={() => void act('skip')} style={buttonStyle}>{recipientText.skip}</button>
+                <button disabled={busy || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('skip')} style={buttonStyle}>{recipientText.skip}</button>
               </> : <p>{recipientText.solveHelp}</p>}
               {!player.hintsRemaining && !player.revealedHints.length ? <p>{recipientText.noHints}</p> : null}
             </details> : null}
@@ -1281,7 +1318,7 @@ export default function SharedStoryPage() {
                   <ol>{player.revealedHints.map((hint, index) => <li key={index} style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{hint}</li>)}</ol>
                 ) : <p>{recipientText.hintsNoCost}</p>}
                 {!player.solved && !player.skipped && player.hintsRemaining > 0 ? (
-                  <button disabled={busy} onClick={() => void act('hint')} style={buttonStyle}>{recipientText.showHint} ({recipientText.hintRemaining(player.hintsRemaining)})</button>
+                  <button disabled={busy || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('hint')} style={buttonStyle}>{recipientText.showHint} ({recipientText.hintRemaining(player.hintsRemaining)})</button>
                 ) : player.hintsRemaining === 0 ? <p>{recipientText.hintsExhausted}</p> : null}
               </details>
             ) : null}
@@ -1290,7 +1327,9 @@ export default function SharedStoryPage() {
               <summary>About this private story</summary>
               <p>{recipientText.storyFrom(player.creatorName, player.recipientName)}</p>
               <p>{player.description}</p>
-              <p>The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. <Link href="/privacy">Privacy</Link></p>
+              <p>{player.cooperative
+                ? 'Cooperative participants can see one shared progress state, participant display names, and whose turn is next.'
+                : 'The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you.'} <Link href="/privacy">Privacy</Link></p>
               <p>{recipientText.settingsDisclosure}</p>
             </details>
             </>}
@@ -1488,7 +1527,9 @@ export default function SharedStoryPage() {
               <h2>Share story</h2>
               <PreSendCheck key={creator.ownerToken} story={creator} hasMedia={Boolean(ownerMedia)} hasVoice={Boolean(ownerVoice)} uploadPending={Boolean(mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading')} onReady={markSendReady} />
               {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && storyHasAccess(creator.expiresAt) ? <>
-              <p>Anyone with the recipient link can play. Keep the management link to yourself. {creator.expiresAt === null ? 'No automatic expiry; deleting the story or replacing its recipient link disables old links and printed QR codes.' : `Links expire on ${new Date(creator.expiresAt).toLocaleDateString()}.`}</p>
+              <p>{creator.brief.adventure?.cooperative
+                ? 'Only signed-in participants can join this cooperative story. Everyone uses the same recipient link and sees shared progress. Keep the management link to yourself.'
+                : 'Anyone with the recipient link can play. Keep the management link to yourself.'} {creator.expiresAt === null ? 'No automatic expiry; deleting the story or replacing its recipient link disables old links and printed QR codes.' : `Links expire on ${new Date(creator.expiresAt).toLocaleDateString()}.`}</p>
               <details style={{ marginBottom: '1rem' }}>
                 <summary>Local testing: HTTPS tunnel</summary>
                 <p>Start the recipient gateway and Cloudflare Quick Tunnel, then paste its HTTPS address. Keep Muse running and this computer awake. Restarting changes the address; it is not saved. Use non-sensitive stories: traffic passes through Cloudflare.</p>
@@ -1536,7 +1577,7 @@ export default function SharedStoryPage() {
           <section>
             <p className="atelier-eyebrow">A story to give</p>
             <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create and share a story</h1>
-            <p className="atelier-subtitle">Create an interactive story, then send someone its private link so they can play. Want to take turns together? Choose “Play together” in the adventure options; you will share one device.</p>
+            <p className="atelier-subtitle">Create an interactive story and send its private link to your group. Choose cooperative play for one shared adventure: each person signs in, sees the same progress, and takes turns from their own device.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
@@ -1630,7 +1671,7 @@ export default function SharedStoryPage() {
                   </select>
                 </label>
                 <fieldset aria-label="Story interaction" disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
-                    <legend style={{ fontWeight: 700 }}>How should the recipient interact?</legend>
+                    <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? 'How should your group interact?' : 'How should the recipient interact?'}</legend>
                     {[
                       ['classic', 'Follow the prepared clues', 'No live AI; every choice follows the same story.'],
                       ['free', 'Write or speak freely', 'Live AI responds to the recipient’s actions.'],
@@ -1656,11 +1697,22 @@ export default function SharedStoryPage() {
                   <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
                   <label style={{ display: 'block', padding: '0.75rem 0' }}>
                     <input type="checkbox" checked={Boolean(brief.adventure.turnTaking)} disabled={busy} onChange={event => {
-                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked ? { turnTaking: true } : { turnTaking: undefined }) } }))
+                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
+                        ? { turnTaking: true, cooperative: undefined }
+                        : { turnTaking: undefined }) } }))
                       setAiConsent(false)
                     }} /> Play together: alternate turns between {brief.recipientName || 'recipient'} and {brief.creatorName || 'creator'} on one device
                   </label>
                   <p>Both people share one device and one story session; turns alternate after each action.</p>
+                  <label style={{ display: 'block', padding: '0.75rem 0' }}>
+                    <input type="checkbox" checked={Boolean(brief.adventure.cooperative)} disabled={busy} onChange={event => {
+                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
+                        ? { cooperative: true, turnTaking: undefined }
+                        : { cooperative: undefined }) } }))
+                      setAiConsent(false)
+                    }} /> Cooperative story: invite 2-20 signed-in participants to share progress and take turns across devices
+                  </label>
+                  <p>Everyone opens the same private story link and signs in to Muse. Turns rotate in join order; the current player can take or pass their turn. Each participant sees the shared story state.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
               </div>
               </fieldset>

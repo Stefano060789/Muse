@@ -31,6 +31,7 @@
     "test:gift-experience": "node scripts/gift-experience.test.cjs && node scripts/gift-ui.test.cjs && node scripts/share-gift-story.test.cjs",
     "test:share-gift-story": "node scripts/share-gift-story.test.cjs",
     "test:progress": "node scripts/gift-progress.test.cjs",
+    "test:notifications": "node scripts/story-progress-notifications.test.cjs",
     "test:gifting": "node scripts/shared-gifting.test.cjs",
     "test:gift-card": "node scripts/gift-card.test.cjs",
     "test:illustrations": "node scripts/illustrations.test.cjs",

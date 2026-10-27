@@ -48,6 +48,9 @@ export async function generateSharedStory(
     brief.adventure?.turnTaking
       ? 'This is a pass-and-play story for two people sharing one device. The recipient and creator alternate choosing actions. Address both people naturally as collaborators; do not assume only one person is playing.'
       : '',
+    brief.adventure?.cooperative
+      ? 'This is a cooperative story for a signed-in group on separate devices. Treat the participants as one team working through a single shared adventure state in turn order. Keep discoveries and relationships coherent for the whole group; never assume players can see a different branch or private device.'
+      : '',
     brief.adventure ? 'Live actions may explore without advancing, and affect inventory, discoveries, relationships and progress. Plan clues that remain solvable in at most twelve actions.'
       : 'The story is a linear clue trail, not branching: every action continues to the same next scene. Make each option compatible with that next scene; do not promise different destinations or different outcomes. The recipient gives the final answer only after reaching the last scene.',
     'Return exactly ' + sceneCountForDuration(brief.durationMinutes) + ' ordered scenes.',

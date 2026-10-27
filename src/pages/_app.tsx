@@ -1,10 +1,13 @@
 import type { AppProps } from 'next/app'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import SiteFooter from '../components/SiteFooter'
 import AppInstallSupport from '../components/AppInstallSupport'
 import PageIllustration from '../components/PageIllustration'
 import SiteNavigation from '../components/SiteNavigation'
 import '../styles/globals.css'
+
+const StoryProgressNotifications = dynamic(() => import('../components/StoryProgressNotifications'), { ssr: false })
 
 type ErrorBoundaryState = {
   failed: boolean
@@ -69,6 +72,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
           <SiteNavigation pathname={router.pathname === '/story' && router.query?.read === '1' ? '/library' : router.pathname} />
           {!['/', '/story'].includes(router.pathname) ? <PageIllustration pathname={router.pathname} /> : null}
         </> : null}
+        <StoryProgressNotifications />
         <Component {...pageProps} />
       </div>
       {['/shared', '/couples', '/story'].includes(router.pathname) ? <details style={{ maxWidth: 850, margin: '1rem auto', padding: '0 1.5rem' }}>

@@ -99,6 +99,58 @@ async function main() {
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 })
   }
 
+  await check('cooperative stories share one turn state and enforce signed-in round-robin turns', async () => {
+    const cooperative = await api({
+      action: 'create',
+      brief: {
+        ...base, gift,
+        adventure: { actionBudget: 12, choiceMode: 'free', cooperative: true }
+      }
+    })
+    assert.equal(cooperative.status, 201, JSON.stringify(cooperative.body))
+    const storyId = cooperative.body.ownerToken.split('.')[0]
+    const activity = await api({ action: 'activity' })
+    assert.equal(activity.status, 200, JSON.stringify(activity.body))
+    assert.deepEqual(Object.keys(activity.body.stories[0]).sort(), ['id', 'progress', 'title'])
+    assert.equal(activity.body.stories[0].title, content.title)
+    assert.equal(activity.body.stories[0].progress.opened, 0)
+    const opened = await api({ action: 'open', token: cooperative.body.playToken })
+    assert.equal(opened.status, 200)
+    assert.equal(opened.body.player.cooperative.isYourTurn, true, 'creator joins first and starts')
+    const repository = storyRepository()
+    const second = await repository.cooperative({
+      storyId, userId: 'cooperative-user-2', displayName: 'Sam', operation: 'join'
+    })
+    assert.equal(second.isYourTurn, false)
+    assert.equal(second.currentTurnName, 'Alex')
+    assert.deepEqual(second.members.map(member => member.displayName), ['Alex', 'Sam'])
+    const story = await repository.findUnexpired(storyId)
+    const sessionHash = require('node:crypto').createHash('sha256').update(`cooperative:${storyId}`).digest('hex')
+    const turn = { narration: 'The observatory opens onto a shared path.', state: {
+      inventory: ['A brass key'], discoveries: ['A star map'], relationships: ['A helpful keeper'], progress: 'The team found the key.'
+    } }
+    const makeRequest = (operation, userId, requestId, revision = 0) => ({
+      storyId, sessionHash, playHash: story.play_hash, cooperativeUserId: userId, operation,
+      cap: 1000, requestId, revision, fingerprint: String(requestId).padEnd(64, 'f').slice(0, 64)
+    })
+    await assert.rejects(() => repository.adventure(makeRequest('reserve', 'cooperative-user-2', 'second-before-first')),
+      /another participant.s turn/)
+    const first = makeRequest('reserve', 'local-development', 'first-turn')
+    assert.equal((await repository.adventure(first)).status, 'reserved')
+    assert.equal((await repository.adventure({ ...first, operation: 'finish', turn })).status, 'done')
+    const afterFirst = await repository.cooperative({ storyId, userId: 'cooperative-user-2', operation: 'view' })
+    assert.equal(afterFirst.isYourTurn, true)
+    const secondTurn = makeRequest('reserve', 'cooperative-user-2', 'second-turn', 1)
+    assert.equal((await repository.adventure(secondTurn)).status, 'reserved')
+    await repository.adventure({ ...secondTurn, operation: 'finish', turn: { ...turn, narration: 'The map now shows the next clue.' } })
+    const afterSecond = await repository.cooperative({ storyId, userId: 'local-development', operation: 'view' })
+    assert.equal(afterSecond.isYourTurn, true)
+    const groupState = await repository.adventure({ ...makeRequest('view', 'local-development', 'view-state', 2), operation: 'view' })
+    assert.equal(groupState.view.turn.state.progress, 'The team found the key.')
+    await repository.cooperative({ storyId, userId: 'local-development', operation: 'pass', sessionHash })
+    assert.equal((await repository.cooperative({ storyId, userId: 'cooperative-user-2', operation: 'view' })).isYourTurn, true)
+  })
+
   async function api(body) {
     const res = mockRes()
     await handler({

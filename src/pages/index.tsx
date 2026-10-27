@@ -95,7 +95,7 @@ export default function Home() {
               <article className="atelier-card atelier-creation-choice">
                 <p className="atelier-eyebrow">For someone else</p>
                 <h2>Share a story &amp; play together</h2>
-                <p>Create an interactive story and send someone a private link. To take turns together, choose “Play together” during setup; that option is for sharing one device.</p>
+                <p>Create an interactive story and send your group a private link. Choose cooperative play for shared progress and turn-taking across devices; each participant signs in to Muse.</p>
                 <Link href="/shared#new" className="atelier-button atelier-secondary">Create &amp; share a story</Link>
               </article>
             </div>

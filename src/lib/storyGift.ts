@@ -50,8 +50,19 @@ export function parseGiftDraft(value: unknown): GiftDraft {
   }
   if (source.adventure !== undefined) {
     const adventure = source.adventure as Record<string, unknown>
-    if (!adventure || typeof adventure !== 'object' || Array.isArray(adventure) || !Number.isInteger(adventure.actionBudget) || Number(adventure.actionBudget) < 1 || Number(adventure.actionBudget) > 1000 || (adventure.choiceMode !== undefined && !['free', 'suggested'].includes(String(adventure.choiceMode)))) throw new Error('This draft has an invalid interaction option.')
-    brief.adventure = { actionBudget: Number(adventure.actionBudget), choiceMode: adventure.choiceMode === 'suggested' ? 'suggested' : 'free' }
+    if (!adventure || typeof adventure !== 'object' || Array.isArray(adventure) || !Number.isInteger(adventure.actionBudget) || Number(adventure.actionBudget) < 1 || Number(adventure.actionBudget) > 1000 ||
+      (adventure.choiceMode !== undefined && !['free', 'suggested'].includes(String(adventure.choiceMode))) ||
+      (adventure.turnTaking !== undefined && typeof adventure.turnTaking !== 'boolean') ||
+      (adventure.cooperative !== undefined && typeof adventure.cooperative !== 'boolean') ||
+      (adventure.turnTaking === true && adventure.cooperative === true)) {
+      throw new Error('This draft has an invalid interaction option.')
+    }
+    brief.adventure = {
+      actionBudget: Number(adventure.actionBudget),
+      choiceMode: adventure.choiceMode === 'suggested' ? 'suggested' : 'free',
+      ...(adventure.turnTaking === true ? { turnTaking: true } : {}),
+      ...(adventure.cooperative === true ? { cooperative: true } : {})
+    }
   }
   if (source.gift !== undefined) {
     const gift = source.gift as Record<string, unknown>

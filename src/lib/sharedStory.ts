@@ -30,7 +30,7 @@ export type SharedStoryBrief = {
   assistanceHints?: string[]
   alternativeAnswers?: string[]
   unlockPolicy?: 'solve' | 'allow-skip'
-  adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean }
+  adventure?: { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean; cooperative?: boolean }
   gift?: SharedStoryGift
 }
 
@@ -66,6 +66,7 @@ export type SharedStoryPlayer = NarrationMetadata & {
   media?: { kind: SharedMediaKind; mime: SharedMediaMime }
   voice?: { mime: 'audio/wav'; size: number }
   adventure?: import('./sharedAdventure').AdventureView
+  cooperative?: import('./storyRepository').CooperativeView
 }
 
 export class SharedStoryError extends Error {
@@ -133,17 +134,19 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     return value
   }
 
-  function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean } {
+  function parseAdventureBudget(value: unknown): { actionBudget: number; choiceMode?: StoryChoiceMode; turnTaking?: boolean; cooperative?: boolean } {
     const input = record(value)
-    if (Object.keys(input).some(key => !['actionBudget', 'choiceMode', 'turnTaking'].includes(key)) ||
+    if (Object.keys(input).some(key => !['actionBudget', 'choiceMode', 'turnTaking', 'cooperative'].includes(key)) ||
         !Number.isInteger(input.actionBudget) || Number(input.actionBudget) < 1 || Number(input.actionBudget) > 1000 ||
-        (input.turnTaking !== undefined && typeof input.turnTaking !== 'boolean')) {
+        (input.turnTaking !== undefined && typeof input.turnTaking !== 'boolean') ||
+        (input.cooperative !== undefined && typeof input.cooperative !== 'boolean')) {
       throw new SharedStoryError('Choose an explicit adventure AI action budget from 1 to 1000.')
     }
     const choiceMode = parseStoryChoiceMode(input.choiceMode)
     return {
       actionBudget: Number(input.actionBudget), choiceMode,
-      ...(input.turnTaking === true ? { turnTaking: true } : {})
+      ...(input.turnTaking === true ? { turnTaking: true } : {}),
+      ...(input.cooperative === true ? { cooperative: true } : {})
     }
   }
   function parseGift(value: unknown): SharedStoryGift {

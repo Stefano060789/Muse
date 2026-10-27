@@ -27,7 +27,7 @@ function load(relative) {
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Account']
+const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Settings']
 for (const [pathname, selected] of [
   ['/', 'Home'], ['/story', 'My stories'], ['/my-stories', 'My stories'], ['/myself', 'Myself'],
   ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Archive'],

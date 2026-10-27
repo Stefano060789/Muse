@@ -53,6 +53,18 @@ current MVP.
 - [x] Support editable dictation and optional narration within Shared Story
 - [x] Add durable generation/guess rate limits and explicit provider/storage errors
 - [x] Allow recipient-link replacement and permanent creator deletion
+- [x] Add optional account-based cooperative gift stories with one shared
+      adventure, visible participant/turn status, strict join-order turns and
+      pass-to-next behavior
+- [x] Rename Account navigation/page to Settings and expose the saved default
+      Muse story language
+- [x] Add an optional Settings control for creator-facing in-app alerts on
+      first opens, progress milestones and completion of shared stories
+- [ ] Test shared-story notifications with multiple signed-in creator accounts
+      and separate browsers; confirm polling and dismiss behavior in production
+- [ ] Apply and validate `supabase/shared-cooperative.sql` in hosted Supabase
+- [ ] Verify invitee sign-in returns to the private cooperative story link and
+      validate live turns on separate accounts/devices
 - [x] Confirm hosted Muse storage in the approved shared iVote Supabase project
       and apply the base Muse SQL migration; rollback smoke passed
 - [x] Change local LLM_PROVIDER to ANTHROPIC without touching existing secrets

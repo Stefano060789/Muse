@@ -389,6 +389,23 @@ async function main() {
   assert.ok(creator.nodes().some(node => label(node) === 'Step 2 of 3: Shape the story'))
   await creator.click('Continue')
   assert.equal(creator.nodes().filter(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label']).length, 1)
+  const liveMode = creator.nodes().find(node => node.type === 'input' && node.props.name === 'story-interaction' && node.props.value === 'free')
+  assert.ok(liveMode, 'Creator can select a live adventure before enabling cooperative play')
+  liveMode.props.onChange()
+  await creator.flush()
+  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story: invite'))
+  assert.ok(cooperativeLabel, 'Cooperative setup explains the participant and device model')
+  flatten(cooperativeLabel).find(node => node?.type === 'input').props.onChange({ target: { checked: true } })
+  await creator.flush()
+  creator.timers.at(-1)()
+  const cooperativeDraft = gifts.loadGiftDraft(creator.browser.localStorage)
+  assert.equal(cooperativeDraft.brief.adventure.cooperative, true)
+  assert.equal(cooperativeDraft.brief.adventure.turnTaking, undefined,
+    'Cooperative separate-device mode does not collide with same-device pass-and-play')
+  assert.throws(() => gifts.parseGiftDraft({
+    ...cooperativeDraft,
+    brief: { ...cooperativeDraft.brief, adventure: { ...cooperativeDraft.brief.adventure, cooperative: 'yes' } }
+  }), /invalid interaction option/)
   const active = creator.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])
   const confirmationLabel = flatten(active).find(node => node?.type === 'label' && label(node).includes(romance.romanceCopy().creatorConfirmation))
   assert.ok(confirmationLabel, 'Creator acknowledgment is visible on the final step')

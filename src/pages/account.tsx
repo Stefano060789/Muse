@@ -2,6 +2,11 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/accountClient'
+import { STORY_LANGUAGES, type StoryLanguageCode } from '../lib/storyLanguage'
+import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
+import {
+  loadStoryProgressNotificationsEnabled, saveStoryProgressNotificationsEnabled
+} from '../lib/storyProgressNotifications'
 
 type Account = { email?: string }
 
@@ -13,7 +18,20 @@ export default function AccountPage() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
+  const [settingsNotice, setSettingsNotice] = useState('')
+  const [settingsError, setSettingsError] = useState('')
+  const [storyNotificationsEnabled, setStoryNotificationsEnabled] = useState(true)
   const localDevelopment = process.env.NODE_ENV !== 'production' && !process.env.VERCEL
+
+  useEffect(() => {
+    try {
+      setLanguage(loadStoryPreferences().language)
+      setStoryNotificationsEnabled(loadStoryProgressNotificationsEnabled())
+    } catch (cause) {
+      setSettingsError(cause instanceof Error ? cause.message : 'Could not load your settings.')
+    }
+  }, [])
 
   useEffect(() => {
     if (!supabase) {
@@ -31,6 +49,38 @@ export default function AccountPage() {
     })
     return () => { active = false; data.subscription.unsubscribe() }
   }, [localDevelopment])
+
+  const changeLanguage = (value: string) => {
+    const selected = STORY_LANGUAGES.find(option => option.code === value)
+    if (!selected) {
+      setSettingsError('Choose a supported Muse language.')
+      return
+    }
+    setSettingsError('')
+    setSettingsNotice('')
+    try {
+      const current = loadStoryPreferences()
+      saveStoryPreferences({ ...current, language: selected.code })
+      setLanguage(selected.code)
+      setSettingsNotice('Your Muse language is saved in this browser and will be used as the default for new stories.')
+    } catch (cause) {
+      setSettingsError(cause instanceof Error ? cause.message : 'Could not save your Muse language.')
+    }
+  }
+
+  const changeStoryNotifications = (enabled: boolean) => {
+    setSettingsError('')
+    setSettingsNotice('')
+    try {
+      saveStoryProgressNotificationsEnabled(enabled)
+      setStoryNotificationsEnabled(enabled)
+      setSettingsNotice(enabled
+        ? 'In-app shared-story notifications are enabled in this browser.'
+        : 'In-app shared-story notifications are disabled in this browser.')
+    } catch (cause) {
+      setSettingsError(cause instanceof Error ? cause.message : 'Could not save your notification setting.')
+    }
+  }
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -76,11 +126,37 @@ export default function AccountPage() {
   }
 
   return <>
-    <Head><title>Muse — Account</title><meta name="description" content="Register or sign in to manage your stories." /></Head>
+    <Head><title>Muse — Settings</title><meta name="description" content="Manage your account and Muse language." /></Head>
     <main className="atelier-page">
       <div className="atelier-shell atelier-shell--narrow">
-        <p className="atelier-eyebrow">Your stories, yours</p>
-        <h1 className="atelier-title">Account</h1>
+        <p className="atelier-eyebrow">Your Muse preferences</p>
+        <h1 className="atelier-title">Settings</h1>
+        <p className="atelier-subtitle">Manage your account, story language and in-app notification preferences.</p>
+        <section className="atelier-card" aria-labelledby="muse-language-heading">
+          <h2 id="muse-language-heading">Muse language</h2>
+          <p>Sets the default language for new personal and gift stories. A gift story can still use a different language. This preference is saved in this browser.</p>
+          <label className="atelier-field" htmlFor="muse-language">Default story language
+            <select id="muse-language" value={language} onChange={event => changeLanguage(event.target.value)}>
+              {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+            </select>
+          </label>
+          {settingsNotice ? <p role="status">{settingsNotice}</p> : null}
+          {settingsError ? <p role="alert">{settingsError}</p> : null}
+        </section>
+        <section className="atelier-card" aria-labelledby="story-notifications-heading">
+          <h2 id="story-notifications-heading">Shared-story notifications</h2>
+          <p>When enabled, Muse can notify you in this browser when someone opens a shared story, reaches a progress milestone, or completes it. Notifications are checked while Muse is open and you are signed in; they are not email or browser push alerts.</p>
+          <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
+            <input
+              type="checkbox"
+              checked={storyNotificationsEnabled}
+              onChange={event => changeStoryNotifications(event.target.checked)}
+            />
+            Enable in-app shared-story notifications
+          </label>
+        </section>
+        <section aria-labelledby="account-settings-heading">
+        <h2 id="account-settings-heading">Account</h2>
         <p className="atelier-subtitle">Sign in to create and manage your stories. People opening a gift story only need the recipient link.</p>
         {!supabase && localDevelopment ? <section className="atelier-card">
           <p>Local development is using local story storage. No account sign-in is needed in this development environment.</p>
@@ -111,6 +187,7 @@ export default function AccountPage() {
             <button type="submit" className="atelier-button" disabled={busy}>{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}</button>
           </form>
         )}
+        </section>
         {notice ? <p role="status">{notice}</p> : null}
         {error ? <p role="alert">{error}</p> : null}
       </div>

@@ -168,6 +168,9 @@ async function main() {
   await check('pass-and-play turn taking is optional, strictly parsed and generator-directed', async () => {
     const teamBrief = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 12, turnTaking: true } })
     assert.deepEqual(teamBrief.adventure, { actionBudget: 12, choiceMode: 'free', turnTaking: true })
+    const cooperativeBrief = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 20, choiceMode: 'suggested', cooperative: true } })
+    assert.deepEqual(cooperativeBrief.adventure, { actionBudget: 20, choiceMode: 'suggested', cooperative: true })
+    assert.throws(() => parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 12, cooperative: 'yes' } }))
     assert.throws(() => parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 12, turnTaking: 'yes' } }))
     process.env.LLM_API_KEY = 'test-key'
     process.env.LLM_PROVIDER = 'GROQ'
@@ -175,6 +178,10 @@ async function main() {
     assert.deepEqual(await generateSharedStory(teamBrief), content)
     assert.match(providerRequest.messages[0].content, /pass-and-play story for two people sharing one device/)
     assert.deepEqual(JSON.parse(providerRequest.messages[1].content), teamBrief)
+    const cooperativePromptBrief = { ...cooperativeBrief, adventure: { ...cooperativeBrief.adventure, choiceMode: 'free' } }
+    await generateSharedStory(cooperativePromptBrief)
+    assert.match(providerRequest.messages[0].content, /participants as one team/)
+    assert.deepEqual(JSON.parse(providerRequest.messages[1].content), cooperativePromptBrief)
   })
   await check('generation sends a structured brief to the actual Groq chat API', async () => {
     process.env.LLM_API_KEY = 'test-key'

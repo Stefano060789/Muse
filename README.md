@@ -70,18 +70,21 @@ information in a collapsed explanation, not repeated recording-ready copy.
 
 **Account story recovery:** Sign in to **Saved stories** to restore server
 personal journeys and gift stories owned by that account. Ownership is verified
-on creator API requests. Recipients continue to open gift-story links without
-an account. Legacy gift stories are not assigned automatically; an owner can
-claim one by opening its existing private management link while signed in.
-Deleted stories and browser-only data cannot be recovered.
+on creator API requests. Recipients can open ordinary gift-story links without
+an account. Cooperative gift stories are the exception: every participant must
+sign in, and the private recipient link is used to join the shared story.
+Legacy gift stories are not assigned automatically; an owner can claim one by
+opening its existing private management link while signed in. Deleted stories
+and browser-only data cannot be recovered.
 
 Home separates creation into two visible choices: **My story** is for your own
 interactive adventure; **Gift story** is for writing a private mystery and
 surprise for someone else. The gift creator labels its main writing area
 **Write the story for them**.
 
-The same primary menu appears across Muse: **Home**, **Myself** (`/myself`), **Create a story**
-(`/story?new=1`), **Create a gift story** (`/shared#new`), and **Saved stories** (`/library`).
+The same primary menu appears across Muse: **Home**, **Myself** (`/myself`),
+**Create a story** (`/story?new=1`), **Create a gift story** (`/shared#new`),
+**Saved stories** (`/library`) and **Settings** (`/account`).
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
 Saved stories groups **Stories for me** and **Gift stories for others**, including
@@ -104,6 +107,20 @@ Scene totals come from the server rather than a stale browser copy. Checks do no
 AI content. The optional
 account sign-in is required for server-side creation and management.
 Expired/deleted server stories may no longer have available progress.
+**Cooperative gift stories** are an optional live-adventure mode. Participants
+sign in and join using the private recipient link; the creator starts the
+shared adventure, and the group sees the same progress and participant names.
+Turns rotate in join order, only the current participant can act, and they can
+pass to the next participant. The group waits if the current participant is
+away. Cooperative play is capped at 20 participants. The creator's account
+owns the story and pays for its live AI interactions.
+**Settings** includes account controls and a browser-saved Muse language
+preference that sets the default language for new stories; it does not change
+the app's interface language or sync to other devices. It also lets creators
+enable or disable in-app shared-story notifications. When enabled and signed
+in, Muse checks for first opens, progress milestones and completion while a
+visible Muse page is open. Notifications are browser-local, do not sync across
+devices, and are not email or push alerts.
 **Myself** appears before **Create a story** in the main navigation, with typing,
 tap-to-start/tap-to-stop dictation, explicit browser-local saving and memory editing/removal.
 Its **Explore a topic** prompts let people reflect by typing or speaking; saving a
@@ -928,7 +945,8 @@ pause/resume controls; hardware transcription/audibility are not guaranteed.
 
 **Hosted rollout (operator action, not performed by tests):** after reviewing
 Muse-only names, apply `supabase/shared-stories.sql`, then
-`supabase/shared-adventures.sql`, then the new incremental
+`supabase/shared-adventures.sql`, then `supabase/shared-cooperative.sql` to
+enable account-based cooperative gift stories, then the new incremental
 `supabase/personal-journeys.sql`. Configure service-role storage, the private
 creator code, provider and the same daily action cap on every instance.
 The new RPC/tables are RLS-enabled and service-role-only and touch no iVote

@@ -30,6 +30,21 @@ export type StoredStory = {
 }
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
 export type RequestKind = 'generate' | 'guess' | 'upload'
+export type CooperativeMember = { displayName: string; position: number }
+export type CooperativeView = {
+  members: CooperativeMember[]
+  currentTurnName: string
+  turnNumber: number
+  isYourTurn: boolean
+  yourName: string
+}
+export type CooperativeOperation = {
+  storyId: string
+  userId: string
+  operation: 'join' | 'view' | 'pass'
+  displayName?: string
+  sessionHash?: string
+}
 export interface StoryRepository {
   listRetained(ownerId: string, after: string | null, limit: number): Promise<StoredStory[]>
   claimStoryOwner(id: string, ownerId: string): Promise<boolean>
@@ -40,9 +55,11 @@ export interface StoryRepository {
   updateContent(id: string, content: SharedStoryContent): Promise<void>
   delete(id: string): Promise<void>
   rotate(id: string, playHash: string): Promise<void>
-  advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string): Promise<PlayerState>
+  advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string, cooperativeUserId?: string): Promise<PlayerState>
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
+  cooperativeReady(): Promise<void>
+  cooperative(request: CooperativeOperation): Promise<CooperativeView>
   personalJourney(request: JourneyOperation): Promise<JourneyResult>
   listPersonalJourneys(ownerId: string): Promise<JourneyRecord[]>
   deletePersonalJourney(id: string, capabilityHash: string, ownerId: string): Promise<boolean>
@@ -335,7 +352,10 @@ export function storyRepository(): StoryRepository {
       return data as JourneyResult
     },
     async adventure(request) {
-      const { data, error } = await db.rpc('muse_shared_adventure', { input: request })
+      const { data, error } = await db.rpc(
+        request.cooperativeUserId ? 'muse_cooperative_adventure' : 'muse_shared_adventure',
+        { input: request }
+      )
       if (error) {
         const message = error.message ?? ''
         if (message.startsWith('Adventure:')) throw new SharedStoryError(message, message.includes('unavailable') ? 404 : message.includes('AI budget reached') ? 429 : 409)
@@ -369,14 +389,21 @@ export function storyRepository(): StoryRepository {
       const { error } = await db.from('shared_stories').update({ play_hash: playHash }).eq('id', id)
       if (error) throw storyStorageError(error)
     },
-    async advance(id, sessionHash, action, guess, playHash) {
-      const { data, error } = await db.rpc('advance_shared_story', {
-        story_uuid: id, session_hash: sessionHash, action_name: action, guess_normalized: guess, expected_play_hash: playHash ?? null
-      })
+    async advance(id, sessionHash, action, guess, playHash, cooperativeUserId) {
+      const result = cooperativeUserId
+        ? await db.rpc('muse_cooperative_advance', { input: {
+          storyId: id, sessionHash, action, guess, playHash: playHash ?? null, userId: cooperativeUserId
+        } })
+        : await db.rpc('advance_shared_story', {
+          story_uuid: id, session_hash: sessionHash, action_name: action, guess_normalized: guess,
+          expected_play_hash: playHash ?? null
+        })
+      const { data, error } = result
       if (error) {
         if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
         if (error.message === 'Player session unavailable') throw new SharedStoryError('Player session is invalid. Reopen the story link.')
         if (error.message === 'Skipping is not enabled') throw new SharedStoryError('The sender chose Solve to unlock for this story.', 403)
+        if (error.message.startsWith('Cooperative:')) throw new SharedStoryError(error.message, error.message.includes('sign in') ? 401 : 409)
         if (error.message === 'Guess limit reached' || error.message === 'Please wait before guessing again') throw new SharedStoryError(error.message, 429)
         throw storyStorageError(error)
       }
@@ -384,6 +411,24 @@ export function storyRepository(): StoryRepository {
         throw new SharedStoryError('Shared story state is unavailable. Apply supabase/shared-story-help.sql before deploying this version.', 503)
       }
       return data
+    },
+    async cooperative(request) {
+      const { data, error } = await db.rpc('muse_cooperative_story', { input: request })
+      if (error) {
+        if (error.message.startsWith('Cooperative:')) throw new SharedStoryError(error.message, error.message.includes('unavailable') ? 404 : 409)
+        throw new SharedStoryError('Cooperative story storage is unavailable. Apply supabase/shared-cooperative.sql before enabling cooperative stories.', 503)
+      }
+      if (!data || !Array.isArray(data.members) || !Number.isSafeInteger(data.turnNumber) ||
+          typeof data.currentTurnName !== 'string' || typeof data.isYourTurn !== 'boolean' || typeof data.yourName !== 'string') {
+        throw new SharedStoryError('Cooperative story storage returned invalid state.', 503)
+      }
+      return data as CooperativeView
+    },
+    async cooperativeReady() {
+      const { data, error } = await db.rpc('muse_cooperative_story', { input: { operation: 'ready' } })
+      if (error || data?.ready !== true) {
+        throw new SharedStoryError('Cooperative stories are not available. Apply supabase/shared-cooperative.sql first.', 503)
+      }
     },
     async reserve(clientHash, kind) {
       const { data, error } = await db.rpc('reserve_shared_story_request', { client_hash: clientHash, request_kind: kind })

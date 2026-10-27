@@ -2,7 +2,7 @@ import { mkdirSync } from 'fs'
 import { dirname, resolve } from 'path'
 import type { DatabaseSync as SqliteDatabase } from 'node:sqlite'
 import { normalizeSharedAnswer, SharedStoryError } from './sharedStory'
-import type { StoryRepository, StoredStory, PlayerState, RequestKind } from './storyRepository'
+import type { StoryRepository, StoredStory, PlayerState, RequestKind, CooperativeOperation, CooperativeView } from './storyRepository'
 import type { StudioRecord, StudioRequest, StudioResult } from './studioNarration'
 import type { SharedStoryProgress } from './sharedStoryProgress'
 import { storyStorageError } from './storyStorageErrors'
@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS shared_story_sessions (
   revealed_hints INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1)),
   last_attempt_at INTEGER, PRIMARY KEY (story_id, player_hash)
 );
+CREATE TABLE IF NOT EXISTS muse_cooperative_players (
+  story_id TEXT NOT NULL REFERENCES shared_stories(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL, display_name TEXT NOT NULL,
+  position INTEGER NOT NULL, joined_at TEXT NOT NULL,
+  PRIMARY KEY(story_id, user_id), UNIQUE(story_id, position)
+);
+CREATE TABLE IF NOT EXISTS muse_cooperative_turns (
+  story_id TEXT PRIMARY KEY REFERENCES shared_stories(id) ON DELETE CASCADE,
+  current_user_id TEXT NOT NULL, turn_number INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS shared_story_replies (
   story_id TEXT NOT NULL, session_hash TEXT NOT NULL, message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 1000),
   created_at TEXT NOT NULL, PRIMARY KEY (story_id, session_hash),
@@ -66,7 +76,7 @@ CREATE TABLE IF NOT EXISTS muse_adventure_sessions (
 CREATE TABLE IF NOT EXISTS muse_adventure_requests (
   story_id TEXT NOT NULL, player_hash TEXT NOT NULL, request_id TEXT NOT NULL,
   fingerprint TEXT NOT NULL, status TEXT NOT NULL, reserved_at INTEGER NOT NULL,
-  revision INTEGER NOT NULL, result TEXT,
+  revision INTEGER NOT NULL, result TEXT, cooperative_user_id TEXT,
   PRIMARY KEY(story_id, player_hash, request_id),
   FOREIGN KEY(story_id, player_hash) REFERENCES muse_adventure_sessions(story_id, player_hash) ON DELETE CASCADE
 );
@@ -198,6 +208,9 @@ export class SqliteStoryRepository implements StoryRepository {
       db.exec(schema)
       const tableInfo = (table: string) => db!.prepare(`PRAGMA table_info(${table})`).all()
       const columns = (table: string) => tableInfo(table).map(column => column.name)
+      if (!columns('muse_adventure_requests').includes('cooperative_user_id')) {
+        db.exec('ALTER TABLE muse_adventure_requests ADD COLUMN cooperative_user_id TEXT')
+      }
       if (!columns('shared_stories').includes('alternative_answers_normalized')) {
         db.exec("ALTER TABLE shared_stories ADD COLUMN alternative_answers_normalized TEXT NOT NULL DEFAULT '[]'")
       }
@@ -544,8 +557,34 @@ export class SqliteStoryRepository implements StoryRepository {
       const story = db.prepare('SELECT * FROM shared_stories WHERE id = ?').get(input.storyId)
       const player = db.prepare('SELECT * FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(input.storyId, input.sessionHash)
       if (!story || story.play_hash !== input.playHash || !player) throw new SharedStoryError('Adventure: story or session unavailable', 404)
-      const budget = JSON.parse(String(story.brief)).adventure?.actionBudget
+      const brief = JSON.parse(String(story.brief))
+      const budget = brief.adventure?.actionBudget
       if (!Number.isInteger(budget) || budget < 1) throw new SharedStoryError('Adventure: not enabled')
+      const cooperative = brief.adventure?.cooperative === true
+      const currentCooperativeTurn = () => {
+        if (!cooperative) return
+        if (!input.cooperativeUserId) throw new SharedStoryError('Cooperative: sign in to take part.', 401)
+        const member = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?')
+          .get(input.storyId, input.cooperativeUserId)
+        const turn = db.prepare('SELECT current_user_id FROM muse_cooperative_turns WHERE story_id = ?').get(input.storyId)
+        if (!member || !turn) throw new SharedStoryError('Cooperative: join this story before playing.', 403)
+        if (turn.current_user_id !== input.cooperativeUserId) throw new SharedStoryError('Cooperative: it is another participant’s turn.', 409)
+      }
+      if (cooperative) {
+        if (!input.cooperativeUserId) throw new SharedStoryError('Cooperative: sign in to take part.', 401)
+        const member = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?')
+          .get(input.storyId, input.cooperativeUserId)
+        if (!member) throw new SharedStoryError('Cooperative: join this story before playing.', 403)
+      }
+      const advanceCooperativeTurn = () => {
+        if (!cooperative || !input.cooperativeUserId) return
+        const next = db.prepare(`SELECT user_id FROM muse_cooperative_players
+          WHERE story_id = ? AND position > (SELECT position FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?)
+          ORDER BY position LIMIT 1`).get(input.storyId, input.storyId, input.cooperativeUserId) as { user_id?: string } | undefined
+        const nextUserId = next?.user_id ?? String(db.prepare('SELECT user_id FROM muse_cooperative_players WHERE story_id = ? ORDER BY position LIMIT 1').get(input.storyId)!.user_id)
+        db.prepare('UPDATE muse_cooperative_turns SET current_user_id = ?, turn_number = turn_number + 1 WHERE story_id = ?')
+          .run(nextUserId, input.storyId)
+      }
       db.prepare('INSERT INTO muse_adventure_sessions(story_id, player_hash) VALUES (?, ?) ON CONFLICT DO NOTHING').run(input.storyId, input.sessionHash)
       db.prepare("UPDATE muse_adventure_requests SET status = 'failed' WHERE story_id = ? AND player_hash = ? AND status = 'pending' AND reserved_at <= ?").run(input.storyId, input.sessionHash, now - 90000)
       const storyBucket = `story:${input.storyId}`
@@ -573,10 +612,15 @@ export class SqliteStoryRepository implements StoryRepository {
       const previous = db.prepare('SELECT * FROM muse_adventure_requests WHERE story_id = ? AND player_hash = ? AND request_id = ?').get(input.storyId, input.sessionHash, input.requestId!)
       if (input.operation === 'finish') {
         if (!previous || previous.fingerprint !== input.fingerprint || previous.status !== 'pending') throw new SharedStoryError('Adventure: attempt expired or already completed', 409)
+        if (cooperative && previous.cooperative_user_id !== input.cooperativeUserId) throw new SharedStoryError('Adventure: cooperative turn owner changed', 409)
+        currentCooperativeTurn()
         const current = view()
         if (player.solved || player.skipped || current.revision !== previous.revision) throw new SharedStoryError('Adventure: stale or revealed state', 409)
         if (!input.failed && !input.turn) throw new SharedStoryError('Adventure: missing turn')
-        if (!input.failed) db.prepare('UPDATE muse_adventure_sessions SET turn = ? WHERE story_id = ? AND player_hash = ?').run(JSON.stringify(input.turn), input.storyId, input.sessionHash)
+        if (!input.failed) {
+          db.prepare('UPDATE muse_adventure_sessions SET turn = ? WHERE story_id = ? AND player_hash = ?').run(JSON.stringify(input.turn), input.storyId, input.sessionHash)
+          advanceCooperativeTurn()
+        }
         db.prepare('UPDATE muse_adventure_requests SET status = ? WHERE story_id = ? AND player_hash = ? AND request_id = ?').run(input.failed ? 'failed' : 'done', input.storyId, input.sessionHash, input.requestId!)
         const result = { view: view(), status: input.failed ? 'failed' as const : 'done' as const }
         db.prepare('UPDATE muse_adventure_requests SET result = ? WHERE story_id = ? AND player_hash = ? AND request_id = ?').run(JSON.stringify(result), input.storyId, input.sessionHash, input.requestId!)
@@ -587,6 +631,7 @@ export class SqliteStoryRepository implements StoryRepository {
         return previous.result ? JSON.parse(String(previous.result)) : { view: view(), status: previous.status as 'pending' | 'failed' }
       }
       const current = view()
+      currentCooperativeTurn()
       if (player.solved || player.skipped) throw new SharedStoryError('Adventure: already revealed', 409)
       if (current.pending) throw new SharedStoryError('Adventure: action in progress; reopen to refresh', 409)
       if (input.revision !== current.revision) throw new SharedStoryError('Adventure: stale state; reopen to refresh', 409)
@@ -594,16 +639,85 @@ export class SqliteStoryRepository implements StoryRepository {
       if (current.budgetRemaining === 0 || Number(db.prepare('SELECT used FROM muse_adventure_budgets WHERE bucket = ?').get(dayBucket)!.used) >= input.cap) throw new SharedStoryError('Adventure: AI budget reached. Final guesses, hints and audio remain available.', 429)
       db.prepare('UPDATE muse_adventure_budgets SET used = used + 1 WHERE bucket IN (?, ?)').run(storyBucket, dayBucket)
       db.prepare('UPDATE muse_adventure_sessions SET used = used + 1 WHERE story_id = ? AND player_hash = ?').run(input.storyId, input.sessionHash)
-      db.prepare("INSERT INTO muse_adventure_requests(story_id, player_hash, request_id, fingerprint, status, reserved_at, revision) VALUES (?, ?, ?, ?, 'pending', ?, ?)").run(input.storyId, input.sessionHash, input.requestId!, input.fingerprint!, now, current.revision + 1)
+      db.prepare("INSERT INTO muse_adventure_requests(story_id, player_hash, request_id, fingerprint, status, reserved_at, revision, cooperative_user_id) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)").run(input.storyId, input.sessionHash, input.requestId!, input.fingerprint!, now, current.revision + 1, input.cooperativeUserId ?? null)
       return { view: view(), status: 'reserved' }
     })
   }
 
-  async advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string): Promise<PlayerState> {
+  async cooperative(input: CooperativeOperation): Promise<CooperativeView> {
+    return this.transaction(db => {
+      const story = db.prepare('SELECT brief FROM shared_stories WHERE id = ?').get(input.storyId)
+      if (!story) throw new SharedStoryError('Cooperative: story unavailable', 404)
+      const brief = JSON.parse(String(story.brief))
+      if (brief.adventure?.cooperative !== true) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
+      if (input.operation === 'join') {
+        const name = input.displayName?.trim()
+        if (!name || name.length > 40 || /[\u0000-\u001f]/.test(name)) {
+          throw new SharedStoryError('Choose a display name of 1 to 40 characters.')
+        }
+        const existing = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?').get(input.storyId, input.userId)
+        if (!existing) {
+          const count = Number(db.prepare('SELECT COUNT(*) AS count FROM muse_cooperative_players WHERE story_id = ?').get(input.storyId)!.count)
+          if (count >= 20) throw new SharedStoryError('Cooperative: this story is full (20 participants maximum).', 409)
+          const position = count + 1
+          const duplicateName = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND display_name = ?')
+            .get(input.storyId, name)
+          const displayName = duplicateName ? `Participant ${position}` : name
+          db.prepare('INSERT INTO muse_cooperative_players(story_id, user_id, display_name, position, joined_at) VALUES (?, ?, ?, ?, ?)')
+            .run(input.storyId, input.userId, displayName, position, new Date().toISOString())
+          db.prepare('INSERT INTO muse_cooperative_turns(story_id, current_user_id, turn_number) VALUES (?, ?, 1) ON CONFLICT DO NOTHING')
+            .run(input.storyId, input.userId)
+        }
+      }
+      const own = db.prepare('SELECT display_name FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?').get(input.storyId, input.userId) as { display_name?: string } | undefined
+      if (!own) throw new SharedStoryError('Cooperative: join this story before viewing progress.', 403)
+      const current = db.prepare(`SELECT t.current_user_id, t.turn_number, p.display_name
+        FROM muse_cooperative_turns t JOIN muse_cooperative_players p
+          ON p.story_id = t.story_id AND p.user_id = t.current_user_id
+        WHERE t.story_id = ?`).get(input.storyId) as { current_user_id: string; turn_number: number; display_name: string } | undefined
+      if (!current) throw new SharedStoryError('Cooperative: turn state unavailable.', 503)
+      if (input.operation === 'pass') {
+        if (current.current_user_id !== input.userId) throw new SharedStoryError('Cooperative: it is another participant’s turn.', 409)
+        if (db.prepare("SELECT 1 FROM muse_adventure_requests WHERE story_id = ? AND player_hash = ? AND status = 'pending'")
+          .get(input.storyId, input.sessionHash ?? '')) {
+          throw new SharedStoryError('Cooperative: wait for the current action to finish before passing', 409)
+        }
+        const next = db.prepare(`SELECT user_id FROM muse_cooperative_players
+          WHERE story_id = ? AND position > (SELECT position FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?)
+          ORDER BY position LIMIT 1`).get(input.storyId, input.storyId, input.userId) as { user_id?: string } | undefined
+        const nextUserId = next?.user_id ?? String(db.prepare('SELECT user_id FROM muse_cooperative_players WHERE story_id = ? ORDER BY position LIMIT 1').get(input.storyId)!.user_id)
+        db.prepare('UPDATE muse_cooperative_turns SET current_user_id = ?, turn_number = turn_number + 1 WHERE story_id = ?')
+          .run(nextUserId, input.storyId)
+      }
+      const currentTurn = db.prepare(`SELECT t.current_user_id, t.turn_number, p.display_name
+        FROM muse_cooperative_turns t JOIN muse_cooperative_players p
+          ON p.story_id = t.story_id AND p.user_id = t.current_user_id
+        WHERE t.story_id = ?`).get(input.storyId) as typeof current | undefined
+      if (!currentTurn) throw new SharedStoryError('Cooperative: turn state unavailable.', 503)
+      const members = db.prepare('SELECT display_name, position FROM muse_cooperative_players WHERE story_id = ? ORDER BY position')
+        .all(input.storyId).map((row: Record<string, unknown>) => ({ displayName: String(row.display_name), position: Number(row.position) }))
+      return {
+        members, currentTurnName: String(currentTurn.display_name), turnNumber: Number(currentTurn.turn_number),
+        isYourTurn: currentTurn.current_user_id === input.userId, yourName: String(own.display_name)
+      }
+    })
+  }
+
+  cooperativeReady(): Promise<void> { return Promise.resolve() }
+
+  async advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string, cooperativeUserId?: string): Promise<PlayerState> {
     return this.transaction((db, now) => {
       const story = db.prepare('SELECT brief, content, play_hash, answer_normalized, alternative_answers_normalized FROM shared_stories WHERE id = ?').get(id)
       if (!story || (playHash !== undefined && story.play_hash !== playHash)) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
       if (!['open', 'next', 'guess', 'hint', 'skip'].includes(action)) throw new SharedStoryError('Invalid story action.')
+      const cooperative = JSON.parse(String(story.brief)).adventure?.cooperative === true
+      if (cooperative && action !== 'open') {
+        if (!cooperativeUserId) throw new SharedStoryError('Cooperative: sign in to take part.', 401)
+        const member = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?').get(id, cooperativeUserId)
+        const turn = db.prepare('SELECT current_user_id FROM muse_cooperative_turns WHERE story_id = ?').get(id)
+        if (!member) throw new SharedStoryError('Cooperative: join this story before playing.', 403)
+        if (!turn || turn.current_user_id !== cooperativeUserId) throw new SharedStoryError('Cooperative: it is another participant’s turn.', 409)
+      }
       if (action === 'open') db.prepare('INSERT INTO shared_story_sessions(story_id, player_hash) VALUES (?, ?) ON CONFLICT DO NOTHING').run(id, sessionHash)
       const player = db.prepare('SELECT * FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(id, sessionHash)
       if (!player) throw new SharedStoryError('Player session is invalid. Reopen the story link.')
@@ -633,6 +747,14 @@ export class SqliteStoryRepository implements StoryRepository {
       }
       db.prepare('UPDATE shared_story_sessions SET current_scene = ?, solved = ?, skipped = ?, attempts = ?, last_attempt_at = ?, revealed_hints = ? WHERE story_id = ? AND player_hash = ?')
         .run(scene, Number(solved), Number(skipped), attempts, lastAttempt, revealedHints, id, sessionHash)
+      if (cooperative && action !== 'open' && cooperativeUserId) {
+        const next = db.prepare(`SELECT user_id FROM muse_cooperative_players
+          WHERE story_id = ? AND position > (SELECT position FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?)
+          ORDER BY position LIMIT 1`).get(id, id, cooperativeUserId) as { user_id?: string } | undefined
+        const nextUserId = next?.user_id ?? String(db.prepare('SELECT user_id FROM muse_cooperative_players WHERE story_id = ? ORDER BY position LIMIT 1').get(id)!.user_id)
+        db.prepare('UPDATE muse_cooperative_turns SET current_user_id = ?, turn_number = turn_number + 1 WHERE story_id = ?')
+          .run(nextUserId, id)
+      }
       return { current_scene: scene, solved, skipped, revealed_hints: revealedHints }
     })
   }
