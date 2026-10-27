@@ -190,7 +190,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
       const finalVoice = body.finalVoice === undefined ? null : parseVoiceDeclaration(body.finalVoice)
-      const brief = parseSharedStoryBrief(body.brief, { allowEmptyMessage: Boolean(finalMedia) })
+      let brief = parseSharedStoryBrief(body.brief, { allowEmptyMessage: Boolean(finalMedia) })
+      if (account!.displayName) brief = { ...brief, creatorName: account!.displayName }
       try { requireRomanceConfirmation(brief.romance, body.romanceConfirmed) } catch (error) {
         throw new SharedStoryError(error instanceof Error ? error.message : 'Confirm the romance boundaries before creating this story.')
       }
@@ -225,7 +226,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
       if (brief.adventure?.cooperative) {
         await db.cooperative({
-          storyId: id, userId: account!.id, operation: 'join', displayName: brief.creatorName
+          storyId: id, userId: account!.id, operation: 'join', displayName: account!.displayName || brief.creatorName
         })
       }
       await reportOperation('story-created')
@@ -238,7 +239,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = database()
     await sweepStudioAudio(db)
     const story = await db.findUnexpired(id)
-    if (story?.brief.adventure?.cooperative && PLAYER_ACTIONS.includes(String(action))) {
+    if (story?.brief.adventure?.cooperative && PLAYER_ACTIONS.includes(String(action)) &&
+        typeof req.headers.authorization === 'string') {
       account = account ?? await requireAccount(req, res)
       if (!account) return
     }
@@ -263,12 +265,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json({ romanceNotice: { romance, ...(story.brief.language ? { language: story.brief.language } : {}) } })
       }
       throw new SharedStoryError('Confirm you are 18 or older and choose to open this romance story before continuing.', 403)
-    }
-    if (story.brief.adventure?.cooperative && PLAYER_ACTIONS.includes(String(action)) && account) {
-      await db.cooperative({
-        storyId: id, userId: account.id, operation: 'join',
-        displayName: account.id === story.owner_id ? story.brief.creatorName : story.brief.recipientName
-      })
     }
     if (action === 'delete') {
       await db.delete(id)
@@ -535,6 +531,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const readyVoice = story.brief.gift ? await db.voiceReady(id) : null
     const cooperative = Boolean(story.brief.adventure?.cooperative)
     const sessionHash = cooperative ? hash(`cooperative:${id}`) : hash(sessionToken)
+    const guestDigest = hash(sessionToken)
+    const guestParticipantId = `${guestDigest.slice(0, 8)}-${guestDigest.slice(8, 12)}-4${guestDigest.slice(13, 16)}-${((parseInt(guestDigest[16], 16) & 3) | 8).toString(16)}${guestDigest.slice(17, 20)}-${guestDigest.slice(20, 32)}`
+    const cooperativeParticipantId = account?.id ?? guestParticipantId
+    if (cooperative && PLAYER_ACTIONS.includes(String(action))) {
+      const requestedName = typeof body.displayName === 'string' ? body.displayName.trim() : ''
+      const displayName = account
+        ? account.displayName || (account.id === story.owner_id ? story.brief.creatorName : account.email?.split('@')[0]) || story.brief.recipientName
+        : requestedName
+      try {
+        await db.cooperative({
+          storyId: id, userId: cooperativeParticipantId, operation: 'join',
+          ...(displayName ? { displayName: displayName.slice(0, 40) } : {})
+        })
+      } catch (error) {
+        if (!account && action === 'open' && error instanceof SharedStoryError &&
+            error.message.includes('enter a display name')) {
+          return res.status(200).json({ requiresDisplayName: true, sessionToken })
+        }
+        throw error
+      }
+    }
     if (action === 'studio-audio') {
       if (!story.brief.message && !ready) throw new SharedStoryError('The creator is still finishing this story.', 409)
       const audio = await readStudioAudio(db, story, body.sceneIndex, sessionHash)
@@ -548,7 +565,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!story.brief.message && !ready) {
         throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
       }
-      const state = await db.advance(id, sessionHash, 'open', '', story.play_hash, cooperative ? account?.id : undefined)
+      const state = await db.advance(id, sessionHash, 'open', '', story.play_hash, cooperative ? cooperativeParticipantId : undefined)
       if (!state.solved && !state.skipped) throw new SharedStoryError('Unlock the story before opening its final reveal.', 403)
       if (!ready) throw new SharedStoryError('This story has no photo or video.', 404)
       return await deliverMedia(res, sharedMediaStore(), ready)
@@ -558,7 +575,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new SharedStoryError('The creator is still finishing this story. Try the link again a little later.', 409)
       }
       if (!story.brief.gift) throw new SharedStoryError('This story has no voice reveal.', 404)
-      const state = await db.advance(id, sessionHash, 'open', '', story.play_hash, cooperative ? account?.id : undefined)
+      const state = await db.advance(id, sessionHash, 'open', '', story.play_hash, cooperative ? cooperativeParticipantId : undefined)
       if (!state.solved && !state.skipped) throw new SharedStoryError('Unlock the story before opening its voice reveal.', 403)
       if (!readyVoice) throw new SharedStoryError('This story has no voice recording.', 404)
       return await deliverVoice(res, sharedMediaStore(), readyVoice)
@@ -587,12 +604,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (story.brief.adventure && action === 'next') throw new SharedStoryError('Use a freeform adventure action instead of Next.')
     if (action === 'cooperative-pass') {
-      if (!cooperative || !account) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
-      await db.cooperative({ storyId: id, userId: account.id, operation: 'pass', sessionHash })
+      if (!cooperative) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
+      await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'pass', sessionHash })
     }
     const state = await db.advance(id, sessionHash,
       action === 'adventure' || action === 'cooperative-pass' ? 'open' : action as 'open' | 'next' | 'guess' | 'hint' | 'skip',
-      guess, story.play_hash, cooperative ? account?.id : undefined)
+      guess, story.play_hash, cooperative ? cooperativeParticipantId : undefined)
     if (action === 'adventure' && (state.solved || state.skipped)) throw new SharedStoryError('The surprise is already revealed. Reopen to refresh your story.', 409)
     const feedback = state.skipped ? 'Revealed without solving' : action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
     const player = sharedStoryPlayerView(story.brief, story.content, state, feedback, ready, readyVoice)
@@ -600,15 +617,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (story.brief.adventure) {
       const base: AdventureRequest = {
         storyId: id, sessionHash, playHash: story.play_hash, operation: 'view', cap: adventureGlobalCap(),
-        ...(cooperative && account ? { cooperativeUserId: account.id } : {})
+        ...(cooperative ? { cooperativeUserId: cooperativeParticipantId } : {})
       }
       player.scene = { ...player.scene, choices: undefined }
       if (action === 'adventure') {
         const currentView = (await db.adventure(base)).view
         const authoritativeChoices = currentView.turn ? currentView.turn.choices : story.content.scenes[0]?.choices
         const submission = parseAdventureAction(body, story.brief, authoritativeChoices, body.revision !== currentView.revision)
-        if (cooperative && account) {
-          const turn = await db.cooperative({ storyId: id, userId: account.id, operation: 'view' })
+        if (cooperative) {
+          const turn = await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'view' })
           if (!turn.isYourTurn) throw new SharedStoryError('Cooperative: it is another participant’s turn.', 409)
         }
         if (story.owner_id && submission.revision === currentView.revision) {
@@ -637,7 +654,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         player.adventure = adventureChoiceView((await db.adventure(base)).view, story)
       }
     }
-    if (cooperative && account) player.cooperative = await db.cooperative({ storyId: id, userId: account.id, operation: 'view' })
+    if (cooperative) player.cooperative = await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'view' })
     return res.status(200).json({ player, sessionToken })
   } catch (error) {
     if (res.headersSent) {

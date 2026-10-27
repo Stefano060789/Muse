@@ -1,6 +1,7 @@
 -- Apply after shared-stories.sql and shared-adventures.sql.
 -- Cooperative stories share one server-side adventure state and rotate turns
--- through signed-in participants in the order they joined.
+-- through participants in the order they joined. Apply shared-cooperative-guests.sql
+-- afterward to allow private-link guests without Muse accounts.
 begin;
 
 create table if not exists public.muse_cooperative_players (

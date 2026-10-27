@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import InstallApp from '../components/InstallApp'
 import { loadStoryLibrary, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
+import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { STORY_LANGUAGES } from '../lib/storyLanguage'
 
 type PersonalLibraryEntry = Extract<LibraryEntry, { kind: 'personal' }>
 
@@ -14,6 +16,8 @@ function isComplete(entry: PersonalLibraryEntry) {
 }
 
 export default function Home() {
+  const language = useInterfaceLanguage()
+  const direction = STORY_LANGUAGES.find(option => option.code === language)?.dir
   const [personalEntries, setPersonalEntries] = useState<PersonalLibraryEntry[]>([])
   const [libraryError, setLibraryError] = useState('')
   const [libraryReady, setLibraryReady] = useState(false)
@@ -61,14 +65,14 @@ export default function Home() {
       <title>Muse - A story for you. A gift story for someone.</title>
       <meta name="description" content="Muse turns your memories, interests, and relationships into personal stories and meaningful gifts you can keep building together." />
     </Head>
-    <main className="atelier-page atelier-home">
+    <main className="atelier-page atelier-home" lang={language} dir={direction}>
       <div className="atelier-shell">
         <section className="atelier-hero" aria-labelledby="welcome-title">
           <div>
-            <p className="atelier-eyebrow">Small adventures. Personal meaning.</p>
-            <h1 id="welcome-title">A story to get lost in.<br /><em>A gift story they&apos;ll remember.</em></h1>
-            <p className="atelier-subtitle">Muse turns your memories, interests, and relationships into stories you can keep building together.</p>
-            <p>Create a personal journey, continue it with new chapters, or make a private mystery as a gift. Read or listen, and invite someone into the story when you are ready.</p>
+            <p className="atelier-eyebrow">{interfaceText('welcomeEyebrow', language)}</p>
+            <h1 id="welcome-title">{interfaceText('homeTitle', language)}<br /><em>{interfaceText('homeGiftTitle', language)}</em></h1>
+            <p className="atelier-subtitle">{interfaceText('homeSubtitle', language)}</p>
+            <p>{interfaceText('homeSubtitle', language)}</p>
             {libraryReady && !libraryError && returnStory && <section className="atelier-card" aria-label={activeStory ? 'Continue your story' : 'Read your completed story'}>
               <p className="atelier-eyebrow">{activeStory ? 'Continue your story' : 'Your latest completed story'}</p>
               <h2>{returnStory.story.title}</h2>
@@ -83,24 +87,24 @@ export default function Home() {
             {libraryError && <p role="alert">{libraryError} Your saved stories have not been changed.</p>}
             {continueError && <p role="alert">{continueError}</p>}
             <Link href="/myself" className="atelier-button atelier-secondary" style={{ display: 'flex', width: '100%', boxSizing: 'border-box', marginTop: '1.5rem' }}>
-              Myself
+              {interfaceText('homeMyself', language)}
             </Link>
             <div className="atelier-creation-choices" aria-label="Choose the kind of story to create">
               <article className="atelier-card atelier-creation-choice">
-                <p className="atelier-eyebrow">Just for you</p>
-                <h2>My stories</h2>
-                <p>Choose how you want to feel, then write or speak your choices as Muse builds your personal adventure.</p>
-                <Link href="/my-stories" className="atelier-button">Open My stories</Link>
+                <p className="atelier-eyebrow">{interfaceText('homeJustForYou', language)}</p>
+                <h2>{interfaceText('homeCreatePersonal', language)}</h2>
+                <p>{interfaceText('homeCreatePersonalHelp', language)}</p>
+                <Link href="/my-stories" className="atelier-button">{interfaceText('homeOpenPersonal', language)}</Link>
               </article>
               <article className="atelier-card atelier-creation-choice">
-                <p className="atelier-eyebrow">For someone else</p>
-                <h2>Share a story &amp; play together</h2>
-                <p>Create an interactive story and send your group a private link. Choose cooperative play for shared progress and turn-taking across devices; each participant signs in to Muse.</p>
-                <Link href="/shared#new" className="atelier-button atelier-secondary">Create &amp; share a story</Link>
+                <p className="atelier-eyebrow">{interfaceText('homeForSomeone', language)}</p>
+                <h2>{interfaceText('homeShareTogether', language)}</h2>
+                <p>{interfaceText('homeShareHelp', language)}</p>
+                <Link href="/shared#new" className="atelier-button atelier-secondary">{interfaceText('homeCreateGift', language)}</Link>
               </article>
             </div>
-            <Link href="/demo" className="atelier-sample-link">Try a 2-minute sample</Link>
-            <p className="atelier-note">Free, handcrafted, no account needed.</p>
+            <Link href="/demo" className="atelier-sample-link">{interfaceText('sample', language)}</Link>
+            <p className="atelier-note">{interfaceText('sampleNote', language)}</p>
           </div>
           <figure className="atelier-hero-art" aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}

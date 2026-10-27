@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { storyStorageMode } from './storyRepository'
 
-export type AccountUser = { id: string; email: string | undefined }
+export type AccountUser = { id: string; email: string | undefined; displayName?: string }
 
 export async function requireAccount(req: NextApiRequest, res: NextApiResponse): Promise<AccountUser | null> {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && storyStorageMode() === 'sqlite') {
@@ -28,7 +28,11 @@ export async function requireAccount(req: NextApiRequest, res: NextApiResponse):
       res.status(401).json({ error: 'Your sign-in has expired. Sign in again to continue.' })
       return null
     }
-    return { id: data.user.id, email: data.user.email }
+    const metadata = data.user.user_metadata
+    const displayName = metadata && typeof metadata.display_name === 'string'
+      ? metadata.display_name.trim().slice(0, 40)
+      : ''
+    return { id: data.user.id, email: data.user.email, ...(displayName ? { displayName } : {}) }
   } catch (error) {
     if (error instanceof SharedStoryError) throw error
     throw new SharedStoryError('Account authentication is temporarily unavailable.', 503)

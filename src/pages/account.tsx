@@ -7,10 +7,15 @@ import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferen
 import {
   loadStoryProgressNotificationsEnabled, saveStoryProgressNotificationsEnabled
 } from '../lib/storyProgressNotifications'
+import { loadProfileDisplayName, saveProfileDisplayName } from '../lib/profilePreferences'
+import {
+  interfaceText, loadInterfaceLanguage, saveInterfaceLanguage, useInterfaceLanguage
+} from '../lib/interfaceLanguage'
 
-type Account = { email?: string }
+type Account = { email?: string; displayName?: string }
 
 export default function AccountPage() {
+  const interfaceLanguage = useInterfaceLanguage()
   const [account, setAccount] = useState<Account | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,7 +23,9 @@ export default function AccountPage() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
-  const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
+  const [storyLanguage, setStoryLanguage] = useState<StoryLanguageCode>('en-US')
+  const [interfaceLocale, setInterfaceLocale] = useState<StoryLanguageCode>('en-US')
+  const [profileName, setProfileName] = useState('')
   const [settingsNotice, setSettingsNotice] = useState('')
   const [settingsError, setSettingsError] = useState('')
   const [storyNotificationsEnabled, setStoryNotificationsEnabled] = useState(true)
@@ -26,7 +33,9 @@ export default function AccountPage() {
 
   useEffect(() => {
     try {
-      setLanguage(loadStoryPreferences().language)
+      setStoryLanguage(loadStoryPreferences().language)
+      setInterfaceLocale(loadInterfaceLanguage())
+      setProfileName(loadProfileDisplayName())
       setStoryNotificationsEnabled(loadStoryProgressNotificationsEnabled())
     } catch (cause) {
       setSettingsError(cause instanceof Error ? cause.message : 'Could not load your settings.')
@@ -42,10 +51,18 @@ export default function AccountPage() {
     void supabase.auth.getSession().then(({ data, error: sessionError }) => {
       if (!active) return
       if (sessionError) setError('Could not check your sign-in. Refresh or try again.')
-      setAccount(data.session?.user ? { email: data.session.user.email } : null)
+      setAccount(data.session?.user ? {
+        email: data.session.user.email,
+        displayName: typeof data.session.user.user_metadata?.display_name === 'string' ? data.session.user.user_metadata.display_name : undefined
+      } : null)
+      if (typeof data.session?.user.user_metadata?.display_name === 'string') setProfileName(data.session.user.user_metadata.display_name)
     })
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) setAccount(session?.user ? { email: session.user.email } : null)
+      if (active) setAccount(session?.user ? {
+        email: session.user.email,
+        displayName: typeof session.user.user_metadata?.display_name === 'string' ? session.user.user_metadata.display_name : undefined
+      } : null)
+      if (active && typeof session?.user.user_metadata?.display_name === 'string') setProfileName(session.user.user_metadata.display_name)
     })
     return () => { active = false; data.subscription.unsubscribe() }
   }, [localDevelopment])
@@ -53,7 +70,7 @@ export default function AccountPage() {
   const changeLanguage = (value: string) => {
     const selected = STORY_LANGUAGES.find(option => option.code === value)
     if (!selected) {
-      setSettingsError('Choose a supported Muse language.')
+      setSettingsError('Choose a supported story language.')
       return
     }
     setSettingsError('')
@@ -61,10 +78,45 @@ export default function AccountPage() {
     try {
       const current = loadStoryPreferences()
       saveStoryPreferences({ ...current, language: selected.code })
-      setLanguage(selected.code)
-      setSettingsNotice('Your Muse language is saved in this browser and will be used as the default for new stories.')
+      setStoryLanguage(selected.code)
+      setSettingsNotice(interfaceText('languageSaved', interfaceLanguage))
     } catch (cause) {
       setSettingsError(cause instanceof Error ? cause.message : 'Could not save your Muse language.')
+    }
+  }
+
+  const changeInterfaceLanguage = (value: string) => {
+    setSettingsError('')
+    setSettingsNotice('')
+    try {
+      const selected = saveInterfaceLanguage(value)
+      setInterfaceLocale(selected)
+      setSettingsNotice(interfaceText('languageSaved', selected))
+    } catch (cause) {
+      setSettingsError(cause instanceof Error ? cause.message : 'Could not save your interface language.')
+    }
+  }
+
+  const saveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSettingsError('')
+    setSettingsNotice('')
+    const normalizedName = profileName.trim()
+    if (!normalizedName || normalizedName.length > 40) {
+      setSettingsError('Enter a name of 1 to 40 characters.')
+      return
+    }
+    try {
+      if (supabase && account) {
+        const { error: authError } = await supabase.auth.updateUser({ data: { display_name: normalizedName } })
+        if (authError) throw authError
+        setAccount(current => current ? { ...current, displayName: normalizedName } : current)
+      }
+      saveProfileDisplayName(normalizedName)
+      setProfileName(normalizedName)
+      setSettingsNotice(interfaceText('profileSaved', interfaceLanguage))
+    } catch (cause) {
+      setSettingsError(cause instanceof Error ? cause.message : 'Could not save your name.')
     }
   }
 
@@ -91,7 +143,7 @@ export default function AccountPage() {
         const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password })
         if (authError) throw authError
         if (data.session) {
-          setAccount({ email: data.user?.email })
+          setAccount({ email: data.user?.email, displayName: typeof data.user?.user_metadata?.display_name === 'string' ? data.user.user_metadata.display_name : undefined })
           setNotice('Your account is ready. Your stories will be saved to this account.')
         } else {
           setNotice('Check your email to confirm your account, then sign in.')
@@ -99,7 +151,7 @@ export default function AccountPage() {
       } else {
         const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
         if (authError) throw authError
-        setAccount({ email: data.user.email })
+        setAccount({ email: data.user.email, displayName: typeof data.user.user_metadata?.display_name === 'string' ? data.user.user_metadata.display_name : undefined })
         setNotice('You are signed in. Your stories are connected to this account.')
       }
       setPassword('')
@@ -126,61 +178,78 @@ export default function AccountPage() {
   }
 
   return <>
-    <Head><title>Muse — Settings</title><meta name="description" content="Manage your account and Muse language." /></Head>
+    <Head><title>Muse — {interfaceText('settingsTitle', interfaceLanguage)}</title><meta name="description" content={interfaceText('settingsSubtitle', interfaceLanguage)} /></Head>
     <main className="atelier-page">
       <div className="atelier-shell atelier-shell--narrow">
-        <p className="atelier-eyebrow">Your Muse preferences</p>
-        <h1 className="atelier-title">Settings</h1>
-        <p className="atelier-subtitle">Manage your account, story language and in-app notification preferences.</p>
+        <p className="atelier-eyebrow">{interfaceText('settingsEyebrow', interfaceLanguage)}</p>
+        <h1 className="atelier-title">{interfaceText('settingsTitle', interfaceLanguage)}</h1>
+        <p className="atelier-subtitle">{interfaceText('settingsSubtitle', interfaceLanguage)}</p>
+        <section className="atelier-card" aria-labelledby="profile-heading">
+          <h2 id="profile-heading">{interfaceText('profileHeading', interfaceLanguage)}</h2>
+          <p>{interfaceText('profileNameHelp', interfaceLanguage)}</p>
+          <form onSubmit={event => void saveProfile(event)}>
+            <label className="atelier-field" htmlFor="profile-name">{interfaceText('profileNameLabel', interfaceLanguage)}
+              <input id="profile-name" type="text" maxLength={40} required value={profileName} onChange={event => setProfileName(event.target.value)} />
+            </label>
+            <button type="submit" className="atelier-button">{interfaceText('saveProfile', interfaceLanguage)}</button>
+          </form>
+        </section>
         <section className="atelier-card" aria-labelledby="muse-language-heading">
-          <h2 id="muse-language-heading">Muse language</h2>
-          <p>Sets the default language for new personal and gift stories. A gift story can still use a different language. This preference is saved in this browser.</p>
-          <label className="atelier-field" htmlFor="muse-language">Default story language
-            <select id="muse-language" value={language} onChange={event => changeLanguage(event.target.value)}>
+          <h2 id="muse-language-heading">{interfaceText('languageHeading', interfaceLanguage)}</h2>
+          <label className="atelier-field" htmlFor="interface-language">{interfaceText('interfaceLanguageLabel', interfaceLanguage)}
+            <select id="interface-language" value={interfaceLocale} onChange={event => changeInterfaceLanguage(event.target.value)}>
               {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
             </select>
           </label>
+          <p>{interfaceText('interfaceLanguageHelp', interfaceLanguage)}</p>
+          <label className="atelier-field" htmlFor="muse-language">{interfaceText('storyLanguageLabel', interfaceLanguage)}
+            <select id="muse-language" value={storyLanguage} onChange={event => changeLanguage(event.target.value)}>
+              {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+            </select>
+          </label>
+          <p>{interfaceText('storyLanguageHelp', interfaceLanguage)}</p>
           {settingsNotice ? <p role="status">{settingsNotice}</p> : null}
           {settingsError ? <p role="alert">{settingsError}</p> : null}
         </section>
         <section className="atelier-card" aria-labelledby="story-notifications-heading">
-          <h2 id="story-notifications-heading">Shared-story notifications</h2>
-          <p>When enabled, Muse can notify you in this browser when someone opens a shared story, reaches a progress milestone, or completes it. Notifications are checked while Muse is open and you are signed in; they are not email or browser push alerts.</p>
+          <h2 id="story-notifications-heading">{interfaceText('notificationsHeading', interfaceLanguage)}</h2>
+          <p>{interfaceText('notificationsHelp', interfaceLanguage)}</p>
           <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
             <input
               type="checkbox"
               checked={storyNotificationsEnabled}
               onChange={event => changeStoryNotifications(event.target.checked)}
             />
-            Enable in-app shared-story notifications
+            {interfaceText('notificationsEnabled', interfaceLanguage)}
           </label>
         </section>
         <section aria-labelledby="account-settings-heading">
-        <h2 id="account-settings-heading">Account</h2>
-        <p className="atelier-subtitle">Sign in to create and manage your stories. People opening a gift story only need the recipient link.</p>
+        <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>
+        <p className="atelier-subtitle">{interfaceText('accountHelp', interfaceLanguage)}</p>
         {!supabase && localDevelopment ? <section className="atelier-card">
-          <p>Local development is using local story storage. No account sign-in is needed in this development environment.</p>
+          <p>{interfaceText('localAccount', interfaceLanguage)}</p>
           <Link className="atelier-button" href="/story?new=1">Create a story</Link>
         </section> : !supabase ? <p role="alert">Account sign-in is not configured for this deployment.</p> : account ? (
           <section className="atelier-card">
-            <h2>You&apos;re signed in</h2>
+            <h2>{interfaceText('signedIn', interfaceLanguage)}</h2>
             <p>{account.email}</p>
+            {account.displayName ? <p>{account.displayName}</p> : null}
             <p>Your newly created stories belong to this account. Sign in on another device to manage them there.</p>
             <div className="atelier-actions">
-              <Link className="atelier-button" href="/library">Go to saved stories</Link>
-              <button type="button" className="atelier-secondary" disabled={busy} onClick={() => void signOut()}>Sign out</button>
+              <Link className="atelier-button" href="/library">{interfaceText('savedStories', interfaceLanguage)}</Link>
+              <button type="button" className="atelier-secondary" disabled={busy} onClick={() => void signOut()}>{interfaceText('signOut', interfaceLanguage)}</button>
             </div>
           </section>
         ) : (
           <form className="atelier-card" onSubmit={event => void submit(event)}>
             <div role="group" aria-label="Account action" className="atelier-actions">
-              <button type="button" className={!registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={!registering} onClick={() => { setRegistering(false); setError(''); setNotice('') }}>Sign in</button>
-              <button type="button" className={registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={registering} onClick={() => { setRegistering(true); setError(''); setNotice('') }}>Create account</button>
+              <button type="button" className={!registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={!registering} onClick={() => { setRegistering(false); setError(''); setNotice('') }}>{interfaceText('signIn', interfaceLanguage)}</button>
+              <button type="button" className={registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={registering} onClick={() => { setRegistering(true); setError(''); setNotice('') }}>{interfaceText('createAccount', interfaceLanguage)}</button>
             </div>
-            <label className="atelier-field">Email
+            <label className="atelier-field">{interfaceText('email', interfaceLanguage)}
               <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} />
             </label>
-            <label className="atelier-field">Password
+            <label className="atelier-field">{interfaceText('password', interfaceLanguage)}
               <input type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={8} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} />
             </label>
             {registering ? <p className="atelier-note">Use at least 8 characters. You may need to confirm your email before signing in.</p> : null}

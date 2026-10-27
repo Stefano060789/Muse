@@ -63,8 +63,8 @@ current MVP.
 - [ ] Test shared-story notifications with multiple signed-in creator accounts
       and separate browsers; confirm polling and dismiss behavior in production
 - [ ] Apply and validate `supabase/shared-cooperative.sql` in hosted Supabase
-- [ ] Verify invitee sign-in returns to the private cooperative story link and
-      validate live turns on separate accounts/devices
+- [ ] Apply and validate `supabase/shared-cooperative-guests.sql` after the
+      cooperative migration; validate member and guest turns across devices
 - [x] Confirm hosted Muse storage in the approved shared iVote Supabase project
       and apply the base Muse SQL migration; rollback smoke passed
 - [x] Change local LLM_PROVIDER to ANTHROPIC without touching existing secrets

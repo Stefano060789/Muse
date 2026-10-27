@@ -5,6 +5,7 @@ import SiteFooter from '../components/SiteFooter'
 import AppInstallSupport from '../components/AppInstallSupport'
 import PageIllustration from '../components/PageIllustration'
 import SiteNavigation from '../components/SiteNavigation'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import '../styles/globals.css'
 
 const StoryProgressNotifications = dynamic(() => import('../components/StoryProgressNotifications'), { ssr: false })
@@ -64,12 +65,13 @@ class ClientErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
 }
 
 export default function App({ Component, pageProps, router }: AppProps) {
+  const interfaceLanguage = useInterfaceLanguage()
   return (
     <ClientErrorBoundary>
       <AppInstallSupport />
       <div className="muse-world">
         {!['/shared', '/couples'].includes(router.pathname) ? <>
-          <SiteNavigation pathname={router.pathname === '/story' && router.query?.read === '1' ? '/library' : router.pathname} />
+          <SiteNavigation pathname={router.pathname === '/story' && router.query?.read === '1' ? '/library' : router.pathname} interfaceLanguage={interfaceLanguage} />
           {!['/', '/story'].includes(router.pathname) ? <PageIllustration pathname={router.pathname} /> : null}
         </> : null}
         <StoryProgressNotifications />

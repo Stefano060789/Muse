@@ -71,8 +71,9 @@ information in a collapsed explanation, not repeated recording-ready copy.
 **Account story recovery:** Sign in to **Saved stories** to restore server
 personal journeys and gift stories owned by that account. Ownership is verified
 on creator API requests. Recipients can open ordinary gift-story links without
-an account. Cooperative gift stories are the exception: every participant must
-sign in, and the private recipient link is used to join the shared story.
+an account. Cooperative gift stories let signed-in participants use their
+profile name; guests can join from the private recipient link by choosing a
+display name. Guest identity is browser-session based and is not verified.
 Legacy gift stories are not assigned automatically; an owner can claim one by
 opening its existing private management link while signed in. Deleted stories
 and browser-only data cannot be recovered.
@@ -114,13 +115,15 @@ Turns rotate in join order, only the current participant can act, and they can
 pass to the next participant. The group waits if the current participant is
 away. Cooperative play is capped at 20 participants. The creator's account
 owns the story and pays for its live AI interactions.
-**Settings** includes account controls and a browser-saved Muse language
-preference that sets the default language for new stories; it does not change
-the app's interface language or sync to other devices. It also lets creators
-enable or disable in-app shared-story notifications. When enabled and signed
-in, Muse checks for first opens, progress milestones and completion while a
-visible Muse page is open. Notifications are browser-local, do not sync across
-devices, and are not email or push alerts.
+**Settings** includes account controls, a profile name used for shared stories,
+a separately selected interface language and default story language, and
+in-app shared-story notification controls. English is the default interface
+language; the other supported languages can be selected. Interface language
+currently changes navigation, Home and Settings; story language independently
+controls generated story content. These preferences are saved in the browser.
+When enabled and signed in, Muse checks for first opens, progress milestones
+and completion while a visible Muse page is open. Notifications do not sync
+across devices and are not email or push alerts.
 **Myself** appears before **Create a story** in the main navigation, with typing,
 tap-to-start/tap-to-stop dictation, explicit browser-local saving and memory editing/removal.
 Its **Explore a topic** prompts let people reflect by typing or speaking; saving a
@@ -945,8 +948,9 @@ pause/resume controls; hardware transcription/audibility are not guaranteed.
 
 **Hosted rollout (operator action, not performed by tests):** after reviewing
 Muse-only names, apply `supabase/shared-stories.sql`, then
-`supabase/shared-adventures.sql`, then `supabase/shared-cooperative.sql` to
-enable account-based cooperative gift stories, then the new incremental
+`supabase/shared-adventures.sql`, then `supabase/shared-cooperative.sql` and
+`supabase/shared-cooperative-guests.sql` to enable account and guest
+participation in cooperative gift stories, then the new incremental
 `supabase/personal-journeys.sql`. Configure service-role storage, the private
 creator code, provider and the same daily action cap on every instance.
 The new RPC/tables are RLS-enabled and service-role-only and touch no iVote

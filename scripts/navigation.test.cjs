@@ -43,6 +43,9 @@ for (const [pathname, selected] of [
 const recipient = render(React.createElement(Navigation, { pathname: '/shared', recipient: true }))
 assert.ok(recipient.includes('Muse home'))
 assert.ok(!recipient.includes('<nav'), 'Recipients have a quiet brand-only header')
+const italianNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'it-IT' }))
+assert.ok(italianNavigation.includes('Impostazioni'), 'Interface language updates navigation labels')
+assert.ok(italianNavigation.includes('Crea una storia regalo'))
 let created = 0, prevented = 0
 const tree = Navigation({ pathname: '/shared', onCreateGift: () => created++ })
 const personalLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/my-stories')

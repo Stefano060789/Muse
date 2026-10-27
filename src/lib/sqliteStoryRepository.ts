@@ -652,11 +652,12 @@ export class SqliteStoryRepository implements StoryRepository {
       if (brief.adventure?.cooperative !== true) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
       if (input.operation === 'join') {
         const name = input.displayName?.trim()
-        if (!name || name.length > 40 || /[\u0000-\u001f]/.test(name)) {
-          throw new SharedStoryError('Choose a display name of 1 to 40 characters.')
-        }
         const existing = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND user_id = ?').get(input.storyId, input.userId)
         if (!existing) {
+          if (!name) throw new SharedStoryError('Cooperative: enter a display name to join.', 400)
+          if (name.length > 40 || /[\u0000-\u001f]/.test(name)) {
+            throw new SharedStoryError('Choose a display name of 1 to 40 characters.')
+          }
           const count = Number(db.prepare('SELECT COUNT(*) AS count FROM muse_cooperative_players WHERE story_id = ?').get(input.storyId)!.count)
           if (count >= 20) throw new SharedStoryError('Cooperative: this story is full (20 participants maximum).', 409)
           const position = count + 1

@@ -54,6 +54,12 @@ function wav(seconds, sampleRate = 8000) {
   return bytes
 }
 
+function guestParticipantId(sessionToken) {
+  const digest = require('node:crypto').createHash('sha256').update(sessionToken).digest('hex')
+  const variant = ((parseInt(digest[16], 16) & 3) | 8).toString(16)
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-${variant}${digest.slice(17, 20)}-${digest.slice(20, 32)}`
+}
+
 async function main() {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
@@ -114,13 +120,20 @@ async function main() {
     assert.deepEqual(Object.keys(activity.body.stories[0]).sort(), ['id', 'progress', 'title'])
     assert.equal(activity.body.stories[0].title, content.title)
     assert.equal(activity.body.stories[0].progress.opened, 0)
-    const opened = await api({ action: 'open', token: cooperative.body.playToken })
-    assert.equal(opened.status, 200)
-    assert.equal(opened.body.player.cooperative.isYourTurn, true, 'creator joins first and starts')
-    const repository = storyRepository()
-    const second = await repository.cooperative({
-      storyId, userId: 'cooperative-user-2', displayName: 'Sam', operation: 'join'
+    const needsGuestName = await api({ action: 'open', token: cooperative.body.playToken })
+    assert.equal(needsGuestName.status, 200)
+    assert.equal(needsGuestName.body.requiresDisplayName, true)
+    const guestId = guestParticipantId(needsGuestName.body.sessionToken)
+    const opened = await api({
+      action: 'open', token: cooperative.body.playToken, sessionToken: needsGuestName.body.sessionToken,
+      displayName: 'Sam'
     })
+    assert.equal(opened.status, 200, JSON.stringify(opened.body))
+    assert.equal(opened.body.player.cooperative.isYourTurn, false, 'creator retains the first turn')
+    assert.equal(opened.body.player.cooperative.currentTurnName, 'Alex')
+    assert.deepEqual(opened.body.player.cooperative.members.map(member => member.displayName), ['Alex', 'Sam'])
+    const repository = storyRepository()
+    const second = await repository.cooperative({ storyId, userId: guestId, operation: 'view' })
     assert.equal(second.isYourTurn, false)
     assert.equal(second.currentTurnName, 'Alex')
     assert.deepEqual(second.members.map(member => member.displayName), ['Alex', 'Sam'])
@@ -133,14 +146,14 @@ async function main() {
       storyId, sessionHash, playHash: story.play_hash, cooperativeUserId: userId, operation,
       cap: 1000, requestId, revision, fingerprint: String(requestId).padEnd(64, 'f').slice(0, 64)
     })
-    await assert.rejects(() => repository.adventure(makeRequest('reserve', 'cooperative-user-2', 'second-before-first')),
+    await assert.rejects(() => repository.adventure(makeRequest('reserve', guestId, 'second-before-first')),
       /another participant.s turn/)
     const first = makeRequest('reserve', 'local-development', 'first-turn')
     assert.equal((await repository.adventure(first)).status, 'reserved')
     assert.equal((await repository.adventure({ ...first, operation: 'finish', turn })).status, 'done')
-    const afterFirst = await repository.cooperative({ storyId, userId: 'cooperative-user-2', operation: 'view' })
+    const afterFirst = await repository.cooperative({ storyId, userId: guestId, operation: 'view' })
     assert.equal(afterFirst.isYourTurn, true)
-    const secondTurn = makeRequest('reserve', 'cooperative-user-2', 'second-turn', 1)
+    const secondTurn = makeRequest('reserve', guestId, 'second-turn', 1)
     assert.equal((await repository.adventure(secondTurn)).status, 'reserved')
     await repository.adventure({ ...secondTurn, operation: 'finish', turn: { ...turn, narration: 'The map now shows the next clue.' } })
     const afterSecond = await repository.cooperative({ storyId, userId: 'local-development', operation: 'view' })
@@ -148,7 +161,7 @@ async function main() {
     const groupState = await repository.adventure({ ...makeRequest('view', 'local-development', 'view-state', 2), operation: 'view' })
     assert.equal(groupState.view.turn.state.progress, 'The team found the key.')
     await repository.cooperative({ storyId, userId: 'local-development', operation: 'pass', sessionHash })
-    assert.equal((await repository.cooperative({ storyId, userId: 'cooperative-user-2', operation: 'view' })).isYourTurn, true)
+    assert.equal((await repository.cooperative({ storyId, userId: guestId, operation: 'view' })).isYourTurn, true)
   })
 
   async function api(body) {

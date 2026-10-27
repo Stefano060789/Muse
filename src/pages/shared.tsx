@@ -30,6 +30,8 @@ import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLangu
 import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
+import { loadProfileDisplayName } from '../lib/profilePreferences'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
   formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
@@ -39,7 +41,7 @@ import { accountAuthorization, accountFetch } from '../lib/accountClient'
 
 type PlayerResponse = { player: SharedStoryPlayer; sessionToken: string }
 type RomanceNotice = { romance: StoryRomance; language?: SharedStoryBrief['language'] }
-type OpenResponse = PlayerResponse | { romanceNotice: RomanceNotice }
+type OpenResponse = PlayerResponse | { romanceNotice: RomanceNotice } | { requiresDisplayName: true; sessionToken: string }
 type MediaState = { media: SharedMediaSummary | null; mediaRequired: boolean }
 type UploadTarget = { method: 'PUT'; url: string; headers: Record<string, string> }
 type UploadState = { phase: 'idle' | 'uploading' | 'failed'; progress: number; error?: string }
@@ -184,6 +186,7 @@ async function putFile(target: UploadTarget, file: File, onProgress: (percent: n
 }
 
 export default function SharedStoryPage() {
+  const interfaceLanguage = useInterfaceLanguage()
   const [brief, setBrief] = useState<SharedStoryBrief>(blankBrief)
   const [assistanceHintsText, setAssistanceHintsText] = useState('')
   const [alternativeAnswersText, setAlternativeAnswersText] = useState('')
@@ -193,6 +196,8 @@ export default function SharedStoryPage() {
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
+  const [guestNameRequired, setGuestNameRequired] = useState(false)
+  const [guestDisplayName, setGuestDisplayName] = useState('')
   const [cooperativeSyncError, setCooperativeSyncError] = useState('')
   const [guess, setGuess] = useState('')
   const [actionText, setActionText] = useState('')
@@ -320,7 +325,11 @@ export default function SharedStoryPage() {
   const applyStoryPreferences = () => {
     try {
       const preferences = loadStoryPreferences()
-      setBrief(current => ({ ...current, language: preferences.language, durationMinutes: preferences.duration }))
+      const creatorName = loadProfileDisplayName()
+      setBrief(current => ({
+        ...current, creatorName: current.creatorName || creatorName,
+        language: preferences.language, durationMinutes: preferences.duration
+      }))
       setPreferencesError('')
     } catch (cause) {
       setPreferencesError(cause instanceof Error ? `Saved story settings could not be loaded: ${cause.message}` : 'Saved story settings could not be loaded.')
@@ -367,8 +376,9 @@ export default function SharedStoryPage() {
   }
   const openRecipientStory = async (token: string, savedSession: string | null, romanceConfirmed = false) => {
     const sessionKey = `muse-shared-player:${token}`
-    const openRequest = (sessionToken?: string) => request<OpenResponse>({
-      action: 'open', token, ...(sessionToken ? { sessionToken } : {}), ...(romanceConfirmed ? { romanceConfirmed: true } : {})
+    const openRequest = (sessionToken?: string, displayName?: string) => request<OpenResponse>({
+      action: 'open', token, ...(sessionToken ? { sessionToken } : {}),
+      ...(displayName ? { displayName } : {}), ...(romanceConfirmed ? { romanceConfirmed: true } : {})
     })
     try {
       return await openRequest(savedSession ?? undefined)
@@ -413,6 +423,14 @@ export default function SharedStoryPage() {
             setRecipientConfirmation(false)
             setRomanceDeclined(false)
             setPlayer(null)
+            return
+          }
+          if ('requiresDisplayName' in result) {
+            setSessionToken(result.sessionToken)
+            setGuestNameRequired(true)
+            try { window.localStorage.setItem(`muse-shared-player:${recipientToken}`, result.sessionToken) } catch {
+              setNotice('This browser cannot save the guest session. Keep this page open while you play.')
+            }
             return
           }
           setPlayer(result.player)
@@ -533,11 +551,16 @@ export default function SharedStoryPage() {
     let active = true
     const refresh = async () => {
       try {
-        const result = await request<PlayerResponse>({
+        const result = await request<OpenResponse>({
           action: 'open', token: playToken, sessionToken,
           ...(romanceAccepted ? { romanceConfirmed: true } : {})
         })
-        if (active) {
+        if ('requiresDisplayName' in result) {
+          if (active) {
+            setGuestNameRequired(true)
+            setCooperativeSyncError('')
+          }
+        } else if (!('romanceNotice' in result) && active) {
           setPlayer(result.player)
           setCooperativeSyncError('')
         }
@@ -577,6 +600,11 @@ export default function SharedStoryPage() {
       const result = await openRecipientStory(playToken, savedSession, true)
       if ('romanceNotice' in result) throw new Error('Confirm you are 18 or older and choose to open this romance story before continuing.')
       setRomanceAccepted(true)
+      if ('requiresDisplayName' in result) {
+        setSessionToken(result.sessionToken)
+        setGuestNameRequired(true)
+        return
+      }
       setPlayer(result.player)
       setSessionToken(result.sessionToken)
       try { window.localStorage.setItem(`muse-shared-player:${playToken}`, result.sessionToken) } catch {
@@ -585,6 +613,34 @@ export default function SharedStoryPage() {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not open this story.')
     } finally { setBusy(false) }
+  }
+
+  const joinCooperativeAsGuest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const displayName = guestDisplayName.trim()
+    if (!displayName || displayName.length > 40) {
+      setError('Enter a display name of 1 to 40 characters.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const result = await request<OpenResponse>({
+        action: 'open', token: playToken, sessionToken, displayName,
+        ...(romanceAccepted ? { romanceConfirmed: true } : {})
+      })
+      if ('romanceNotice' in result || 'requiresDisplayName' in result) {
+        throw new Error('Muse could not register this display name. Check it and try again.')
+      }
+      setPlayer(result.player)
+      setSessionToken(result.sessionToken)
+      setGuestNameRequired(false)
+      window.localStorage.setItem(`muse-shared-player:${playToken}`, result.sessionToken)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not join this cooperative story.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -1111,14 +1167,14 @@ export default function SharedStoryPage() {
     (!player.cooperative || player.cooperative.isYourTurn))
 
   return (
-    <main className="atelier-page">
+    <main className="atelier-page" lang={interfaceLanguage} dir={STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
       <Head>
         <title>{playToken ? 'Muse - A gift story for you' : creator ? 'Muse - Manage your gift story' : 'Muse - Create a gift story'}</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
       </Head>
-      <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} onCreateGift={creator ? () => startNewStory() : undefined} />
+      <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} interfaceLanguage={interfaceLanguage} onCreateGift={creator ? () => startNewStory() : undefined} />
       {!playToken && !creator ? <PageIllustration pathname="/shared" /> : null}
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}{(error || interaction.error || narrator.error).includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
@@ -1155,6 +1211,17 @@ export default function SharedStoryPage() {
               </div>
             </>}
           </section>
+        ) : playToken && guestNameRequired ? (
+          <section className="atelier-card" aria-label="Join cooperative story">
+            <h1>Join this shared story</h1>
+            <p>You can join as a guest. Choose a display name so the group knows whose turn it is. Muse account members are identified by their profile name.</p>
+            <form onSubmit={event => void joinCooperativeAsGuest(event)}>
+              <label htmlFor="cooperative-guest-name">Your display name
+                <input id="cooperative-guest-name" type="text" maxLength={40} required value={guestDisplayName} onChange={event => setGuestDisplayName(event.target.value)} style={fieldStyle} />
+              </label>
+              <button type="submit" disabled={busy || !guestDisplayName.trim()} style={{ ...primaryStyle, marginTop: '1rem' }}>Join story</button>
+            </form>
+          </section>
         ) : playToken ? player ? (
           <section className="atelier-reading" lang={recipientLanguage.code} dir={recipientLanguage.dir}>
             {showGiftCover ? <article aria-label="Your gift story" style={{ ...cardStyle, textAlign: 'center', padding: 'clamp(1.5rem, 6vw, 3.5rem) 1rem' }}>
@@ -1164,7 +1231,7 @@ export default function SharedStoryPage() {
               {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
               <p>{recipientText.duration(player.durationMinutes)}</p>
               <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>{recipientText.openStory}</button>
-              {player.cooperative ? <p>Cooperative play requires each participant to sign in to a Muse account.</p> : <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>}
+              {player.cooperative ? <p>Muse members use their profile name; guests can join with a display name.</p> : <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>}
             </article> : <>
             <h1 className="story-reading-title">{player.title}</h1>
             {player.cooperative ? <section className="atelier-card" aria-label="Cooperative story progress">
@@ -1175,7 +1242,7 @@ export default function SharedStoryPage() {
                 : `Waiting for ${player.cooperative.currentTurnName} to take or pass their turn.`}</p>
               <p>Participants: {player.cooperative.members.map(member => member.displayName).join(', ')}</p>
               {player.cooperative.isYourTurn && !player.solved && !player.skipped ? <button type="button" disabled={busy} onClick={() => void act('cooperative-pass')}>Pass my turn</button> : null}
-              <p className="atelier-note">Progress refreshes automatically while this story is open. Turns follow join order; every participant must sign in.</p>
+              <p className="atelier-note">Progress refreshes automatically while this story is open. Turns follow join order; Muse members use their profile name, and guests choose a display name.</p>
             </section> : null}
             <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientText} language={recipientLanguage.code} direction={recipientLanguage.dir} />
             {storyMode === 'listen' ? <>
@@ -1577,7 +1644,7 @@ export default function SharedStoryPage() {
           <section>
             <p className="atelier-eyebrow">A story to give</p>
             <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create and share a story</h1>
-            <p className="atelier-subtitle">Create an interactive story and send its private link to your group. Choose cooperative play for one shared adventure: each person signs in, sees the same progress, and takes turns from their own device.</p>
+            <p className="atelier-subtitle">Create an interactive story and send its private link to your group. Choose cooperative play for one shared adventure: everyone sees the same progress and takes turns from their own device. Muse members use their profile name; guests choose a display name.</p>
             <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
@@ -1712,7 +1779,7 @@ export default function SharedStoryPage() {
                       setAiConsent(false)
                     }} /> Cooperative story: invite 2-20 signed-in participants to share progress and take turns across devices
                   </label>
-                  <p>Everyone opens the same private story link and signs in to Muse. Turns rotate in join order; the current player can take or pass their turn. Each participant sees the shared story state.</p>
+                  <p>Everyone opens the same private story link. Muse members are identified by their profile name; guests choose a display name. Turns rotate in join order; the current player can take or pass their turn. Each participant sees the shared story state.</p>
                 </> : <p>All choices follow the same prepared clue trail.</p>}
               </div>
               </fieldset>
