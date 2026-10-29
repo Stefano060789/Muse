@@ -92,6 +92,22 @@ try {
         if (name === '../components/GiftProgress') return { __esModule: true, default: 'gift-progress' }
         if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
+        if (name === '../components/PersonalStoryShareCard') return { __esModule: true, default: 'personal-story-share-card' }
+        if (name === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
+        if (name === '../lib/interfacePages') return {
+          archiveSyncNote: () => 'Account stories sync when you sign in.',
+          interfacePageText: key => ({
+            archiveTitle: 'Archive', myStoriesTitle: 'My stories',
+            storiesForMe: 'Stories for me', giftsForOthers: 'Gifts for others',
+            loadingLibrary: 'Loading saved stories…', personalStoryTitle: 'My story',
+            createGift: 'Create a gift story', noPersonalStories: 'No personal stories yet.',
+            storyCompleted: 'Completed', inProgress: 'In progress',
+            storyDetails: 'Story details', readStory: 'Read story',
+            removeFromBrowser: 'Remove from this browser',
+            syncingStories: 'Syncing stories…', syncAccountStories: 'Sync account stories',
+            noGiftStories: 'No gift stories yet.'
+          })[key] || key
+        }
         if (name === '../lib/accountClient') return {
           supabase: { auth: { getSession: async () => ({ data: { session: currentSession }, error: null }) } },
           accountFetch: async (url, init) => {
@@ -300,7 +316,7 @@ try {
       assert.ok(all.some(node => node.props?.id === 'shared-stories-heading'))
       assert.ok(!all.some(node => node.props?.href?.startsWith('/shared#manage=') || node.props?.href?.startsWith('/shared#reuse=')))
       const card = all.find(node => node.type === 'article')
-      assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Remove story'])
+      assert.deepEqual(nodes(card).filter(node => node.type === 'button').map(textOf), ['Remove from this browser'])
       assert.equal(nodes(card).filter(node => node.type === 'gift-progress').length, 1)
       assert.equal(nodes(card).find(node => node.type === 'gift-progress').props.compact, true)
       const panel = nodes(card).find(node => node.type === 'share-gift-story')
@@ -407,7 +423,7 @@ try {
           assert.equal(share.props.disabled, false)
           assert.equal(share.props.expiresAt, null, 'Legacy expiry does not disable sharing')
         }
-        assert.ok(button(tree, 'Remove story'))
+        assert.ok(button(tree, 'Remove from this browser'))
         if (variant === 'missing') assert.ok(textOf(tree).includes('No recipient link saved here'))
         assert.ok(!textOf(tree).includes('View story progress to see'), 'Gift cards omit instructional copy')
         assert.ok(!nodes(tree).some(node => node.type === 'input' && node.props.type === 'password'), 'No deployment-wide creator code is requested')
@@ -438,7 +454,7 @@ try {
       await assert.rejects(progress().props.load(), /Story progress was not returned/)
       assert.equal(read(ui.store).library.entries.length, 1, 'Failed checks do not erase the story')
       const beforeRemove = ui.requests.length
-      button(ui.render(), 'Remove story').props.onClick()
+      button(ui.render(), 'Remove from this browser').props.onClick()
       assert.equal(read(ui.store).library.entries.length, 0)
       assert.equal(ui.requests.length, beforeRemove, 'Removal is browser-local only, never server deletion')
     } finally { ui.cleanup() }
@@ -488,9 +504,8 @@ try {
   check('library UI keeps private details out of cards and confirms browser-only deletion', () => {
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
     assert.ok(page.includes('window.confirm('))
-    assert.ok(page.includes('Remove from this browser'))
     assert.ok(page.includes('loadProgress(entry.story.ownerToken)'))
-    assert.ok(page.includes('Remove story'))
+    assert.ok(page.includes("text('removeFromBrowser', interfaceLanguage)"))
     for (const field of ['solution', 'message', 'assistanceHints', 'alternativeAnswers', 'recipientHints']) {
       assert.ok(!page.includes(`entry.story.brief.${field}`), `Private ${field} must not appear in cards`)
     }
@@ -500,7 +515,7 @@ try {
   })
   check('shared navigation exposes saved stories and shared persistence remains canonical', () => {
     const navigation = fs.readFileSync(path.join(root, 'src', 'components', 'SiteNavigation.tsx'), 'utf8')
-    assert.ok(navigation.includes("href: '/library', label: 'Archive'"))
+    assert.ok(navigation.includes("href: '/library', key: 'navArchive'"))
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
     assert.ok(page.includes("window.location.assign('/story?read=1')"), 'Archive opens a reading-only personal story')
     assert.ok(!page.includes("'Continue story'"), 'Continuation belongs to My stories, not the archive')

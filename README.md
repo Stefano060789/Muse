@@ -137,6 +137,12 @@ Returning visitors can continue their latest unfinished personal story directly
 from Home; completed stories offer **Read again**. Personal touches live on Myself,
 not Home, and personal library cards keep attempt details
 behind an optional disclosure.
+Completed personal stories can also create a spoiler-free social share card with
+the story title, mood and a short AI-written teaser. Teaser generation requires
+explicit consent and uses one AI interaction; only the title, broad mood and
+selected story language are sent to the provider, never scenes, answers, choices
+or saved memories. Share the text through a device app, copy it, or download a
+PNG card from **My stories** or the Archive.
 Personal touches also remain optional inside story creation. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
 Personal creation keeps optional personal touches in a collapsed inline editor

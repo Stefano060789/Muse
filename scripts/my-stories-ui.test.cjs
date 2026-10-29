@@ -41,6 +41,21 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link') return { __esModule: true, default: id }
+    if (id.endsWith('/PersonalStoryShareCard')) return { __esModule: true, default: 'PersonalStoryShareCard' }
+    if (id.endsWith('/interfacePages')) return {
+      interfacePageText: key => ({
+        myStoriesTitle: 'My stories', myStoriesEyebrow: 'Your next adventure',
+        myStoriesSubtitle: 'Start something new, or pick up where you left off.',
+        startNewStory: 'Start a new story', yourStories: 'Your stories',
+        syncingStories: 'Syncing stories…', syncAccountStories: 'Sync account stories',
+        loadingStories: 'Loading stories…', emptyPersonalStories: 'No personal stories yet.',
+        storyCompleted: 'Completed', inProgress: 'In progress',
+        readChapter: 'Read Chapter', continueToChapter: 'Continue to Chapter',
+        readSavedScenes: 'Read saved scenes', readStory: 'Read story',
+        continueStory: 'Continue story', visitArchive: 'Visit the Archive'
+      })[key] || key
+    }
+    if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
     if (id.endsWith('/storyLibrary')) return {
       loadStoryLibrary: () => ({ library: { entries: [...entries] }, error: '' }),
       saveLibraryPersonalStory(story) {
@@ -81,6 +96,9 @@ async function main() {
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · In progress'))
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 2 · In progress'))
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · Completed'))
+  assert.deepEqual(hub.nodes().filter(node => node.type === 'PersonalStoryShareCard')
+    .map(node => node.props.story.title), ['Completed story', 'Saved scenes'],
+  'Only completed personal stories expose the share-card action')
   await hub.click('Continue to Chapter 2')
   assert.deepEqual(hub.navigations.at(-1), '/story?continue=1', 'A completed chapter exposes a direct next-chapter action')
   await hub.click('Read Chapter 1')

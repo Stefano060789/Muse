@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { parsePersonalStoryRequest, generatePersonalStory } from '../../lib/personalStoryGenerator'
 import { SharedStoryError } from '../../lib/sharedStory'
@@ -10,6 +10,7 @@ import { apiSafety, reportOperation } from '../../lib/operations'
 import { requireProviderConsent } from '../../lib/providerConsent'
 import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
 import { reserveBillingUsage } from '../../lib/billing'
+import { generatePersonalStoryShareTeaser, parsePersonalStoryShareInput } from '../../lib/personalStoryShare'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
   parseJourneyAction, parseJourneyClosingAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
@@ -51,6 +52,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ stories: stories.filter(Boolean) })
     }
     if (!(req.body?.mode === 'journey' && ['resume', 'delete'].includes(req.body?.action))) requireProviderConsent(req.body)
+    if (req.body?.action === 'share-teaser') {
+      const input = parsePersonalStoryShareInput(req.body)
+      storyProviderConfig()
+      const db = storyDatabase()
+      await reserveStoryRequest(db, req, 'generate')
+      await reserveBillingUsage(account.id, `interaction:${randomUUID()}`, 'interaction')
+      const teaser = await generatePersonalStoryShareTeaser(input)
+      return res.status(200).json({ teaser })
+    }
     if (req.body?.mode === 'journey') {
       const body = req.body as Record<string, unknown>
       const capability = journeyCapability(body.capability)

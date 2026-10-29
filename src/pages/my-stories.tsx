@@ -5,6 +5,7 @@ import { loadStoryLibrary, saveLibraryPersonalStory, selectPersonalStory, type L
 import { accountFetch, supabase } from '../lib/accountClient'
 import { interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 
 type PersonalEntry = Extract<LibraryEntry, { kind: 'personal' }>
 
@@ -100,6 +101,7 @@ export default function MyStoriesPage() {
                 <button type="button" onClick={() => open(entry, true, 'read')}>{text('readChapter', interfaceLanguage)} {chapterNumber}</button>
                 <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>{text('continueToChapter', interfaceLanguage)} {(chapterNumber ?? 1) + 1}</button>
               </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : completed ? text('readStory', interfaceLanguage) : text('continueStory', interfaceLanguage)}</button>}
+              {completed ? <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
             </article>
           })}
         </section>

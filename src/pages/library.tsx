@@ -6,6 +6,7 @@ import { recipientShareDetails } from '../lib/sharedStorySharing'
 import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
+import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
 import { archiveSyncNote, interfacePageText as text } from '../lib/interfacePages'
@@ -162,6 +163,7 @@ export default function LibraryPage() {
                 return <>
                   <p>{completed ? text('storyCompleted', interfaceLanguage) : entry.story.journey ? `${text('inProgress', interfaceLanguage)} · Scene ${entry.story.currentStep + 1}` : `${text('inProgress', interfaceLanguage)} · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
                   {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
+                  {completed ? <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}
