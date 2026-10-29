@@ -178,7 +178,7 @@ export default function AccountPage() {
   }
 
   return <>
-    <Head><title>Muse — {interfaceText('settingsTitle', interfaceLanguage)}</title><meta name="description" content={interfaceText('settingsSubtitle', interfaceLanguage)} /></Head>
+    <Head><title>{`Muse — ${interfaceText('settingsTitle', interfaceLanguage)}`}</title><meta name="description" content={interfaceText('settingsSubtitle', interfaceLanguage)} /></Head>
     <main className="atelier-page">
       <div className="atelier-shell atelier-shell--narrow">
         <p className="atelier-eyebrow">{interfaceText('settingsEyebrow', interfaceLanguage)}</p>

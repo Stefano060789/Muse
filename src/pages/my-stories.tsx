@@ -3,10 +3,13 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { loadStoryLibrary, saveLibraryPersonalStory, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { accountFetch, supabase } from '../lib/accountClient'
+import { interfacePageText as text } from '../lib/interfacePages'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 
 type PersonalEntry = Extract<LibraryEntry, { kind: 'personal' }>
 
 export default function MyStoriesPage() {
+  const interfaceLanguage = useInterfaceLanguage()
   const [entries, setEntries] = useState<PersonalEntry[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -67,19 +70,19 @@ export default function MyStoriesPage() {
     }
   }
   return <>
-    <Head><title>Muse - My stories</title><meta name="description" content="Start a personal story or continue an adventure you have already begun." /></Head>
-    <main className="atelier-page">
+    <Head><title>{`Muse - ${text('myStoriesTitle', interfaceLanguage)}`}</title><meta name="description" content={text('myStoriesSubtitle', interfaceLanguage)} /></Head>
+    <main className="atelier-page" lang={interfaceLanguage}>
       <div className="atelier-shell atelier-shell--narrow">
-        <p className="atelier-eyebrow">Your next adventure</p>
-        <h1 className="atelier-title">My stories</h1>
-        <p className="atelier-subtitle">Start something new, or pick up where you left off.</p>
-        <Link href="/story?new=1" className="atelier-button">Start a new story</Link>
+        <p className="atelier-eyebrow">{text('myStoriesEyebrow', interfaceLanguage)}</p>
+        <h1 className="atelier-title">{text('myStoriesTitle', interfaceLanguage)}</h1>
+        <p className="atelier-subtitle">{text('myStoriesSubtitle', interfaceLanguage)}</p>
+        <Link href="/story?new=1" className="atelier-button">{text('startNewStory', interfaceLanguage)}</Link>
         <section aria-labelledby="previous-stories-heading" style={{ marginTop: '2rem' }}>
-          <h2 id="previous-stories-heading">Your stories</h2>
-          <button type="button" disabled={syncing} onClick={() => void sync()}>{syncing ? 'Syncing stories...' : 'Sync account stories'}</button>
+          <h2 id="previous-stories-heading">{text('yourStories', interfaceLanguage)}</h2>
+          <button type="button" disabled={syncing} onClick={() => void sync()}>{syncing ? text('syncingStories', interfaceLanguage) : text('syncAccountStories', interfaceLanguage)}</button>
           {error ? <p role="alert">{error} <Link href="/account">Check your account</Link>.</p> : null}
           {syncError ? <p role="alert">{syncError} <Link href="/account">Check your account</Link>.</p> : null}
-          {!ready ? <p role="status">Loading your stories...</p> : !entries.length ? <p>No personal stories here yet. Start your first adventure above, or sync your account stories.</p> : entries.map(entry => {
+          {!ready ? <p role="status">{text('loadingStories', interfaceLanguage)}</p> : !entries.length ? <p>{text('emptyPersonalStories', interfaceLanguage)}</p> : entries.map(entry => {
             const journey = entry.story.journey
             const chapterNumber = journey ? entry.story.chapter?.number ?? 1 : undefined
             const completed = entry.story.journey
@@ -89,18 +92,18 @@ export default function MyStoriesPage() {
             return <article className="atelier-card" key={entry.id} style={{ marginTop: '1rem' }}>
               <h3>{entry.story.title}</h3>
               {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `Chapter ${chapterNumber} · Following ${entry.story.chapter.parentTitle}` : `Chapter ${chapterNumber}`}</p> : null}
-              <p>{journey?.status === 'concluded' ? `Chapter ${chapterNumber} · Completed`
+              <p>{journey?.status === 'concluded' ? `Chapter ${chapterNumber} · ${text('storyCompleted', interfaceLanguage)}`
                 : journey?.status === 'exhausted' ? `Chapter ${chapterNumber} · Attempt limit reached; saved scenes available`
-                  : journey ? `Chapter ${chapterNumber} · In progress`
-                    : completed ? 'Story completed' : 'In progress'}</p>
+                  : journey ? `Chapter ${chapterNumber} · ${text('inProgress', interfaceLanguage)}`
+                    : completed ? text('storyCompleted', interfaceLanguage) : text('inProgress', interfaceLanguage)}</p>
               {journey?.status === 'concluded' ? <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => open(entry, true, 'read')}>Read Chapter {chapterNumber}</button>
-                <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>Continue to Chapter {(chapterNumber ?? 1) + 1}</button>
-              </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? 'Read saved scenes' : completed ? 'Read story' : 'Continue story'}</button>}
+                <button type="button" onClick={() => open(entry, true, 'read')}>{text('readChapter', interfaceLanguage)} {chapterNumber}</button>
+                <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>{text('continueToChapter', interfaceLanguage)} {(chapterNumber ?? 1) + 1}</button>
+              </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : completed ? text('readStory', interfaceLanguage) : text('continueStory', interfaceLanguage)}</button>}
             </article>
           })}
         </section>
-        <p className="atelier-note"><Link href="/library">Visit the archive</Link> to reread personal stories and find your saved gift stories.</p>
+        <p className="atelier-note"><Link href="/library">{text('visitArchive', interfaceLanguage)}</Link></p>
       </div>
     </main>
   </>

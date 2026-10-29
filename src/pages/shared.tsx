@@ -32,6 +32,7 @@ import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { loadProfileDisplayName } from '../lib/profilePreferences'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
   formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
@@ -80,6 +81,9 @@ const hasGiftDraftWriting = (brief: SharedStoryBrief) =>
   [brief.creatorName, brief.recipientName, brief.setting, brief.solution, brief.message, brief.recipientHints, brief.gift?.dedication].some(value => value?.trim())
 type AssistanceField = 'assistanceHints' | 'alternativeAnswers'
 const assistanceLines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+const giftOccasionLabels: Record<GiftOccasion, GiftFormCopyKey> = {
+  birthday: 'birthday', anniversary: 'anniversary', surprise: 'surprise', 'just-because': 'justBecause'
+}
 type RecipientAnswerDraft = { revision: number; text: string }
 type RecipientDraftState = { revision: number | null; answerKey: string; actionKey: string; answerWritable: boolean; actionWritable: boolean; ready: boolean }
 
@@ -1642,10 +1646,10 @@ export default function SharedStoryPage() {
           </section>
         ) : (
           <section>
-            <p className="atelier-eyebrow">A story to give</p>
-            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>Create and share a story</h1>
-            <p className="atelier-subtitle">Create an interactive story and send its private link to your group. Choose cooperative play for one shared adventure: everyone sees the same progress and takes turns from their own device. Muse members use their profile name; guests choose a display name.</p>
-            <p className="atelier-subtitle">A personal mystery. A surprise worth finding.</p>
+            <p className="atelier-eyebrow">{pageText('giftEyebrow', interfaceLanguage)}</p>
+            <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>{pageText('giftTitle', interfaceLanguage)}</h1>
+            <p className="atelier-subtitle">{pageText('giftSubtitle', interfaceLanguage)}</p>
+            <p className="atelier-subtitle">{pageText('giftTagline', interfaceLanguage)}</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
               <p>A draft is saved on this device from {new Date(pendingDraft.savedAt).toLocaleString()}. Voice recordings and media are not saved in drafts.</p>
@@ -1687,22 +1691,25 @@ export default function SharedStoryPage() {
               } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
             <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
-              {['For someone', 'The story', 'The surprise'].map((label, index) => <li key={label} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>)}
+              {(['stepFor', 'stepStory', 'stepSurprise'] as const).map((key, index) => {
+                const label = giftFormText(key, interfaceLanguage)
+                return <li key={key} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>
+              })}
             </ol>
-            <p className="atelier-eyebrow" aria-live="polite">Step {creatorStep + 1} of 3: {['Who it is for', 'Shape the story', 'Your surprise'][creatorStep]}</p>
+            <p className="atelier-eyebrow" aria-live="polite">{giftFormText('step', interfaceLanguage)} {creatorStep + 1} of 3: {giftFormText((['stepFor', 'stepStory', 'stepSurprise'] as const)[creatorStep], interfaceLanguage)}</p>
             <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
-                <h2>1. Who is it for?</h2>
-                <p>Choose a moment, then make it personal.</p>
+                <h2>1. {giftFormText('whoFor', interfaceLanguage)}</h2>
+                <p>{giftFormText('chooseMoment', interfaceLanguage)}</p>
                 <div role="group" aria-label="Choose an occasion" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: '1.2rem' }}>
-                  {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{occasion.label}</button>)}
-                  <button type="button" disabled={busy} aria-pressed={!brief.gift} onClick={() => chooseOccasion()} style={!brief.gift ? primaryStyle : buttonStyle}>My own idea</button>
+                  {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{giftFormText(giftOccasionLabels[occasion.id], interfaceLanguage)}</button>)}
+                  <button type="button" disabled={busy} aria-pressed={!brief.gift} onClick={() => chooseOccasion()} style={!brief.gift ? primaryStyle : buttonStyle}>{giftFormText('ownIdea', interfaceLanguage)}</button>
                 </div>
-                {textField('creatorName', 'Your name', 'Person A', 80)}
-                {textField('recipientName', 'Recipient name', 'Person B', 80)}
+                {textField('creatorName', giftFormText('yourName', interfaceLanguage), 'Person A', 80)}
+                {textField('recipientName', giftFormText('recipientName', interfaceLanguage), 'Person B', 80)}
                 <div>
-                  <label htmlFor="shared-language" style={{ fontWeight: 700 }}>Story language (independent of your Muse language)</label>
+                  <label htmlFor="shared-language" style={{ fontWeight: 700 }}>{giftFormText('storyLanguage', interfaceLanguage)}</label>
                   <select id="shared-language" value={brief.language ?? ''} disabled={busy} style={fieldStyle} onChange={event => {
                     const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
                     if (!language) return
@@ -1714,8 +1721,8 @@ export default function SharedStoryPage() {
                   </select>
                 </div>
                 <details>
-                  <summary>About story language</summary>
-                  <p>Choose the language for the generated story and recipient controls. It can differ from your Muse interface language and from the language you write in. Your dedication, hints, answer and final message stay exactly as written. Settings and errors may remain English.</p>
+                  <summary>{giftFormText('aboutStoryLanguage', interfaceLanguage)}</summary>
+                  <p>{giftFormText('storyLanguageHelp', interfaceLanguage)} Your dedication, hints, answer and final message stay exactly as written. Settings and errors may remain English.</p>
                 </details>
                 <RomanceOptions value={brief.romance} onChange={romance => { updateBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
               </div>

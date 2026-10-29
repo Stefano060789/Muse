@@ -23,6 +23,8 @@ import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferen
 import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
 import StoryKeepsake from '../components/StoryKeepsake'
 import { accountFetch } from '../lib/accountClient'
+import { interfacePageText as pageText } from '../lib/interfacePages'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -34,6 +36,7 @@ const moods: Array<{ key: PersonalStoryMood; title: string; description: string 
 ]
 
 export default function StoryPage() {
+  const interfaceLanguage = useInterfaceLanguage()
   const [story, setStory] = useState<PersonalStory | null>(null)
   const [need, setNeed] = useState('')
   const [selectedMood, setSelectedMood] = useState<PersonalStoryMood>('curious')
@@ -518,8 +521,8 @@ export default function StoryPage() {
 
   return (
     <>
-      <Head><title>{story ? 'Muse - Your story' : 'Muse - Create a story'}</title><meta name="description" content="A personalized interactive story shaped by what you need today." /></Head>
-      <main className="atelier-page">
+      <Head><title>{story ? 'Muse - Your story' : `Muse - ${pageText('personalStoryTitle', interfaceLanguage)}`}</title><meta name="description" content={story ? story.title : pageText('personalStoryMoodSubtitle', interfaceLanguage)} /></Head>
+      <main className="atelier-page" lang={interfaceLanguage}>
         <div className="atelier-shell atelier-shell--narrow">
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
@@ -535,14 +538,14 @@ export default function StoryPage() {
           </div> : null}
           {!story ? (
             <section ref={creationSection} tabIndex={-1} aria-labelledby="creation-title">
-              <p className="atelier-eyebrow">A story for you</p>
-              <h1 id="creation-title" className="atelier-title">Create a story for yourself</h1>
-              <p className="atelier-subtitle">{['This story is just for you. Choose a feeling and Muse will create an interactive adventure that you shape as you play.', 'Tell Muse what you need or add personal touches; you will write or speak your choices inside the story.', 'Review your choices before Muse begins writing.'][creationStep]}</p>
+              <p className="atelier-eyebrow">{pageText('personalStoryEyebrow', interfaceLanguage)}</p>
+              <h1 id="creation-title" className="atelier-title">{pageText('personalStoryTitle', interfaceLanguage)}</h1>
+              <p className="atelier-subtitle">{pageText((['personalStoryMoodSubtitle', 'personalStoryDetailsSubtitle', 'personalStoryReviewSubtitle'] as const)[creationStep], interfaceLanguage)}</p>
               <ol className="atelier-progress" aria-label="Story creation steps">
-                {['Choose a mood', 'Make it yours', 'Review & create'].map((label, index) => <li key={label} aria-current={creationStep === index ? 'step' : undefined}>{index + 1}. {label}</li>)}
+                {[pageText('chooseMood', interfaceLanguage), pageText('makeItYours', interfaceLanguage), pageText('reviewAndCreate', interfaceLanguage)].map((label, index) => <li key={label} aria-current={creationStep === index ? 'step' : undefined}>{index + 1}. {label}</li>)}
               </ol>
               <fieldset hidden={creationStep !== 0} disabled={creationStep !== 0 || isGenerating || Boolean(preparation)} style={{ border: 0, margin: 0, padding: 0 }}>
-              <legend className="atelier-eyebrow">How would you like to feel?</legend>
+              <legend className="atelier-eyebrow">{pageText('chooseMood', interfaceLanguage)}</legend>
               <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.8rem', marginTop: '2rem' }}>
                 {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }} style={{ textAlign: 'left', padding: '1rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong style={{ display: 'block', marginBottom: '0.4rem', fontSize: '1.1rem' }}>{mood.title}</strong><span style={{ lineHeight: 1.5 }}>{mood.description}</span></button>)}
               </div>
@@ -556,7 +559,7 @@ export default function StoryPage() {
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
                 </select>
               </label>
-              <label style={{ display: 'block', marginTop: '1rem' }}>Story language
+              <label style={{ display: 'block', marginTop: '1rem' }}>{pageText('createStoryLanguage', interfaceLanguage)}
                 <select aria-label="Story language" value={language} disabled={isGenerating || Boolean(preparation)} onChange={event => { setLanguage(event.target.value as StoryLanguageCode); setAiConsent(false) }}>
                   {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
                 </select>

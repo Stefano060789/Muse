@@ -8,8 +8,11 @@ import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
+import { archiveSyncNote, interfacePageText as text } from '../lib/interfacePages'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 
 export default function LibraryPage() {
+  const interfaceLanguage = useInterfaceLanguage()
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -123,31 +126,31 @@ export default function LibraryPage() {
   const sharedEntries = entries.filter(entry => entry.kind === 'shared')
   return (
     <>
-      <Head><title>Muse - Archive</title><meta name="description" content="Reread saved personal stories and manage your archived gift stories." /></Head>
-      <main className="atelier-page" style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
+      <Head><title>{`Muse - ${text('archiveTitle', interfaceLanguage)}`}</title><meta name="description" content={text('archiveSubtitle', interfaceLanguage)} /></Head>
+      <main className="atelier-page" lang={interfaceLanguage} style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
-          <p className="atelier-eyebrow">Your collection</p>
-          <h1 className="atelier-title">Archive</h1>
-          <p className="atelier-subtitle">Reread your saved stories and find the gifts you have created.</p>
-          <p>To start or continue a personal adventure, visit <Link href="/my-stories">My stories</Link>.</p>
-          <nav className="muse-section-links" aria-label="Saved story sections">
-            <a href="#personal-stories-heading">Stories for me ({personalEntries.length})</a>
-            <a href="#shared-stories-heading">Gift stories for others ({sharedEntries.length})</a>
+          <p className="atelier-eyebrow">{text('archiveEyebrow', interfaceLanguage)}</p>
+          <h1 className="atelier-title">{text('archiveTitle', interfaceLanguage)}</h1>
+          <p className="atelier-subtitle">{text('archiveSubtitle', interfaceLanguage)}</p>
+          <p><Link href="/my-stories">{text('myStoriesTitle', interfaceLanguage)}</Link></p>
+          <nav className="muse-section-links" aria-label={text('archiveTitle', interfaceLanguage)}>
+            <a href="#personal-stories-heading">{text('storiesForMe', interfaceLanguage)} ({personalEntries.length})</a>
+            <a href="#shared-stories-heading">{text('giftsForOthers', interfaceLanguage)} ({sharedEntries.length})</a>
           </nav>
-          <p role="note">Account stories sync when you sign in. Older browser-only stories remain on the device where they were created.</p>
+          <p role="note">{archiveSyncNote(interfaceLanguage)}</p>
           <details>
-            <summary>Privacy and storage</summary>
+            <summary>{text('privacyAndStorage', interfaceLanguage)}</summary>
             <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
             <p>Server stories have no automatic expiry. Shared briefs stay saved in this browser independently of recipient completion, until you remove them or clear browser storage. View story progress loads progress only when you ask.</p>
             <p>Removing an entry does not delete its server story, disable recipient links or reset its allowance. Saved entries contain private owner access; do not share them. Only copy the recipient link for sharing.</p>
             <p>Sign in to manage your gift stories and view their progress. Recipient links remain available without an account.</p>
           </details>
           {error && <div role="alert"><p>{error} Unreadable entries are hidden, not deleted.</p><button onClick={refresh}>Retry</button></div>}
-          {!ready && <p role="status">Loading this browser&apos;s library…</p>}
-          {ready && !error && !entries.length && <p>No stories saved here yet. <Link href="/story">Create a story for yourself</Link> or <Link href="/shared#new">create a gift story</Link>.</p>}
+          {!ready && <p role="status">{text('loadingLibrary', interfaceLanguage)}</p>}
+          {ready && !error && !entries.length && <p>{text('emptyLibrary', interfaceLanguage)} <Link href="/story">{text('personalStoryTitle', interfaceLanguage)}</Link> · <Link href="/shared#new">{text('createGift', interfaceLanguage)}</Link>.</p>}
           {ready && <section aria-labelledby="personal-stories-heading">
-          <h2 id="personal-stories-heading">Stories for me</h2>
-          {!personalEntries.length && <p>No personal stories saved in this browser.</p>}
+          <h2 id="personal-stories-heading">{text('storiesForMe', interfaceLanguage)}</h2>
+          {!personalEntries.length && <p>{text('noPersonalStories', interfaceLanguage)}</p>}
           {personalEntries.map(entry => (
             <article className="atelier-card" key={`${entry.kind}:${entry.id}`} style={{ margin: '1rem 0' }}>
               <h3>{entry.story.title}</h3>
@@ -157,10 +160,10 @@ export default function LibraryPage() {
                   : entry.story.responses.length >= entry.story.scenes.length ||
                     (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
                 return <>
-                  <p>{completed ? 'Completed' : entry.story.journey ? `In progress · Scene ${entry.story.currentStep + 1}` : `In progress · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
+                  <p>{completed ? text('storyCompleted', interfaceLanguage) : entry.story.journey ? `${text('inProgress', interfaceLanguage)} · Scene ${entry.story.currentStep + 1}` : `${text('inProgress', interfaceLanguage)} · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
                   {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
                   <details>
-                    <summary>Story details</summary>
+                    <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}
                     <p>Saved {new Date(entry.updatedAt).toLocaleString()} in this browser.</p>
                   </details>
@@ -168,23 +171,23 @@ export default function LibraryPage() {
               })()}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <button className="atelier-button" onClick={() => openPersonal(entry.id)}>
-                  Read story
+                  {text('readStory', interfaceLanguage)}
                 </button>
-                <button className="atelier-secondary" onClick={() => remove(entry)}>Remove from this browser</button>
+                <button className="atelier-secondary" onClick={() => remove(entry)}>{text('removeFromBrowser', interfaceLanguage)}</button>
               </div>
             </article>
           ))}
           </section>}
           {ready && <section aria-labelledby="shared-stories-heading">
-            <h2 id="shared-stories-heading">Gift stories for others</h2>
+            <h2 id="shared-stories-heading">{text('giftsForOthers', interfaceLanguage)}</h2>
             <button type="button" className="atelier-button" disabled={recovering}
               onClick={() => { void recover().catch(() => undefined) }}>
-              {recovering ? 'Syncing account stories...' : 'Sync account stories'}
+              {recovering ? text('syncingStories', interfaceLanguage) : text('syncAccountStories', interfaceLanguage)}
             </button>
             {recoveryError ? <p role="alert">{recoveryError} <Link href="/account">Sign in or create an account</Link>.</p> : null}
             {recoveryNotice ? <p role="status">{recoveryNotice}</p> : null}
             {origin && recipientShareDetails(origin, '').localOnly && <p role="note">Local-only address: recipient links from this browser will not work on another device. Use a publicly reachable Muse address to share.</p>}
-            {!sharedEntries.length && <p>No gift stories saved in this browser. <Link href="/shared#new">Create a gift story</Link>.</p>}
+            {!sharedEntries.length && <p>{text('noGiftStories', interfaceLanguage)} <Link href="/shared#new">{text('createGift', interfaceLanguage)}</Link>.</p>}
             {sharedEntries.map(entry => {
               const recipient = entry.story.playToken && origin ? recipientShareDetails(origin, entry.story.playToken) : null
               return <article className="atelier-card" key={`shared:${entry.id}`} style={{ margin: '1rem 0' }}>
@@ -195,7 +198,7 @@ export default function LibraryPage() {
                     disabled={!entry.story.playToken} localOnly={recipient.localOnly} whatsappUrl={recipient.whatsappUrl}
                     showWhatsapp={false}
                     previewContent={<GiftStoryPreview brief={entry.story.brief} content={entry.story.content} />} /> : null}
-                  <button className="atelier-secondary" onClick={() => remove(entry)}>Remove story</button>
+                  <button className="atelier-secondary" onClick={() => remove(entry)}>{text('removeFromBrowser', interfaceLanguage)}</button>
                   <GiftProgress compact snapshot={progressByStory[entry.story.ownerToken.split('.')[0]]}
                     load={() => loadProgress(entry.story.ownerToken)} sceneCount={entry.story.content.scenes.length} adventure={Boolean(entry.story.brief.adventure)} />
                 </div>

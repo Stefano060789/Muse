@@ -119,7 +119,9 @@ owns the story and pays for its live AI interactions.
 a separately selected interface language and default story language, and
 in-app shared-story notification controls. English is the default interface
 language; the other supported languages can be selected. Interface language
-currently changes navigation, Home and Settings; story language independently
+changes navigation, Home, Settings, and key headings/actions in Myself, My
+stories, Archive and story creation. Some form details, help, status messages
+and story-reader text may remain in English. Story language independently
 controls generated story content. These preferences are saved in the browser.
 When enabled and signed in, Muse checks for first opens, progress milestones
 and completion while a visible Muse page is open. Notifications do not sync
