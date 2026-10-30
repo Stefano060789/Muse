@@ -42,7 +42,21 @@ const moodCopyKeys: Record<PersonalStoryMood, { title: InterfaceFlowKey; descrip
 export default function StoryPage() {
   const interfaceLanguage = useInterfaceLanguage()
   const flow = (key: Parameters<typeof flowText>[0]) => flowText(key, interfaceLanguage)
+  const formatFlow = (key: Parameters<typeof flowText>[0], values: Record<string, string | number>) =>
+    Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), flow(key))
   const chapterLabel = (number: number) => flow('chapter').replace('{number}', String(number))
+  const journeyStatusLabels = {
+    preparing: 'journeyPreparing', active: 'journeyActive', concluded: 'journeyConcluded',
+    exhausted: 'journeyExhausted', failed: 'journeyFailed'
+  } as const
+  const soundLabels = {
+    rain: 'soundRain', wind: 'soundWind', water: 'soundWater', crowd: 'soundCrowd',
+    traffic: 'soundTraffic', mystery: 'soundMystery'
+  } as const
+  const soundscapeLabel = (kind: string) => {
+    const key = kind in soundLabels ? soundLabels[kind as keyof typeof soundLabels] : null
+    return formatFlow('soundscapeStatus', { kind: key ? flow(key) : kind })
+  }
   const interfaceCopy = recipientCopy(interfaceLanguage)
   const moodTitle = (mood: PersonalStoryMood) => flow(moodCopyKeys[mood].title)
   const moodDescription = (mood: PersonalStoryMood) => flow(moodCopyKeys[mood].description)
@@ -634,7 +648,12 @@ export default function StoryPage() {
               <details className="story-options"><summary>{flow('storyDetails')}</summary>
               <p>{story.description}</p>
               {story.romance ? <p>{romanceCopy(interfaceLanguage).title(story.romance)}</p> : null}
-              <p>{story.journey ? `${story.journey.revision}/${story.journey.maxTurns} attempts used · ${story.journey.status}` : `Scene ${story.currentStep + 1} of ${story.scenes.length}`}</p>
+              <p>{story.journey
+                ? formatFlow('journeyProgress', {
+                  used: story.journey.revision, total: story.journey.maxTurns,
+                  status: flow(journeyStatusLabels[story.journey.status])
+                })
+                : formatFlow('sceneProgress', { current: story.currentStep + 1, total: story.scenes.length })}</p>
               {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished && !archiveReading ? (
                 <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                   {flow('aiConsent')} {flow('attemptNote')}
@@ -653,24 +672,24 @@ export default function StoryPage() {
                 <p className="atelier-prose">{storyMode !== null ? <ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</p>
                 {storyMode === 'listen' ? <>
                 {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label={interfaceCopy.listenScene} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
-                {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
+                {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
                 {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
-                {story.journey?.state ? <details><summary>Journey memory</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{key}: {story.journey!.state![key].join(', ') || 'None yet'}</p>)}<p>{story.journey.state.progress}</p></details> : null}
-                {readyForClosing && !archiveReading ? <section aria-label="Chapter closing scene">
+                {story.journey?.state ? <details><summary>{flow('journeyMemory')}</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{flow(key)}: {story.journey!.state![key].join(', ') || flow('noneYet')}</p>)}<p>{story.journey.state.progress}</p></details> : null}
+                {readyForClosing && !archiveReading ? <section aria-label={flow('chapterClosingScene')}>
                   <h3>{flow('writeEnding')}</h3>
                   <button type="button" className="atelier-button" disabled={isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
                     {isGenerating ? flow('writing') : flow('writeEnding')}
                   </button>
                 </section> : !finished && !archiveReading ? <>
-                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? 'What do you do or say?' : storyMode !== null ? <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</h3>
+                <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? flow('doOrSay') : storyMode !== null ? <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
-                  <p>Each choice uses one AI attempt.</p>
-                  <div role="group" aria-label="Suggested actions" style={{ display: 'grid', gap: '0.7rem' }}>
+                  <p>{flow('eachChoiceUsesAttempt')}</p>
+                  <div role="group" aria-label={flow('suggestedActions')} style={{ display: 'grid', gap: '0.7rem' }}>
                     {story.journey.choices?.map(choice => <button key={choice} disabled={isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
                   </div>
-                  {!story.journey.choices?.length ? <p>Your actions load automatically when progress is checked.</p> : null}
+                  {!story.journey.choices?.length ? <p>{flow('actionsLoadAutomatically')}</p> : null}
                 </> : <>
                 <label>{flow('responseLabel')}
                 <textarea aria-label={flow('responseLabel')} value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder={flow('responsePlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
@@ -683,24 +702,24 @@ export default function StoryPage() {
                 {isRecording ? <button type="button" onClick={() => interaction.cancelRecording()}>{flow('stopAndType')}</button> : null}
                 </>}
                 {!story.journey ? <>
-                <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>Or choose a direction (legacy story):</p>
+                <p style={{ margin: '0.5rem 0 1rem', fontSize: '0.9rem', opacity: 0.65 }}>{flow('legacyDirection')} {flow('legacyDirectionNote')}</p>
                 <div style={{ display: 'grid', gap: '0.7rem' }}>{scene?.choices.map((choice) => <button key={choice} disabled={isGenerating || finished} onClick={() => choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', cursor: 'pointer', font: 'inherit' }}>{choice} →</button>)}</div>
                 </> : null}
                 </> : null}
               </article> : null}
-              {archiveReading ? <section aria-label="Archived story">
+              {archiveReading ? <section aria-label={flow('archivedStory')}>
                 <h2>{flow('savedScenes')}</h2>
                 {savedScenes}
                 {storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
-                {storyMode === 'listen' && narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">Soundscape: {narrator.ambientKind}</p> : null}
-                <p><Link href="/my-stories">Back to My stories</Link></p>
+                {storyMode === 'listen' && narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
+                <p><Link href="/my-stories">{flow('backMyStoriesLink')}</Link></p>
               </section> : null}
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
                 <h2>{story.journey?.status === 'exhausted' ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('savedScenes')}`
                   : story.journey ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('storyComplete')}` : pageText('storyCompleted', interfaceLanguage)}</h2>
-                <p>{story.journey?.status === 'exhausted' ? 'The attempt limit was reached, including failures. Your available scenes are saved; no extra AI call is made.' : 'The closing scene is saved above. Choose Read this scene or Listen to this scene to experience the ending. No further answer is needed.'}</p>
-                <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? 'Close reading' : 'Read again'}</button>
+                <p>{story.journey?.status === 'exhausted' ? flow('exhaustedStoryNote') : flow('completedStoryNote')}</p>
+                <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? flow('closeReading') : flow('readAgain')}</button>
                 {story.journey?.status === 'concluded' ? <section aria-label="Continue with a new chapter">
                   <button type="button" disabled={isGenerating || Boolean(preparation)} onClick={() => {
                     setChapterFormOpen(value => !value); setChapterConsent(false); setChapterRomanceConfirmed(false)
@@ -709,7 +728,7 @@ export default function StoryPage() {
                   {chapterFormOpen ? <div>
                     <p>{flow('nextChapterInfo')}</p>
                     <label>{flow('duration')}<select aria-label={flow('duration')} value={chapterDuration} disabled={isGenerating} onChange={event => { setChapterDuration(Number(event.target.value)); setChapterConsent(false) }}>
-                      {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes · up to {minutes * 3 / 5} responses</option>)}
+                      {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{formatFlow('chapterDurationOption', { minutes, responses: minutes * 3 / 5 })}</option>)}
                     </select></label>
                     <ExplicitConsent checked={chapterConsent} onChange={setChapterConsent}>
                       {flow('chapterConsentText')}

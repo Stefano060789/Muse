@@ -57,7 +57,7 @@ const english = {
   dedication: 'Dedication', keepsake: 'Save keepsake', reportProblem: 'Report a problem',
   narrationUnavailable: 'A voice for this language may not be installed on your device.',
   readScene: 'Read this scene', readDescription: 'Show the full text. No audio.',
-  listenScene: 'Listen to this scene', listenDescription: 'Start the voice and follow the words as they appear.',
+  listenScene: 'Listen to this scene', listenDescription: 'Start the voice and ambient sound; follow the words as they appear.',
   experiencePrompt: 'How would you like to experience this scene?', switchExperience: 'You can switch at any time.',
   dictateAnswer: 'Dictate your answer', dictateAction: 'Dictate your action', stopDictation: 'Stop and use text'
 }
@@ -80,7 +80,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: '赠言', keepsake: '保存纪念', reportProblem: '报告问题',
     narrationUnavailable: '你的设备可能尚未安装此语言的语音。',
     readScene: '阅读这一幕', readDescription: '显示完整文字，不播放音频。',
-    listenScene: '聆听这一幕', listenDescription: '开始播放语音，并跟随逐渐显示的文字。',
+    listenScene: '聆听这一幕', listenDescription: '开始播放语音和环境音，并跟随逐渐显示的文字。',
     experiencePrompt: '你想如何体验这一幕？', switchExperience: '你可以随时切换。',
     dictateAnswer: '口述答案', dictateAction: '口述行动', stopDictation: '停止并使用文字'
   },
@@ -100,7 +100,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: 'समर्पण', keepsake: 'यादगार सहेजें', reportProblem: 'समस्या बताएँ',
     narrationUnavailable: 'आपके उपकरण पर इस भाषा की आवाज़ शायद उपलब्ध न हो।',
     readScene: 'यह दृश्य पढ़ें', readDescription: 'पूरा पाठ दिखाएँ। ऑडियो नहीं।',
-    listenScene: 'यह दृश्य सुनें', listenDescription: 'आवाज़ शुरू करें और साथ-साथ दिखने वाले शब्द पढ़ें।',
+    listenScene: 'यह दृश्य सुनें', listenDescription: 'आवाज़ और माहौल की ध्वनि शुरू करें; साथ-साथ दिखने वाले शब्द पढ़ें।',
     experiencePrompt: 'आप इस दृश्य को कैसे देखना चाहेंगे?', switchExperience: 'आप कभी भी बदल सकते हैं।',
     dictateAnswer: 'अपना उत्तर बोलें', dictateAction: 'अपना कदम बोलें', stopDictation: 'रोकें और पाठ इस्तेमाल करें'
   },
@@ -120,7 +120,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: 'Dedicatoria', keepsake: 'Guardar recuerdo', reportProblem: 'Informar de un problema',
     narrationUnavailable: 'Puede que tu dispositivo no tenga instalada una voz para este idioma.',
     readScene: 'Leer esta escena', readDescription: 'Mostrar todo el texto. Sin audio.',
-    listenScene: 'Escuchar esta escena', listenDescription: 'Iniciar la voz y seguir las palabras mientras aparecen.',
+    listenScene: 'Escuchar esta escena', listenDescription: 'Inicia la voz y el sonido ambiental; sigue las palabras mientras aparecen.',
     experiencePrompt: '¿Cómo quieres disfrutar de esta escena?', switchExperience: 'Puedes cambiar en cualquier momento.',
     dictateAnswer: 'Dictar respuesta', dictateAction: 'Dictar acción', stopDictation: 'Detener y usar el texto'
   },
@@ -140,7 +140,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: 'Dedica', keepsake: 'Salva ricordo', reportProblem: 'Segnala un problema',
     narrationUnavailable: 'Potrebbe non essere installata una voce per questa lingua sul dispositivo.',
     readScene: 'Leggi questa scena', readDescription: 'Mostra tutto il testo, senza audio.',
-    listenScene: 'Ascolta questa scena', listenDescription: 'Avvia la voce e segui le parole mentre appaiono.',
+    listenScene: 'Ascolta questa scena', listenDescription: 'Avvia la voce e i suoni ambientali; segui le parole mentre appaiono.',
     experiencePrompt: 'Come vuoi vivere questa scena?', switchExperience: 'Puoi cambiare modalità in qualsiasi momento.',
     dictateAnswer: 'Detta la risposta', dictateAction: 'Detta la tua azione', stopDictation: 'Ferma e usa il testo'
   },
@@ -160,7 +160,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: 'Присвята', keepsake: 'Зберегти на згадку', reportProblem: 'Повідомити про проблему',
     narrationUnavailable: 'На твоєму пристрої може не бути встановлено голос для цієї мови.',
     readScene: 'Читати цю сцену', readDescription: 'Показати весь текст без аудіо.',
-    listenScene: 'Слухати цю сцену', listenDescription: 'Увімкнути озвучення й стежити за словами, що з’являються.',
+    listenScene: 'Слухати цю сцену', listenDescription: 'Увімкніть озвучення й звуковий фон; стежте за словами, що з’являються.',
     experiencePrompt: 'Як ти хочеш пережити цю сцену?', switchExperience: 'Режим можна змінити будь-коли.',
     dictateAnswer: 'Продиктувати відповідь', dictateAction: 'Продиктувати дію', stopDictation: 'Зупинити й використати текст'
   },
@@ -180,7 +180,7 @@ const copies: Record<StoryLanguageCode, RecipientLabels> = {
     dedication: 'إهداء', keepsake: 'احفظ التذكار', reportProblem: 'أبلغ عن مشكلة',
     narrationUnavailable: 'قد لا يكون صوت لهذه اللغة مثبتًا على جهازك.',
     readScene: 'اقرأ هذا المشهد', readDescription: 'اعرض النص كاملًا دون صوت.',
-    listenScene: 'استمع إلى هذا المشهد', listenDescription: 'ابدأ الصوت وتابع الكلمات أثناء ظهورها.',
+    listenScene: 'استمع إلى هذا المشهد', listenDescription: 'ابدأ الصوت والخلفية المحيطة، وتابع الكلمات أثناء ظهورها.',
     experiencePrompt: 'كيف تود الاستمتاع بهذا المشهد؟', switchExperience: 'يمكنك التبديل في أي وقت.',
     dictateAnswer: 'أملِ إجابتك', dictateAction: 'أملِ خطوتك', stopDictation: 'أوقف واستخدم النص'
   }

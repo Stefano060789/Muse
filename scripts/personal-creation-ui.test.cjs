@@ -324,6 +324,17 @@ async function main() {
   const beforeResume = requests.length
   await flush()
   assert.equal(requests[beforeResume].action, 'resume', 'Restored journeys automatically reconcile without a paid call')
+  interfaceLocale = 'it-IT'
+  await flush()
+  const progressCopy = flatten(tree).filter(value => typeof value === 'string').join(' ')
+  assert.ok(progressCopy.includes('tentativi usati') && progressCopy.includes('In corso'),
+    'Progress counters and journey status follow the interface language')
+  assert.ok(nodes().some(node => node.props['aria-label'] === 'La tua risposta'),
+    'Response controls follow the interface language after story progress')
+  assert.ok(nodes().find(node => node.type === '../components/StoryModeControl').props.copy.listenDescription.includes('suoni ambientali'),
+    'Listen mode explains that default ambience starts with playback')
+  interfaceLocale = 'en-US'
+  await flush()
   const activeMode = () => nodes().find(node => node.type === '../components/StoryModeControl')
   assert.equal(activeMode().props.mode, null)
   assert.ok(!nodes().some(node => node.type === '../components/ReadAlongText'), 'Active personal scenes do not mount the full narrative before a choice')

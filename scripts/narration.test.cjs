@@ -520,7 +520,7 @@ async function main() {
     assert.equal(storySoundscape('एक जंगल में हवा चलती है।', 'auto'), 'wind', 'Hindi outdoor cues select gentle wind')
     assert.equal(storySoundscape('Rain taps the window.', 'none'), 'none')
     assert.equal(storySoundscape('A quiet room.', 'water'), 'water')
-    assert.equal(prefs.ambientVolume, 0.12)
+    assert.equal(prefs.ambientVolume, 0.2)
     const opening = narrativeDelivery('A path opens.', 'adventurous', { progress: 0 }, prefs)
     const late = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8 }, prefs)
     const quiet = narrativeDelivery('She whispers softly.', 'adventurous', {}, prefs)
@@ -546,7 +546,7 @@ async function main() {
     try {
       assert.equal(hook.ambientCalls.length, 0)
       await hook.render().speak('Rain taps the window. What is outside?')
-      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.12])
+      assert.deepEqual(hook.ambientCalls[0], ['start', 'rain', 0.2])
       assert.equal(hook.spoken[0].volume, 0.9)
       hook.render().pause()
       assert.equal(hook.ambientCalls.at(-1)[0], 'pause')

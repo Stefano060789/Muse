@@ -6,7 +6,7 @@ export type Soundscape = AmbientSound | 'auto'
 export type ImmersivePreferences = { expressive: boolean; soundscape: Soundscape; voiceVolume: number; ambientVolume: number }
 export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v1'
 export const DEFAULT_IMMERSIVE_PREFERENCES: ImmersivePreferences = {
-  expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.12
+  expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.2
 }
 export const SOUNDSCAPES: Soundscape[] = ['auto', 'none', 'rain', 'wind', 'water', 'crowd', 'traffic', 'mystery']
 
