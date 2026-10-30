@@ -8,6 +8,7 @@ import { STORY_LANGUAGES, type StoryLanguageCode } from '../lib/storyLanguage'
 import { loadStoryPreferences } from '../lib/storyPreferences'
 import { interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { interfaceFlowText } from '../lib/interfaceFlow'
 
 const DISCOVERY_TOPICS = [
   'A small tradition that feels like home',
@@ -22,6 +23,8 @@ const DISCOVERY_TOPICS = [
 
 export default function MyselfPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const flow = (key: Parameters<typeof interfaceFlowText>[0]) => interfaceFlowText(key, interfaceLanguage)
+  const direction = STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir
   const [about, setAbout] = useState('')
   const [keypoints, setKeypoints] = useState<string[]>([])
   const [topic, setTopic] = useState('')
@@ -66,7 +69,7 @@ export default function MyselfPage() {
     try {
       const profile = saveMuseProfile(about)
       applyProfile(profile)
-      setMessage('Saved in this browser.')
+      setMessage(flow('saved'))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not save your memories. Keep a copy of your text.')
     }
@@ -89,7 +92,7 @@ export default function MyselfPage() {
       const profile = saveMuseProfileReflection(topic, reflection)
       applyProfile(profile)
       setReflection('')
-      setMessage('Your reflection was saved as an editable personal memory in this browser.')
+      setMessage(flow('saved'))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not save this reflection. Your existing memories are unchanged.')
     }
@@ -103,7 +106,7 @@ export default function MyselfPage() {
       const points = remove ? keypoints.filter((_, position) => position !== index) :
         keypoints.map((point, position) => position === index ? drafts[index] : point)
       applyProfile(replaceMuseProfileKeypoints(points))
-      setMessage(remove ? 'Memory removed from this browser profile.' : 'Memory updated in this browser.')
+      setMessage(flow('saved'))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not update this memory. Your saved profile is unchanged.')
     }
@@ -121,7 +124,7 @@ export default function MyselfPage() {
       setDrafts([])
       setTopic('')
       setReflection('')
-      setMessage('All profile memories were removed from this browser. Existing stories were not changed.')
+      setMessage(flow('saved'))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not remove your memories.')
     }
@@ -130,11 +133,10 @@ export default function MyselfPage() {
   return (
     <>
       <Head><title>{`Muse — ${text('myselfTitle', interfaceLanguage)}`}</title><meta name="description" content={text('myselfSubtitle', interfaceLanguage)} /></Head>
-      <main className="atelier-page" lang={interfaceLanguage}>
+      <main className="atelier-page" lang={interfaceLanguage} dir={direction}>
         <div className="atelier-shell atelier-shell--narrow">
           <p className="atelier-eyebrow">{text('myselfEyebrow', interfaceLanguage)}</p>
           <h1 className="atelier-title">{text('myselfTitle', interfaceLanguage)}</h1>
-          <p className="atelier-subtitle">{text('myselfSubtitle', interfaceLanguage)}</p>
           <p className="atelier-note">{text('myselfPrivacy', interfaceLanguage)}</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>
             <label style={{ display: 'block', fontWeight: 700 }}>{text('aboutYourself', interfaceLanguage)}
@@ -142,7 +144,7 @@ export default function MyselfPage() {
             </label>
             <details style={{ marginTop: '0.75rem' }}>
               <summary>{text('voiceInputLanguage', interfaceLanguage)}</summary>
-              <select aria-label="Personal touches voice language" value={language} onChange={event => {
+              <select aria-label={text('voiceInputLanguage', interfaceLanguage)} value={language} onChange={event => {
                 const selected = STORY_LANGUAGES.find(option => option.code === event.target.value)
                 if (!selected) { setError('Choose a supported story language.'); return }
                 interaction.cancelRecording()
@@ -154,11 +156,10 @@ export default function MyselfPage() {
             <p className="atelier-note">{text('speechPrivacy', interfaceLanguage)}</p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
               <button onClick={save} disabled={!about.trim()} style={{ border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', padding: '0.85rem 1.2rem', fontWeight: 700, cursor: 'pointer' }}>{text('savePersonalTouches', interfaceLanguage)}</button>
-              <DictationButton recording={isAboutRecording} stopping={interaction.stoppingTarget === 'about'} stoppingLabel="Finishing dictation…" disabled={Boolean(interaction.stoppingTarget)} label="Start dictation" stopLabel="Stop and use transcript" onStart={() => { setMessage(''); interaction.dictate('about', value => setAbout(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isAboutRecording ? '#a14329' : undefined, color: isAboutRecording ? '#fffaf6' : undefined }} />
+              <DictationButton recording={isAboutRecording} stopping={interaction.stoppingTarget === 'about'} stoppingLabel={flow('finishing')} disabled={Boolean(interaction.stoppingTarget)} label={flow('dictate')} stopLabel={flow('stopUseText')} onStart={() => { setMessage(''); interaction.dictate('about', value => setAbout(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('about')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isAboutRecording ? '#a14329' : undefined, color: isAboutRecording ? '#fffaf6' : undefined }} />
             </div>
             <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid #d9cfc5' }}>
               <h2 style={{ marginTop: 0 }}>{text('exploreTopic', interfaceLanguage)}</h2>
-              <p>{text('topicPrompt', interfaceLanguage)}</p>
               <button type="button" onClick={showTopic}>{text('showTopic', interfaceLanguage)}</button>
               {topic ? <>
                 <p role="status" style={{ fontWeight: 700, lineHeight: 1.6 }}>{topic}</p>
@@ -167,15 +168,14 @@ export default function MyselfPage() {
                 </label>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
                   <button type="button" onClick={saveReflection} disabled={!reflection.trim()}>{text('saveReflection', interfaceLanguage)}</button>
-                  <DictationButton recording={isTopicRecording} stopping={interaction.stoppingTarget === 'topic'} stoppingLabel="Finishing dictation…" disabled={Boolean(interaction.stoppingTarget)} label="Speak about it" stopLabel="Stop and use transcript" onStart={() => { setMessage(''); interaction.dictate('topic', value => setReflection(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('topic')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isTopicRecording ? '#a14329' : undefined, color: isTopicRecording ? '#fffaf6' : undefined }} />
+                  <DictationButton recording={isTopicRecording} stopping={interaction.stoppingTarget === 'topic'} stoppingLabel={flow('finishing')} disabled={Boolean(interaction.stoppingTarget)} label={`${flow('dictate')} · ${text('yourReflection', interfaceLanguage)}`} stopLabel={flow('stopUseText')} onStart={() => { setMessage(''); interaction.dictate('topic', value => setReflection(value.slice(0, 4000))) }} onStop={() => interaction.stopRecording('topic')} style={{ padding: '0.85rem 1.1rem', cursor: 'pointer', background: isTopicRecording ? '#a14329' : undefined, color: isTopicRecording ? '#fffaf6' : undefined }} />
                 </div>
-                <p className="atelier-note">Saved reflections become short, editable memories tagged with this topic. They stay in this browser and are only sent with your consent when you create a personal story.</p>
               </> : null}
             </div>
             {message ? <p role="status" style={{ lineHeight: 1.6, marginBottom: 0 }}>{message}</p> : null}
             {error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{error}</p> : null}
             {interaction.error ? <p role="alert" style={{ color: '#a14329', lineHeight: 1.6 }}>{interaction.error}</p> : null}
-            {isAboutRecording || isTopicRecording ? <p role="status">{interaction.ready ? 'Listening — release when you are done.' : 'Starting microphone…'}</p> : null}
+            {isAboutRecording || isTopicRecording ? <p role="status">{interaction.ready ? flow('listen') : flow('startingMic')}</p> : null}
           </section>
           <section style={{ marginTop: '1rem', padding: '1.25rem 1.5rem', border: '1px solid #d9cfc5', borderRadius: 18 }}>
             <h2 style={{ marginTop: 0 }}>{text('yourMemories', interfaceLanguage)}</h2>
@@ -184,7 +184,7 @@ export default function MyselfPage() {
               <button onClick={() => changeMemory(index)} style={{ marginTop: '0.5rem', marginRight: '0.5rem' }}>{text('saveMemory', interfaceLanguage)} {index + 1}</button>
               <button onClick={() => changeMemory(index, true)}>{text('removeMemory', interfaceLanguage)} {index + 1}</button>
             </li>)}</ul> : <p style={{ marginBottom: 0, opacity: 0.7 }}>{text('noMemories', interfaceLanguage)}</p>}
-            <p>Removing memories does not erase existing stories or data already sent to AI.</p>
+            <p>{flow('memoryDeletionNote')}</p>
             <button onClick={forget}>{text('forgetMemories', interfaceLanguage)}</button>
           </section>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>

@@ -24,13 +24,12 @@ export default function StoryModeControl({ mode, onChange, copy = english, langu
   language?: string
   direction?: 'ltr' | 'rtl'
 }) {
-  return <div role="group" aria-label="Story experience" lang={language} dir={direction} className="story-mode-control">
-    <p className="story-mode-prompt">{mode === null ? copy.experiencePrompt : copy.switchExperience}</p>
+  return <div role="group" aria-label={copy.experiencePrompt} lang={language} dir={direction} className="story-mode-control">
     <button type="button" aria-label={copy.readScene} aria-pressed={mode === 'read'} onClick={() => onChange('read')}>
-      <strong>{copy.readScene}</strong><span>{copy.readDescription}</span>
+      <strong>{copy.readScene}</strong>
     </button>
     <button type="button" aria-label={copy.listenScene} aria-pressed={mode === 'listen'} onClick={() => onChange('listen')}>
-      <strong>{copy.listenScene}</strong><span>{copy.listenDescription}</span>
+      <strong>{copy.listenScene}</strong>
     </button>
   </div>
 }

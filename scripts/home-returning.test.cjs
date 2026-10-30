@@ -48,7 +48,10 @@ function mount(file, dependencies, browser) {
     '../lib/profile': dependencies.profile,
     '../lib/useStoryInteraction': dependencies.useStoryInteraction,
     '../lib/storyLanguage': dependencies.storyLanguage,
-    '../lib/storyPreferences': dependencies.storyPreferences
+    '../lib/storyPreferences': dependencies.storyPreferences,
+    '../lib/interfaceLanguage': dependencies.interfaceLanguage,
+    '../lib/interfacePages': dependencies.interfacePages,
+    '../lib/interfaceFlow': dependencies.interfaceFlow
   }
   new Function('module', 'exports', 'require', 'window', compile(file))(
     module, module.exports, id => {
@@ -98,6 +101,18 @@ function homeLibrary(entries, error = null, selectionError = false) {
     addEventListener() {}, removeEventListener() {}
   }
   const component = mount('src/pages/index.tsx', {
+    interfaceLanguage: { useInterfaceLanguage: () => 'en-US', interfaceText: key => ({
+      homeTitle: 'A story to get lost in.', homeGiftTitle: 'A gift story they’ll remember.',
+      welcomeEyebrow: 'Small adventures. Personal meaning.', homeMyself: 'Myself',
+      homeJustForYou: 'Just for you', homeForSomeone: 'For someone else',
+      homeCreatePersonal: 'My stories', homeOpenPersonal: 'Open My stories',
+      homeShareTogether: 'Share a story & play together', homeCreateGift: 'Create & share a story',
+      sample: 'Try a 2-minute sample', sampleNote: 'Free, handcrafted, no account needed.'
+    })[key] || key },
+    interfacePages: { interfacePageText: key => ({
+      continueStory: 'Continue story', storyCompleted: 'Your latest completed story', readStory: 'Read again'
+    })[key] || key },
+    storyLanguage: plain('src/lib/storyLanguage.ts'),
     storyLibrary: {
       loadStoryLibrary: () => ({ library: { entries }, error }),
       selectPersonalStory: id => {
@@ -120,6 +135,18 @@ function personalTouches(preferences, profile) {
     }
   }
   const component = mount('src/pages/myself.tsx', {
+    interfaceLanguage: { useInterfaceLanguage: () => 'en-US' },
+    interfacePages: { interfacePageText: key => ({
+      myselfTitle: 'Myself', myselfEyebrow: 'Personal touches', myselfPrivacy: 'Saved only in this browser.',
+      aboutYourself: 'About yourself', aboutPlaceholder: 'People and places…',
+      voiceInputLanguage: 'Personal touches voice language', speechPrivacy: 'Voice input may use an online service.',
+      savePersonalTouches: 'Save personal touches', exploreTopic: 'Explore a topic', showTopic: 'Show me a topic',
+      yourReflection: 'Your reflection', reflectionPlaceholder: 'Share what you want to remember.',
+      saveReflection: 'Save reflection', yourMemories: 'Your memories', memory: 'Memory',
+      saveMemory: 'Save memory', removeMemory: 'Remove memory', noMemories: 'No memories yet.',
+      forgetMemories: 'Forget all memories', createMyStory: 'Create My Story', createGiftStory: 'Create a gift story'
+    })[key] || key },
+    interfaceFlow: { interfaceFlowText: key => key },
     profile: {
       loadMuseProfile: () => profile,
       saveMuseProfile: about => ({ about, keypoints: [about], updatedAt: new Date().toISOString() })
@@ -144,9 +171,10 @@ function main() {
       entry('completed', '2026-10-17T00:00:00.000Z', true)
     ])
     const tree = ui.flushEffects()
-    assert.ok(text(tree).includes('Muse turns your memories, interests, and relationships into stories you can keep building together.'))
+    assert.ok(!text(tree).includes('Muse turns your memories, interests, and relationships into stories you can keep building together.'),
+      'Home keeps only the essentials')
     assert.ok(text(tree).includes('Story newer-active'))
-    assert.ok(text(tree).includes('Scene 2 of 3'))
+    assert.ok(text(tree).includes('2/3'))
     assert.equal(button(tree, 'Continue story').props.type, 'button')
     button(tree, 'Continue story').props.onClick()
     assert.deepEqual(ui.selected, ['newer-active'])

@@ -11,11 +11,13 @@ import { loadProfileDisplayName, saveProfileDisplayName } from '../lib/profilePr
 import {
   interfaceText, loadInterfaceLanguage, saveInterfaceLanguage, useInterfaceLanguage
 } from '../lib/interfaceLanguage'
+import { interfaceFlowText } from '../lib/interfaceFlow'
 
 type Account = { email?: string; displayName?: string }
 
 export default function AccountPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const savedText = interfaceFlowText('saved', interfaceLanguage)
   const [account, setAccount] = useState<Account | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -126,9 +128,7 @@ export default function AccountPage() {
     try {
       saveStoryProgressNotificationsEnabled(enabled)
       setStoryNotificationsEnabled(enabled)
-      setSettingsNotice(enabled
-        ? 'In-app shared-story notifications are enabled in this browser.'
-        : 'In-app shared-story notifications are disabled in this browser.')
+      setSettingsNotice(savedText)
     } catch (cause) {
       setSettingsError(cause instanceof Error ? cause.message : 'Could not save your notification setting.')
     }
@@ -179,14 +179,12 @@ export default function AccountPage() {
 
   return <>
     <Head><title>{`Muse — ${interfaceText('settingsTitle', interfaceLanguage)}`}</title><meta name="description" content={interfaceText('settingsSubtitle', interfaceLanguage)} /></Head>
-    <main className="atelier-page">
+    <main className="atelier-page" lang={interfaceLanguage} dir={STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
       <div className="atelier-shell atelier-shell--narrow">
         <p className="atelier-eyebrow">{interfaceText('settingsEyebrow', interfaceLanguage)}</p>
         <h1 className="atelier-title">{interfaceText('settingsTitle', interfaceLanguage)}</h1>
-        <p className="atelier-subtitle">{interfaceText('settingsSubtitle', interfaceLanguage)}</p>
         <section className="atelier-card" aria-labelledby="profile-heading">
           <h2 id="profile-heading">{interfaceText('profileHeading', interfaceLanguage)}</h2>
-          <p>{interfaceText('profileNameHelp', interfaceLanguage)}</p>
           <form onSubmit={event => void saveProfile(event)}>
             <label className="atelier-field" htmlFor="profile-name">{interfaceText('profileNameLabel', interfaceLanguage)}
               <input id="profile-name" type="text" maxLength={40} required value={profileName} onChange={event => setProfileName(event.target.value)} />
@@ -201,19 +199,16 @@ export default function AccountPage() {
               {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
             </select>
           </label>
-          <p>{interfaceText('interfaceLanguageHelp', interfaceLanguage)}</p>
           <label className="atelier-field" htmlFor="muse-language">{interfaceText('storyLanguageLabel', interfaceLanguage)}
             <select id="muse-language" value={storyLanguage} onChange={event => changeLanguage(event.target.value)}>
               {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
             </select>
           </label>
-          <p>{interfaceText('storyLanguageHelp', interfaceLanguage)}</p>
           {settingsNotice ? <p role="status">{settingsNotice}</p> : null}
           {settingsError ? <p role="alert">{settingsError}</p> : null}
         </section>
         <section className="atelier-card" aria-labelledby="story-notifications-heading">
           <h2 id="story-notifications-heading">{interfaceText('notificationsHeading', interfaceLanguage)}</h2>
-          <p>{interfaceText('notificationsHelp', interfaceLanguage)}</p>
           <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
             <input
               type="checkbox"
@@ -225,7 +220,6 @@ export default function AccountPage() {
         </section>
         <section aria-labelledby="account-settings-heading">
         <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>
-        <p className="atelier-subtitle">{interfaceText('accountHelp', interfaceLanguage)}</p>
         {!supabase && localDevelopment ? <section className="atelier-card">
           <p>{interfaceText('localAccount', interfaceLanguage)}</p>
           <Link className="atelier-button" href="/story?new=1">Create a story</Link>
@@ -234,7 +228,6 @@ export default function AccountPage() {
             <h2>{interfaceText('signedIn', interfaceLanguage)}</h2>
             <p>{account.email}</p>
             {account.displayName ? <p>{account.displayName}</p> : null}
-            <p>Your newly created stories belong to this account. Sign in on another device to manage them there.</p>
             <div className="atelier-actions">
               <Link className="atelier-button" href="/library">{interfaceText('savedStories', interfaceLanguage)}</Link>
               <button type="button" className="atelier-secondary" disabled={busy} onClick={() => void signOut()}>{interfaceText('signOut', interfaceLanguage)}</button>

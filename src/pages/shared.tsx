@@ -33,6 +33,7 @@ import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferen
 import { loadProfileDisplayName } from '../lib/profilePreferences'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
+import { interfaceFlowText } from '../lib/interfaceFlow'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
   formatMediaSize, parseMediaDeclaration, validateVoiceBytes, SHARED_MEDIA_ACCEPT, SHARED_MEDIA_ATTEMPTS_PER_STORY, SHARED_MEDIA_PHOTO_MAX_BYTES, SHARED_MEDIA_VIDEO_MAX_BYTES,
@@ -191,6 +192,8 @@ async function putFile(target: UploadTarget, file: File, onProgress: (percent: n
 
 export default function SharedStoryPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const flow = (key: Parameters<typeof interfaceFlowText>[0]) => interfaceFlowText(key, interfaceLanguage)
+  const interfaceCopy = recipientCopy(interfaceLanguage)
   const [brief, setBrief] = useState<SharedStoryBrief>(blankBrief)
   const [assistanceHintsText, setAssistanceHintsText] = useState('')
   const [alternativeAnswersText, setAlternativeAnswersText] = useState('')
@@ -1136,11 +1139,11 @@ export default function SharedStoryPage() {
 
   const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | 'answerType' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
-      <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ' (optional)' : ''}</label>
+      <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ` ${flow('optional')}` : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
         <textarea id={`brief-${key}`} required={!optional} value={brief[key]} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} rows={Math.max(key === 'setting' || key === 'message' ? 4 : 2, Math.ceil(placeholder.length / 24))} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} />}
-      <DictationButton label={`Dictate ${label}`} stopLabel="Stop and use text" recording={interaction.recordingTarget === key || interaction.stoppingTarget === key} stopping={interaction.stoppingTarget === key} disabled={busy || Boolean(interaction.stoppingTarget)} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
-      {interaction.stoppingTarget === key ? <p role="status">{recipientCopy(brief.language).finishingDictation}</p> : interaction.recordingTarget === key ? <p role="status">{interaction.ready ? 'Listening. Review your text before sending.' : 'Starting microphone...'}</p> : null}
+      <DictationButton label={`${flow('dictate')} ${label}`} stopLabel={flow('stopUseText')} stoppingLabel={flow('finishing')} recording={interaction.recordingTarget === key || interaction.stoppingTarget === key} stopping={interaction.stoppingTarget === key} disabled={busy || Boolean(interaction.stoppingTarget)} onStart={() => interaction.dictate(key, (value) => { updateBrief(current => ({ ...current, [key]: value.slice(0, max) })); setAiConsent(false) }, key === 'creatorName' || key === 'recipientName')} onStop={() => interaction.stopRecording(key)} style={{ ...buttonStyle, marginTop: '0.5rem', fontSize: '0.85rem' }} />
+      {interaction.stoppingTarget === key ? <p role="status">{flow('finishing')}</p> : interaction.recordingTarget === key ? <p role="status">{interaction.ready ? flow('listen') : flow('startingMic')}</p> : null}
     </div>
   )
 
@@ -1154,13 +1157,13 @@ export default function SharedStoryPage() {
           if (key === 'assistanceHints') updateGiftDraftText('assistanceHintsText', nextValue)
           else updateGiftDraftText('alternativeAnswersText', nextValue)
           setAiConsent(false)
-        }} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder="One entry per line" aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
-        <p id={`brief-${key}-help`}>{description} Max {maxEntries} lines, {maxEntryLength} characters each.</p>
+        }} rows={maxEntries} maxLength={maxEntries * (maxEntryLength + 2)} placeholder={flow('onePerLine')} aria-describedby={`brief-${key}-help`} style={fieldStyle} disabled={busy} />
+        <p id={`brief-${key}-help`}>{description}</p>
       </div>
     )
   }
 
-  const audioButton = (text: string) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label="Use device voice (quality varies)" beforeSpeak={beforeDeviceListen} /> : null
+  const audioButton = (text: string) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label={interfaceCopy.listen} beforeSpeak={beforeDeviceListen} /> : null
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
@@ -1409,7 +1412,7 @@ export default function SharedStoryPage() {
           <section>
             <p className="atelier-eyebrow">Private creator preview</p>
             <h1>{creator.content.title}</h1>
-            {creator.brief.romance ? <p>{romanceCopy().title(creator.brief.romance)}. Recipients see a content notice and choose whether to open before seeing any story text.</p> : null}
+            {creator.brief.romance ? <p>{romanceCopy(interfaceLanguage).title(creator.brief.romance)}. {flow('romanceRecipientNotice')}</p> : null}
             <form onSubmit={event => { event.preventDefault(); void creatorAction('title') }} style={cardStyle} aria-label="Edit story title">
               <label htmlFor="creator-story-title" style={{ display: 'block', fontWeight: 700 }}>Story title
                 <input id="creator-story-title" value={titleDraft} onChange={event => { setTitleDraft(event.target.value); setTitleFeedback(null) }} maxLength={120} required aria-describedby={titleFeedback ? 'title-save-feedback' : undefined} style={fieldStyle} disabled={busy} />
@@ -1427,7 +1430,7 @@ export default function SharedStoryPage() {
               }}>Review and share</button>
               <p><Link href="/library#shared-stories-heading">Go to archive</Link></p>
             </section>
-            <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={recipientCopy(creator.brief.language)} language={storyLanguage(creator.brief.language).code} direction={storyLanguage(creator.brief.language).dir} />
+            <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
             {storyMode === 'listen' ? <article style={cardStyle} aria-label="Listen before sending">
               <h2>Listen before sending</h2>
               {!creator.brief.adventure ? <>
@@ -1648,8 +1651,6 @@ export default function SharedStoryPage() {
           <section>
             <p className="atelier-eyebrow">{pageText('giftEyebrow', interfaceLanguage)}</p>
             <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>{pageText('giftTitle', interfaceLanguage)}</h1>
-            <p className="atelier-subtitle">{pageText('giftSubtitle', interfaceLanguage)}</p>
-            <p className="atelier-subtitle">{pageText('giftTagline', interfaceLanguage)}</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
               <p>A draft is saved on this device from {new Date(pendingDraft.savedAt).toLocaleString()}. Voice recordings and media are not saved in drafts.</p>
@@ -1696,7 +1697,7 @@ export default function SharedStoryPage() {
                 return <li key={key} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>
               })}
             </ol>
-            <p className="atelier-eyebrow" aria-live="polite">{giftFormText('step', interfaceLanguage)} {creatorStep + 1} of 3: {giftFormText((['stepFor', 'stepStory', 'stepSurprise'] as const)[creatorStep], interfaceLanguage)}</p>
+            <p className="atelier-eyebrow" aria-live="polite">{creatorStep + 1}/3 · {giftFormText((['stepFor', 'stepStory', 'stepSurprise'] as const)[creatorStep], interfaceLanguage)}</p>
             <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
@@ -1706,8 +1707,8 @@ export default function SharedStoryPage() {
                   {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{giftFormText(giftOccasionLabels[occasion.id], interfaceLanguage)}</button>)}
                   <button type="button" disabled={busy} aria-pressed={!brief.gift} onClick={() => chooseOccasion()} style={!brief.gift ? primaryStyle : buttonStyle}>{giftFormText('ownIdea', interfaceLanguage)}</button>
                 </div>
-                {textField('creatorName', giftFormText('yourName', interfaceLanguage), 'Person A', 80)}
-                {textField('recipientName', giftFormText('recipientName', interfaceLanguage), 'Person B', 80)}
+                {textField('creatorName', giftFormText('yourName', interfaceLanguage), '', 80)}
+                {textField('recipientName', giftFormText('recipientName', interfaceLanguage), '', 80)}
                 <div>
                   <label htmlFor="shared-language" style={{ fontWeight: 700 }}>{giftFormText('storyLanguage', interfaceLanguage)}</label>
                   <select id="shared-language" value={brief.language ?? ''} disabled={busy} style={fieldStyle} onChange={event => {
@@ -1722,35 +1723,34 @@ export default function SharedStoryPage() {
                 </div>
                 <details>
                   <summary>{giftFormText('aboutStoryLanguage', interfaceLanguage)}</summary>
-                  <p>{giftFormText('storyLanguageHelp', interfaceLanguage)} Your dedication, hints, answer and final message stay exactly as written. Settings and errors may remain English.</p>
+                  <p>{giftFormText('storyLanguageHelp', interfaceLanguage)}</p>
                 </details>
-                <RomanceOptions value={brief.romance} onChange={romance => { updateBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} />
+                <RomanceOptions value={brief.romance} onChange={romance => { updateBrief(current => ({ ...current, romance })); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={busy} showConfirmation={false} language={interfaceLanguage} />
               </div>
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
-                <h2>2. Write the story for them</h2>
-                <p className="atelier-note">Start with the place and the feeling you want to create. A few sentences are enough; Muse will shape them into scenes and clues.</p>
-                {textField('setting', 'Story idea and setting', 'A hidden letter in a room full of clues...', 3000)}
-                {textField('goal', 'What should they find or solve?', 'Find the hiding place of the letter.', 600)}
-                {textField('recipientHints', selectedOccasion?.question ?? 'Personal touches', selectedOccasion?.placeholder ?? 'Favourite places, shared memories, inside jokes...', 1500, true)}
-                <label style={{ fontWeight: 700 }}>Story length
+                <h2>2. {giftFormText('stepStory', interfaceLanguage)}</h2>
+                {textField('setting', flow('giftStoryIdea'), '', 3000)}
+                {textField('goal', flow('giftGoal'), '', 600)}
+                {textField('recipientHints', flow('giftPersonalTouches'), '', 1500, true)}
+                <label style={{ fontWeight: 700 }}>{flow('duration')}
                   <select value={brief.durationMinutes} onChange={(event) => {
                     const duration = Number(event.target.value)
                     updateBrief(current => ({ ...current, durationMinutes: duration }))
                     setAiConsent(false)
                     rememberStoryPreferences(brief.language, duration)
                   }} style={fieldStyle} disabled={busy}>
-                    {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>About {duration} minutes</option>)}
+                    {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>{flow('aboutDuration')} {duration} {flow('minutes')}</option>)}
                   </select>
                 </label>
-                <fieldset aria-label="Story interaction" disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
-                    <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? 'How should your group interact?' : 'How should the recipient interact?'}</legend>
+                <fieldset aria-label={flow('interaction')} disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
+                    <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? flow('groupInteraction') : flow('interaction')}</legend>
                     {[
-                      ['classic', 'Follow the prepared clues', 'No live AI; every choice follows the same story.'],
-                      ['free', 'Write or speak freely', 'Live AI responds to the recipient’s actions.'],
-                      ['suggested', 'Choose from suggested actions', 'Live AI offers 3–5 actions at each turn.']
-                    ].map(([value, title, description]) => <label key={value} style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', padding: '0.85rem', border: '1px solid #e4dcd4', borderRadius: 12, cursor: 'pointer' }}>
+                      ['classic', flow('preparedClueMode')],
+                      ['free', flow('freeInput')],
+                      ['suggested', flow('suggestedInput')]
+                    ].map(([value, title]) => <label key={value} style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', padding: '0.85rem', border: '1px solid #e4dcd4', borderRadius: 12, cursor: 'pointer' }}>
                       <input type="radio" name="story-interaction" value={value} checked={(brief.adventure ? brief.adventure.choiceMode ?? 'free' : 'classic') === value} onChange={() => {
                         updateBrief(current => {
                           const { adventure, ...rest } = current
@@ -1761,33 +1761,32 @@ export default function SharedStoryPage() {
                         })
                         setAiConsent(false)
                       }} />
-                      <span><strong>{title}</strong><br />{description}</span>
+                      <span>{title}</span>
                     </label>)}
                 </fieldset>
                 {brief.adventure ? <>
-                  <label htmlFor="adventure-budget">Total live AI action budget (all recipients)
+                  <label htmlFor="adventure-budget">{flow('actionBudget')}
                     <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, adventure: { ...current.adventure!, actionBudget: Number(event.target.value) } })); setAiConsent(false) }} style={fieldStyle} />
                   </label>
-                  <p>1-1000 total attempts; up to 12 per playthrough. Failures count. Preparation is separate; hints, guesses and browser audio use no action attempts.</p>
+                  <p>{flow('actionBudgetNote')}</p>
                   <label style={{ display: 'block', padding: '0.75rem 0' }}>
                     <input type="checkbox" checked={Boolean(brief.adventure.turnTaking)} disabled={busy} onChange={event => {
                       updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
                         ? { turnTaking: true, cooperative: undefined }
                         : { turnTaking: undefined }) } }))
                       setAiConsent(false)
-                    }} /> Play together: alternate turns between {brief.recipientName || 'recipient'} and {brief.creatorName || 'creator'} on one device
+                    }} /> {flow('playTogetherSameDevice')}
                   </label>
-                  <p>Both people share one device and one story session; turns alternate after each action.</p>
                   <label style={{ display: 'block', padding: '0.75rem 0' }}>
                     <input type="checkbox" checked={Boolean(brief.adventure.cooperative)} disabled={busy} onChange={event => {
                       updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
                         ? { cooperative: true, turnTaking: undefined }
                         : { cooperative: undefined }) } }))
                       setAiConsent(false)
-                    }} /> Cooperative story: invite 2-20 signed-in participants to share progress and take turns across devices
+                    }} /> {flow('cooperativeMode')}
                   </label>
-                  <p>Everyone opens the same private story link. Muse members are identified by their profile name; guests choose a display name. Turns rotate in join order; the current player can take or pass their turn. Each participant sees the shared story state.</p>
-                </> : <p>All choices follow the same prepared clue trail.</p>}
+                  <p>{flow('cooperativeNote')}</p>
+                </> : <p>{flow('preparedModeNote')}</p>}
               </div>
               </fieldset>
               <fieldset hidden={creatorStep !== 2} disabled={busy || creatorStep !== 2} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -1820,62 +1819,58 @@ export default function SharedStoryPage() {
                     <span><strong>{title}</strong><br />{description}</span>
                   </label>)}
                 </fieldset>
-                {textField('solution',
-                  brief.answerType === 'clue' ? 'What should they find?' : brief.answerType === 'word' ? 'The final word' : brief.answerType === 'action' ? 'The action they should describe' : 'The final phrase',
-                  brief.answerType === 'clue' ? 'e.g. a silver key under the blue lantern' : brief.answerType === 'word' ? 'One word, e.g. starlight' : brief.answerType === 'action' ? 'e.g. place the key beneath the blue lantern' : 'e.g. open the door beneath the blue lantern',
-                  200)}
-                {textField('answerInstruction', 'What should the final scene guide them to?', brief.answerType === 'clue' ? 'Look beneath the blue lantern and identify what you find.' : 'At the observatory door, describe the action that opens the hidden room.', 500, true)}
-                <p>The final scene will guide them to this moment. They can type or dictate what they found or describe the action. The app checks their words, not whether a physical action was performed.</p>
+                {textField('solution', flow('giftSolution'), '', 200)}
+                {textField('answerInstruction', flow('giftFinalGuidance'), '', 500, true)}
+                <p>{flow('finalAnswerNote')}</p>
                 <section aria-labelledby="accepted-answers-heading" style={{ marginBlock: '1rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 12 }}>
-                  <h3 id="accepted-answers-heading" style={{ marginTop: 0 }}>Other valid answers (optional)</h3>
-                  {assistanceField('alternativeAnswers', 'Accepted alternatives', 'Each entry also unlocks the same ending. One per line; up to 5.', 3, 200)}
+                  <h3 id="accepted-answers-heading" style={{ marginTop: 0 }}>{flow('giftAlternatives')} {flow('optional')}</h3>
+                  {assistanceField('alternativeAnswers', flow('giftAlternatives'), flow('alternativesHelp'), 3, 200)}
                 </section>
-                <p>Case, punctuation and spacing ignored. Add alternatives below.</p>
+                <p>{flow('alternativesRule')}</p>
               </div>
               <div style={cardStyle}>
-                <h2>The final reveal</h2>
-                <p>Message, photo or video: revealed after a correct answer, or a confirmed skip if you allow it.</p>
-                <label style={{ fontWeight: 700 }}>How can the surprise be unlocked?
-                  <select aria-label="Reveal policy" value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
+                <h2>{flow('finalReveal')}</h2>
+                <label style={{ fontWeight: 700 }}>{flow('unlockQuestion')}
+                  <select aria-label={flow('unlockQuestion')} value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
                     updateBrief(current => ({ ...current, unlockPolicy: event.target.value === 'allow-skip' ? 'allow-skip' : 'solve' }))
                     setAiConsent(false)
                   }} style={fieldStyle}>
-                    <option value="solve">Solve to unlock</option>
-                    <option value="allow-skip">Allow a skip</option>
+                    <option value="solve">{flow('solveToUnlock')}</option>
+                    <option value="allow-skip">{flow('allowSkip')}</option>
                   </select>
                 </label>
-                <p>Allow a skip adds an optional, confirmed reveal under Need help. Skipping never reveals the secret answer or counts as solving; hints and skips make no AI calls.</p>
-                {textField('message', 'Final message', 'Your hidden message...', 2000, Boolean(mediaFile))}
-                <label style={{ fontWeight: 700 }}>Photo or video (optional)
+                {brief.unlockPolicy === 'allow-skip' ? <p>{flow('skipNote')}</p> : null}
+                {textField('message', flow('giftMessage'), '', 2000, Boolean(mediaFile))}
+                <label style={{ fontWeight: 700 }}>{flow('photoVideo')} {flow('optional')}
                   <input type="file" accept={SHARED_MEDIA_ACCEPT} disabled={busy} onChange={event => { chooseFile(event.target.files?.[0] ?? null); setAiConsent(false); event.target.value = '' }} style={fieldStyle} />
                 </label>
-                {mediaFile ? <p role="status">Selected: {mediaFile.name} ({formatMediaSize(mediaFile.size)}). <button type="button" disabled={busy} onClick={() => chooseFile(null)} style={{ ...buttonStyle, fontSize: '0.85rem' }}>Remove file</button></p> : null}
-                <p>One file: JPEG/PNG/WebP up to {formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)}; MP4/WebM up to {formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES)}. Uploaded privately after preparation, never sent to AI. No video autoplay.</p>
+                {mediaFile ? <p role="status">{mediaFile.name} ({formatMediaSize(mediaFile.size)}). <button type="button" disabled={busy} onClick={() => chooseFile(null)} style={{ ...buttonStyle, fontSize: '0.85rem' }}>{flow('removeFile')}</button></p> : null}
+                <p>{flow('mediaLimits').replace('{photoSize}', formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)).replace('{videoSize}', formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES))}</p>
               </div>
               <details style={cardStyle}>
-                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Style and hints</summary>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{flow('styleAndHints')}</summary>
                 <div style={{ marginTop: '1rem' }}>
-                  {textField('narration', 'Narration style', DEFAULT_NARRATION, 600, true)}
-                  {assistanceField('assistanceHints', 'Hints', 'Gentle to strong. Shown on request; no scene advance or guesses used.', 3, 600)}
+                  {textField('narration', flow('giftNarration'), '', 600, true)}
+                  {assistanceField('assistanceHints', flow('hints'), flow('hintsHelp'), 3, 600)}
                 </div>
               </details>
               <details style={{ marginBottom: '1rem' }}>
-                <summary>Privacy and limits</summary>
-                <p>Your written brief, including answers, hints and message, goes to the configured AI provider and stays on the server until the story is deleted, with no automatic expiry. Media goes only to private storage and is deleted with the story. Hints need no AI calls. Avoid confidential or sensitive details about others.</p>
-                <p>Expired records may be physically cleaned only when later requests trigger cleanup. Backups are retained separately.</p>
-                <p>Generation is limited to 5 requests per hour per connection and 100 per day across the prototype. Each story allows {SHARED_MEDIA_ATTEMPTS_PER_STORY} photo/video upload attempts.</p>
+                <summary>{flow('privacyLimits')}</summary>
+                <p>{flow('giftPrivacy')}</p>
+                <p>{flow('giftBackupNote')}</p>
+                <p>{flow('giftRateLimitNote').replace('{attempts}', String(SHARED_MEDIA_ATTEMPTS_PER_STORY))}</p>
               </details>
               {brief.romance ? <label style={{ display: 'block', padding: '1rem 0', lineHeight: 1.7 }}>
-                <input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy().creatorConfirmation}
+                <input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy(interfaceLanguage).creatorConfirmation}
               </label> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                I understand that my written brief (including names, personal hints, answers and message) will be sent to Muse&apos;s configured AI provider and the story kept on Muse&apos;s server until deleted, with no automatic expiry. Any photo, video or voice recording is stored privately and is not sent to AI.
+                {flow('giftConsent')}
               </ExplicitConsent>
-              <button disabled={busy || voiceRecording || Boolean(pendingDraft) || draftUnreadable} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading your ${mediaFile?.type.startsWith('video/') ? 'video' : 'photo'}… ${upload.progress}%` : 'Muse is preparing the mystery...' : 'Prepare story with AI'}</button>
+              <button disabled={busy || voiceRecording || Boolean(pendingDraft) || draftUnreadable} style={{ ...primaryStyle, width: '100%' }}>{busy ? upload.phase === 'uploading' ? `Uploading… ${upload.progress}%` : flow('preparingGift') : flow('prepareGift')}</button>
               </fieldset>
               <div style={{ display: 'flex', gap: 12, margin: '1rem 0' }}>
-                {creatorStep > 0 ? <button type="button" disabled={busy || voiceRecording} onClick={() => { setCreatorStep(step => step - 1); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={buttonStyle}>Back</button> : null}
-                {creatorStep < 2 ? <button type="button" disabled={busy || Boolean(pendingDraft) || draftUnreadable} onClick={nextCreatorStep} style={{ ...primaryStyle, flex: 1 }}>Continue</button> : null}
+                {creatorStep > 0 ? <button type="button" disabled={busy || voiceRecording} onClick={() => { setCreatorStep(step => step - 1); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={buttonStyle}>{flow('back')}</button> : null}
+                {creatorStep < 2 ? <button type="button" disabled={busy || Boolean(pendingDraft) || draftUnreadable} onClick={nextCreatorStep} style={{ ...primaryStyle, flex: 1 }}>{flow('continue')}</button> : null}
               </div>
             </form>
           </section>

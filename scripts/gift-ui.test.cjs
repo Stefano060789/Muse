@@ -149,6 +149,10 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     }
     if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
     if (id.endsWith('/storyLanguage')) return plainModule('src/lib/storyLanguage.ts')
+    if (id.endsWith('/interfacePages')) return plainModule('src/lib/interfacePages.ts')
+    if (id.endsWith('/interfaceFlow')) return plainModule('src/lib/interfaceFlow.ts')
+    if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
+    if (id.endsWith('/profilePreferences')) return { loadProfileDisplayName: () => '' }
     if (id.endsWith('/storyRomance')) return romance
     if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
@@ -386,15 +390,17 @@ async function main() {
   assert.equal(gifts.loadGiftDraft(creator.browser.localStorage).brief.romanceConfirmed, undefined)
   assert.equal(saved.brief.creatorName, 'Sender')
   await creator.click('Continue')
-  assert.ok(creator.nodes().some(node => label(node) === 'Step 2 of 3: Shape the story'))
+  assert.ok(creator.nodes().some(node => label(node) === '2/3 · The story'))
   await creator.click('Continue')
   assert.equal(creator.nodes().filter(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label']).length, 1)
   const liveMode = creator.nodes().find(node => node.type === 'input' && node.props.name === 'story-interaction' && node.props.value === 'free')
   assert.ok(liveMode, 'Creator can select a live adventure before enabling cooperative play')
   liveMode.props.onChange()
   await creator.flush()
-  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story: invite'))
+  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story · 2–20 participants'))
   assert.ok(cooperativeLabel, 'Cooperative setup explains the participant and device model')
+  assert.ok(creator.nodes().some(node => node.type === 'p' && label(node).includes('Turns rotate in join order')),
+    'Cooperative setup explains names and turn order')
   flatten(cooperativeLabel).find(node => node?.type === 'input').props.onChange({ target: { checked: true } })
   await creator.flush()
   creator.timers.at(-1)()

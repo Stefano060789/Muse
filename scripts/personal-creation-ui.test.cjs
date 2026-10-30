@@ -39,6 +39,7 @@ async function main() {
   let chapterResponse
   let failureStatus = 503, failureSnapshot
   const browserEvents = new Map()
+  let interfaceLocale = 'en-US'
   let cloudProvider = 'browser', cloudConsent = false
   let narrationStops = 0
   const narrationCalls = []
@@ -79,6 +80,9 @@ async function main() {
       removals.push({ kind, id })
     } }
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
+    if (id.endsWith('/interfacePages')) return plain('src/lib/interfacePages.ts')
+    if (id.endsWith('/interfaceFlow')) return plain('src/lib/interfaceFlow.ts')
+    if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => interfaceLocale, interfaceText: () => 'Settings' }
     if (id.endsWith('/browserDrafts')) return plain('src/lib/browserDrafts.ts', browser)
     if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
     if (id.endsWith('/personalDraft')) return plain('src/lib/personalDraft.ts', browser)
@@ -140,27 +144,38 @@ async function main() {
   const click = async name => { find('button', name).props.onClick(); await flush() }
   const visible = () => nodes().filter(node => node.type === 'fieldset' && !node.props.hidden)
   await flush()
+  assert.equal(nodes().find(node => node.type === 'main').props.lang, 'en-US')
+  interfaceLocale = 'it-IT'
+  await flush()
+  assert.equal(nodes().find(node => node.type === 'main').props.lang, 'it-IT')
+  assert.equal(nodes().find(node => node.type === 'ol').props['aria-label'], 'Fasi della storia')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Lingua della storia').props.value, 'en-US',
+    'Story language accessibility label follows the interface locale without changing story language')
+  assert.ok(nodes().some(node => node.type === 'button' && label(node) === 'Continua'),
+    'Mounted story controls follow the current interface language')
+  interfaceLocale = 'en-US'
+  await flush()
   assert.equal(visible().length, 1)
   assert.equal(visible()[0].props.disabled, false)
   assert.equal(requests.length, 0)
   await click('Continue')
   assert.equal(visible().length, 1)
   assert.ok(!nodes().some(node => node.props.href === '/myself'), 'Personal touches stay inside creation')
-  assert.ok(flatten(nodes().find(node => node.type === 'fieldset' && node.props.hidden && label(node).includes('How would you like to feel?')))
-    .some(node => node?.type === '../components/RomanceOptions'), 'Romance is in the mood step')
+  assert.ok(nodes().some(node => node.type === 'fieldset' && flatten(node).some(child => child?.type === '../components/RomanceOptions')),
+    'Romance is in the mood step')
   const language = nodes().find(node => node.props['aria-label'] === 'Story language')
   language.props.onChange({ target: { value: 'ar-SA' } })
   nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
-  nodes().find(node => node.props['aria-label'] === 'Personal touches').props.onChange({ target: { value: 'I love gardens' } })
+  nodes().find(node => node.props['aria-label'] === 'What should Muse remember?').props.onChange({ target: { value: 'I love gardens' } })
   await flush()
   const profileDictation = nodes().find(node => node.type === '../components/DictationButton')
   profileDictation.props.onStart()
   transcriptReceiver('I love gardens')
   profileDictation.props.onStop()
   await flush()
-  assert.equal(nodes().find(node => node.props['aria-label'] === 'Personal touches').props.value, 'I love gardens',
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What should Muse remember?').props.value, 'I love gardens',
     'Inline personal touches retain dictated text')
-  await click('Save personal touches')
+  await click('Save')
   assert.equal(profile.about, 'I love gardens')
   assert.equal(nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.checked, true,
     'Saved memories are included by default')
@@ -180,16 +195,16 @@ async function main() {
   assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
   await click('Continue')
-  await click('Create my story →')
+  await click('Create story')
   const consentCopy = flatten(tree).filter(value => typeof value === 'string').join(' ')
-  assert.ok(consentCopy.includes('stored on Muse') && consentCopy.includes('until I delete it'))
+  assert.ok(consentCopy.includes('Muse’s AI') && consentCopy.includes('until I delete it'))
   assert.ok(!consentCopy.includes('30 days'))
   assert.equal(requests.length, 0, 'AI consent still required')
   nodes().find(node => node.type === '../components/RomanceOptions').props.onChange('spicy')
   await flush()
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  await click('Create my story →')
+  await click('Create story')
   assert.equal(requests.length, 0, 'Romance confirmation still required')
   nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
   await flush()
@@ -202,7 +217,7 @@ async function main() {
   nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  await click('Create my story →')
+  await click('Create story')
   assert.equal(requests.length, 1)
   assert.equal(requests[0].language, 'ar-SA')
   assert.equal(requests[0].romance, 'spicy')
@@ -212,7 +227,7 @@ async function main() {
   assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')))
   assert.equal(visible()[0].props.disabled, true, 'Saved pending preparation prevents accidental duplicate generation')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node).includes('Sync saved progress')))
-  await click('Abandon (no refund)')
+  await click('Discard draft')
   const savedCreation = JSON.parse(storage.get('muse-personal-creation-draft'))
   assert.equal(savedCreation.language, 'ar-SA')
   assert.equal(savedCreation.need, 'A changed fictional evening.')
@@ -233,17 +248,17 @@ async function main() {
   await click('Continue')
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  await click('Create my story →')
+  await click('Create story')
   assert.deepEqual(requests.at(-1).profileKeypoints, [], 'Users can exclude default memories before consenting to creation')
-  await click('Abandon (no refund)')
+  await click('Discard draft')
   failureStatus = 429
   failureSnapshot = { status: 'failed', pending: false }
-  await click('Create my story →')
+  await click('Create story')
   assert.equal(visible()[0].props.disabled, false, 'A confirmed failed opening unlocks creation without manual abandonment')
   assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Failed opening removes only its preparation marker')
   assert.equal(JSON.parse(storage.get('muse-personal-creation-draft')).need, 'A changed fictional evening.',
     'Failed opening preserves the creation draft')
-  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Abandon (no refund)'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Discard draft'))
   const failedOpeningRequests = requests.length
   await flush()
   assert.equal(requests.length, failedOpeningRequests, 'A failed opening is never automatically recreated')
@@ -263,9 +278,9 @@ async function main() {
     await flush()
     assert.equal(requests.length, unavailableRequests, 'Unavailable preparation does not generate a new story')
     assert.equal(timers.size, 0, `HTTP ${status} stops automatic retry loops`)
-    assert.ok(flatten(tree).some(node => typeof node === 'string' && node.includes('This session could not be restored')))
+    assert.ok(flatten(tree).some(node => typeof node === 'string' && node.includes('Could not restore this session')))
     assert.equal(storage.has('muse-personal-journey-preparation'), true, 'Account errors retain the recovery capability')
-    await click('Abandon (no refund)')
+    await click('Discard draft')
     assert.equal(visible()[0].props.disabled, false)
   }
   failureStatus = 503
@@ -283,7 +298,7 @@ async function main() {
   assert.equal(activeConsent.length, 1, 'An active story presents one AI consent prompt before responses')
   activeConsent[0].props.onChange(true)
   await flush()
-  nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Editable response')
+  nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response')
     .props.onChange({ target: { value: 'I step inside.' } })
   await flush()
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true,
@@ -291,7 +306,7 @@ async function main() {
   assert.deepEqual(JSON.parse(storage.get('muse-personal-answer:saved-story')), { revision: 0, text: 'I step inside.' })
   slots.length = 0; effects.length = 0
   await flush()
-  assert.equal(nodes().find(node => node.props['aria-label'] === 'Editable response').props.value, 'I step inside.',
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Your response').props.value, 'I step inside.',
     'Unsent answers survive remount without being erased during hydration')
   const dictationButton = nodes().find(node => node.type === '../components/DictationButton')
   assert.ok(dictationButton)
@@ -322,7 +337,7 @@ async function main() {
   assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
   assert.ok(nodes().some(node => node.type === '../components/ReadAlongText' && node.props.text === 'A light glows.' && node.props.active && node.props.position === -1), 'Loading narration never prints the full scene')
   assert.equal(selectedDictationLanguage, 'ar-SA', 'Dictation follows the saved story language')
-  const responseField = () => nodes().find(node => node.props['aria-label'] === 'Editable response')
+  const responseField = () => nodes().find(node => node.props['aria-label'] === 'Your response')
   assert.equal(responseField().props.disabled, false)
   for (const name of ['Create a different story', 'Delete saved journey from server', 'Sync saved progress (no AI call)']) {
     assert.ok(!nodes().some(node => node.type === 'button' && label(node) === name), `${name} is absent from the reading view`)
@@ -332,8 +347,8 @@ async function main() {
   responseField().props.onChange({ target: { value: 'I follow the path.' } })
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
-  await click('Continue with my answer →')
+  assert.equal(find('button', 'Send response').props.disabled, false)
+  await click('Send response')
   assert.equal(requests.at(-1).action, 'respond')
   assert.equal(requests.at(-1).text, 'I follow the path.')
   assert.equal(responseField().props.value, '', 'Successful continuation clears the submitted response')
@@ -346,10 +361,10 @@ async function main() {
   assert.equal(requests.length, beforeFocus + 1, 'Returning to the tab syncs once without an automatic generation')
   assert.equal(requests.at(-1).action, 'resume')
   assert.equal(narrationStops, stopsBeforeFocus, 'Automatic progress checks do not stop narration')
-  assert.equal(find('button', 'Continue with my answer →').props.disabled, false, 'Returning to the tab does not strand the send button')
+  assert.equal(find('button', 'Send response').props.disabled, false, 'Returning to the tab does not strand the send button')
   let releaseResponse
   responseGate = new Promise(resolve => { releaseResponse = resolve })
-  find('button', 'Continue with my answer →').props.onClick()
+  find('button', 'Send response').props.onClick()
   await flush()
   assert.equal(responseField().props.disabled, false, 'The draft remains editable during a request')
   responseField().props.onChange({ target: { value: 'A newer draft typed while waiting.' } })
@@ -374,7 +389,7 @@ async function main() {
   assert.equal(requests.length, beforeRecovery + 1)
   assert.equal(requests.at(-1).action, 'resume', 'Automatic recovery never retries paid story generation')
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
-  assert.equal(find('button', 'Continue with my answer →').props.disabled, false)
+  assert.equal(find('button', 'Send response').props.disabled, false)
   assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
   const beforeClosingStory = structuredClone(loadedStory)
   loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: 2 } }
@@ -383,11 +398,11 @@ async function main() {
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'))
   assert.ok(!responseField(), 'The last allowance offers a closing scene, not another writing box')
   const closingRequests = requests.length
-  await click('Write the closing scene')
+  await click('Write ending')
   assert.equal(requests.length, closingRequests, 'Closing still requires the story AI consent')
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  const writeEnding = find('button', 'Write the closing scene')
+  const writeEnding = find('button', 'Write ending')
   writeEnding.props.onClick()
   writeEnding.props.onClick()
   await flush()
@@ -395,9 +410,9 @@ async function main() {
   assert.equal(closingRequest.revision, 2)
   assert.equal(closingRequest.text, undefined, 'No user writing is required to generate the ending')
   assert.equal(requests.filter(body => body.action === 'conclude').length, 1, 'Double-click cannot reserve two endings')
-  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 complete'))
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 · Complete'))
   assert.ok(!responseField(), 'The generated ending never asks for another response')
-  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Write the closing scene'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Write ending'))
   loadedStory = beforeClosingStory
   slots.length = 0; effects.length = 0
   await flush()
@@ -435,9 +450,9 @@ async function main() {
   loadedStory = { ...loadedStory, responses: ['Enter'], currentStep: 1 }
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Your story is complete.'))
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Story completed'))
   assert.ok(!responseField(), 'A legacy AI final scene is complete without a meaningless extra answer')
-  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Continue with my answer →'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Send response'))
   await click('Read again')
   assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Door'))
   const keepsake = nodes().find(node => node.type === '../components/StoryKeepsake')
@@ -449,22 +464,22 @@ async function main() {
   } }
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 complete'))
+  assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 · Complete'))
   const parentStory = structuredClone(loadedStory)
   const beforeChapterForm = requests.length
-  await click('Continue to Chapter 2')
+  await click('Continue · Chapter 2')
   assert.equal(requests.length, beforeChapterForm, 'Opening the new-chapter form never spends an allowance')
-  assert.equal(find('button', 'Confirm and start next chapter').props.disabled, true)
-  await click('Confirm and start next chapter')
+  assert.equal(find('button', 'Start chapter').props.disabled, true)
+  await click('Start chapter')
   assert.equal(requests.length, beforeChapterForm, 'Even an invoked disabled handler refuses generation without consent')
-  const chapterConsent = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('new normal creation'))
+  const chapterConsent = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('new chapter'))
   assert.ok(chapterConsent())
   chapterConsent().props.onChange(true)
   await flush()
-  assert.equal(find('button', 'Confirm and start next chapter').props.disabled, false)
+  assert.equal(find('button', 'Start chapter').props.disabled, false)
   respondSuccessfully = false
   failureSnapshot = { status: 'failed', pending: false }
-  await click('Confirm and start next chapter')
+  await click('Start chapter')
   const failedChapterRequest = requests.findLast(body => body.action === 'continue')
   assert.ok(failedChapterRequest)
   assert.notEqual(failedChapterRequest.id, parentStory.id)
@@ -485,13 +500,13 @@ async function main() {
   } }
   respondSuccessfully = true
   failureSnapshot = undefined
-  const confirmChapter = find('button', 'Confirm and start next chapter')
+  const confirmChapter = find('button', 'Start chapter')
   confirmChapter.props.onClick()
   confirmChapter.props.onClick()
   await flush()
   assert.equal(requests.filter(body => body.action === 'continue').length, 2, 'Double-click confirmation reserves only one new attempt')
   assert.ok(nodes().some(node => node.type === 'h1' && label(node) === 'Beyond the garden'))
-  assert.ok(nodes().some(node => node.type === 'button' && label(node) === 'Read previous chapter'))
+  assert.ok(nodes().some(node => node.type === 'button' && label(node) === 'Previous chapter'))
   assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Successful child creation clears preparation')
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true, 'Confirmation covers the new chapter responses')
   loadedStory = parentStory
@@ -520,7 +535,7 @@ async function main() {
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
   await flush()
   assert.ok(nodes().filter(node => node.type === '../components/StoryPassage').every(node => node.props.mode === 'read'), 'Read explicitly reveals saved scenes')
-  assert.ok(!nodes().some(node => node.props['aria-label'] === 'Editable response'), 'Archive hides unfinished-story response controls')
+  assert.ok(!nodes().some(node => node.props['aria-label'] === 'Your response'), 'Archive hides unfinished-story response controls')
   assert.ok(!nodes().some(node => node.type === '../components/ExplicitConsent'), 'Archive never offers story-generation consent')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Continue with a new chapter'), 'Even a completed chapter is read-only inside Archive')
   assert.ok(nodes().some(node => node.props.href === '/my-stories'), 'Archive reading points continuation back to My stories')
