@@ -15,11 +15,18 @@ import { interfaceFlowText } from '../lib/interfaceFlow'
 import { useShareConsent } from '../lib/useShareConsent'
 import { shareConsentCopy } from '../lib/shareConsentCopy'
 import { personalStoryShareText } from '../lib/personalStoryShareCopy'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
+import { accountPermissionsUpdate } from '../lib/accountPermissions'
+import { registrationCopy } from '../lib/registrationCopy'
 
 type Account = { email?: string; displayName?: string }
 
 export default function AccountPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const permissions = useAccountPermissions()
+  const registrationText = registrationCopy(interfaceLanguage)
+  const [registrationConsent, setRegistrationConsent] = useState(false)
+  const [registrationRomance, setRegistrationRomance] = useState(false)
   const shareConsent = useShareConsent()
   const permissionCopy = shareConsentCopy(interfaceLanguage)
   const savedText = interfaceFlowText('saved', interfaceLanguage)
@@ -145,7 +152,11 @@ export default function AccountPage() {
     setBusy(true); setError(''); setNotice('')
     try {
       if (registering) {
-        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password })
+        if (!registrationConsent) throw new Error(registrationText.required)
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: email.trim(), password,
+          options: { data: accountPermissionsUpdate(registrationConsent, registrationRomance) }
+        })
         if (authError) throw authError
         if (data.session) {
           setAccount({ email: data.user?.email, displayName: typeof data.user?.user_metadata?.display_name === 'string' ? data.user.user_metadata.display_name : undefined })
@@ -223,7 +234,15 @@ export default function AccountPage() {
             {interfaceText('notificationsEnabled', interfaceLanguage)}
           </label>
         </section>
-        {account ? <section className="atelier-card" aria-labelledby="share-consent-heading">
+        {account && permissions.managed ? <section className="atelier-card" aria-labelledby="registration-permissions-heading">
+          <h2 id="registration-permissions-heading">{registrationText.title}</h2>
+          <label><input type="checkbox" checked={permissions.services} disabled={!permissions.ready || permissions.saving}
+            onChange={event => { void permissions.save(event.target.checked, permissions.romance).catch(error => setSettingsError(error instanceof Error ? error.message : registrationText.required)) }} /> {registrationText.services}</label>
+          <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p></details>
+          <label><input type="checkbox" checked={permissions.romance} disabled={!permissions.ready || permissions.saving}
+            onChange={event => { void permissions.save(permissions.services, event.target.checked).catch(error => setSettingsError(error instanceof Error ? error.message : registrationText.required)) }} /> {registrationText.romance}</label>
+          {permissions.error ? <p role="alert">{permissions.error}</p> : null}
+        </section> : account ? <section className="atelier-card" aria-labelledby="share-consent-heading">
           <h2 id="share-consent-heading">{permissionCopy.title}</h2>
           <p>{personalStoryShareText('teaserConsent', interfaceLanguage)}</p>
           <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
@@ -260,8 +279,12 @@ export default function AccountPage() {
             <label className="atelier-field">{interfaceText('password', interfaceLanguage)}
               <input type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={8} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} />
             </label>
-            {registering ? <p className="atelier-note">Use at least 8 characters. You may need to confirm your email before signing in.</p> : null}
-            <button type="submit" className="atelier-button" disabled={busy}>{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}</button>
+            {registering ? <>
+              <label><input type="checkbox" checked={registrationConsent} disabled={busy} onChange={event => setRegistrationConsent(event.target.checked)} /> {registrationText.services}</label>
+              <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
+              <label><input type="checkbox" checked={registrationRomance} disabled={busy} onChange={event => setRegistrationRomance(event.target.checked)} /> {registrationText.romance}</label>
+            </> : null}
+            <button type="submit" className="atelier-button" disabled={busy || (registering && !registrationConsent)}>{busy ? interfaceFlowText('accountBusy', interfaceLanguage) : registering ? interfaceText('createAccount', interfaceLanguage) : interfaceText('signIn', interfaceLanguage)}</button>
           </form>
         )}
         </section>

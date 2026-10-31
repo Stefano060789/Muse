@@ -116,6 +116,24 @@ Turns rotate in join order, only the current participant can act, and they can
 pass to the next participant. The group waits if the current participant is
 away. Cooperative play is capped at 20 participants. The creator's account
 owns the story and pays for its live AI interactions.
+**Five minutes together** on gift creation offers a short, single-form setup:
+names, an optional shared memory, story language and a personal message. It
+uses the existing cooperative engine with suggested choices, an approximate
+five-minute length and a six-action total AI budget. Preparation and live
+actions use the creator's paid attempts; failures may count. It makes no
+request until the creator explicitly prepares the story, then retains the
+existing preview and sharing checks. The private link is intended for one
+chosen person, but the underlying group capacity remains 2–20; it is not a
+two-person access restriction. Participants can pass or leave. Switching to
+the template asks before replacing existing writing settings, preserves
+names, personal details and messages, and never grants consent.
+Completed personal stories offer **A small step outside the story**:
+optional, static suggestions based on the selected mood, not analysis of
+private writing. Users can choose an intention, another suggestion or
+**Not today**. This makes no AI request, stores no action history and resets
+for another story or chapter. Exhausted or incomplete chapters do not show
+it. Suggestions are invitations, not therapy, obligations or verified
+real-world accomplishments.
 **Settings** includes account controls, a profile name used for shared stories,
 a separately selected interface language and default story language, and
 in-app shared-story notification controls. English is the default interface
@@ -146,10 +164,12 @@ explicit consent and uses one AI interaction; only the title, broad mood and
 selected story language are sent to the provider, never scenes, answers, choices
 or saved memories. The optional sharing-summary permission is saved once to the
 signed-in account (version and acceptance date), follows that account across
-devices, and can be revoked in Settings. Registration does not grant it.
+devices, and can be revoked in Settings. New accounts explicitly accept the
+combined processing permission at registration; it includes sharing summaries.
+Existing accounts retain their previous optional sharing permission.
 The server checks the current account permission before reserving an interaction;
-older consent versions require acceptance again. Other AI and speech permissions
-remain separate. Share the text through a device app, copy it, or download a
+older consent versions require acceptance again. Existing accounts retain separate
+AI and speech opt-ins. Share the text through a device app, copy it, or download a
 PNG card from **My stories** or the Archive.
 Sharing starts with a single **Share your story** button. Consent and card options
 appear only when opened; opening the controls does not use an AI interaction.
@@ -217,7 +237,8 @@ the title field, and links directly to saved gift stories (also after reviewing
 the clues). Creation text boxes expand to fit their example text and writing.
 Prepared Studio scene recordings are the main creator listening option, with
 scene-matched local ambience in sender and recipient previews; free device speech and its settings are an explicit
-collapsed alternative. Preparing audio still requires fresh consent and the
+collapsed alternative. Preparing audio requires the saved registration permission
+for new accounts, or a feature consent for existing accounts and guests, and the
 configured paid narration allowance. Listen plays saved recordings only, never
 automatically prepares paid audio or switches to a device fallback.
 Live-adventure scenes cannot use prepared recordings.
@@ -363,7 +384,8 @@ never a silent replacement when cloud audio fails.
 
 Studio is a separate, opt-in recording for **prepared stories**, not live
 adventure turns or final reveals. The creator chooses a scene, checks
-availability and separately consents before preparing its title, body and clue
+availability and uses saved registration permission (new accounts) or separate
+feature consent (existing accounts) before preparing its title, body and clue
 with Google Cloud when the Google provider is selected, or ElevenLabs in the
 legacy configuration. No generation runs on page load. Recipients can only load an
 existing recording for a reached scene. **Listen** fetches private bytes and
@@ -457,8 +479,9 @@ are outside this feature. These boundaries are carried into generation and
 saved-story continuations; selecting another mode cannot override an existing
 journey's server-side setting.
 
-Creators must freshly confirm the adult/consent boundaries before generating
-a romance story. Shared recipients first receive only the romance style and
+New accounts reuse their optional adult/consent permission from registration;
+existing accounts and guests confirm the boundaries for each romance flow.
+Shared recipients first receive only the romance style and
 language, not the title, names, dedication, scenes, reveal or media. They can
 decline without opening a playthrough, or confirm they are 18+ and choose to
 open. This acknowledgment is not saved in browser drafts or restored on
@@ -1062,7 +1085,8 @@ still requires validation; a desktop/mobile-sized browser is not an iPhone test.
 The creator preview offers **Create new story** (blank brief) and **Reuse this
 brief** without waiting for recipients to finish. Both save the current story
 to Story Library first and leave its recipient link/progress unchanged. New
-stories need fresh AI consent and media must be attached separately. If browser
+stories require the saved registration permission for new accounts, or fresh AI
+consent for existing accounts and guests. Media must be attached separately. If browser
 storage cannot save the current story, the preview stays open with an error so
 the creator can preserve its private management link.
 
@@ -1286,11 +1310,19 @@ no provider call is made without a durable reservation.
   deletion. Set `NEXT_PUBLIC_MUSE_OPERATOR_NAME` and
   `NEXT_PUBLIC_MUSE_SUPPORT_EMAIL`, rebuild, and review the draft terms/privacy
   for your actual jurisdiction before public invitations.
-  AI generation and live actions require an unchecked processing-consent
-  checkbox, enforced by a versioned field on the server before any paid
-  reservation. Consent is not stored. Reading, hints, guessing and deletion do
-  not require AI consent. Enabled cloud narration has a separate, session-only
-  opt-in to send spoken text to the configured Google/ElevenLabs provider.
+  New registrations require an unchecked processing-permission checkbox covering
+  story AI, selected memories, sharing summaries, cloud narration, dictation and
+  stored voice messages. The version and acceptance date are saved in Supabase
+  user metadata, including email-confirmation signups. Optional 18+ romance
+  permission is separate and unchecked by default. Settings can revoke either
+  permission. Server routes check current authenticated metadata before paid
+  reservations; client consent fields cannot override revocation. Active audio
+  and microphone sessions stop when permission is revoked or accounts change.
+  Existing accounts are not migrated: they retain per-feature consent and
+  romance confirmation. Guests retain their existing checks. Browser microphone
+  permission is still required; accepting registration never starts recording
+  or generation. Reading, hints, guessing, archiving and deletion do not require
+  AI consent. Run `npm run test:registration` for the new consent contract.
 - The personal-journey deletion API removes the capability-bound server journey and dependent
   requests, without resetting aggregate spending/abuse allowances. Shared Story
   management deletion continues to invalidate links and queue media cleanup.

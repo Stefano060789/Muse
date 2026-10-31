@@ -15,6 +15,7 @@ import StoryModeControl, { type StoryMode } from '../components/StoryModeControl
 import StoryPassage from '../components/StoryPassage'
 import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryReveal'
 import ExplicitConsent from '../components/ExplicitConsent'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
 import PreSendCheck from '../components/PreSendCheck'
 import ShareGiftStory from '../components/ShareGiftStory'
@@ -25,6 +26,8 @@ import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 import StudioNarration, { type StudioSceneStatus } from '../components/StudioNarration'
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
+import { registrationCopy } from '../lib/registrationCopy'
+import { togetherStoryBrief, togetherStoryCopy } from '../lib/togetherStory'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
 import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
@@ -216,11 +219,15 @@ export default function SharedStoryPage() {
   const recipientTokenRef = useRef('')
   recipientDraftRef.current = recipientDraft
   actionTextRef.current = actionText
-  const [aiConsent, setAiConsent] = useState(false)
-  const [romanceConfirmed, setRomanceConfirmed] = useState(false)
+  const permissions = useAccountPermissions()
+  const [localAiConsent, setAiConsent] = useState(false)
+  const aiConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localAiConsent)
+  const [localRomanceConfirmed, setRomanceConfirmed] = useState(false)
+  const romanceConfirmed = permissions.managed ? permissions.romance : localRomanceConfirmed
   const [romanceNotice, setRomanceNotice] = useState<RomanceNotice | null>(null)
   const [romanceAccepted, setRomanceAccepted] = useState(false)
-  const [recipientConfirmation, setRecipientConfirmation] = useState(false)
+  const [localRecipientConfirmation, setRecipientConfirmation] = useState(false)
+  const recipientConfirmation = permissions.managed ? permissions.romance : localRecipientConfirmation
   const [romanceDeclined, setRomanceDeclined] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -246,8 +253,17 @@ export default function SharedStoryPage() {
   const [followUpGoal, setFollowUpGoal] = useState('')
   const [followUpSolution, setFollowUpSolution] = useState('')
   const [followUpMessage, setFollowUpMessage] = useState('')
-  const [followUpConsent, setFollowUpConsent] = useState(false)
-  const [followUpRomanceConfirmed, setFollowUpRomanceConfirmed] = useState(false)
+  const [localFollowUpConsent, setFollowUpConsent] = useState(false)
+  const followUpConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localFollowUpConsent)
+  const [localFollowUpRomanceConfirmed, setFollowUpRomanceConfirmed] = useState(false)
+  const followUpRomanceConfirmed = permissions.managed ? permissions.romance : localFollowUpRomanceConfirmed
+  useEffect(() => {
+    setAiConsent(false)
+    setFollowUpConsent(false)
+    setRomanceConfirmed(false)
+    setRecipientConfirmation(false)
+    setFollowUpRomanceConfirmed(false)
+  }, [permissions.accountId])
   const [replyText, setReplyText] = useState('')
   const [replySent, setReplySent] = useState(false)
   const [giftOpened, setGiftOpened] = useState(false)
@@ -257,6 +273,7 @@ export default function SharedStoryPage() {
   const [draftUnreadable, setDraftUnreadable] = useState(false)
   const [preferencesError, setPreferencesError] = useState('')
   const [creatorStep, setCreatorStep] = useState(0)
+  const [quickTogether, setQuickTogether] = useState(false)
   const [sendReady, setSendReady] = useState('')
   const giftDraftSnapshot = useRef({ brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy })
   giftDraftSnapshot.current = { brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy }
@@ -371,6 +388,21 @@ export default function SharedStoryPage() {
     const nextBrief = update(giftDraftSnapshot.current.brief)
     setBrief(nextBrief)
     persistGiftDraftNow(nextBrief)
+  }
+  const startTogetherStory = () => {
+    if (busy || voiceRecording || voiceUploading || pendingDraft || draftUnreadable || mediaFile || voiceFile) return
+    const copy = togetherStoryCopy(interfaceLanguage)
+    if (hasGiftDraftWriting(brief) && !window.confirm(copy.confirm)) return
+    interaction.cancelRecording()
+    narrator.stop()
+    const next = togetherStoryBrief(brief)
+    setBrief(next)
+    setAssistanceHintsText('')
+    setAlternativeAnswersText('')
+    persistGiftDraftNow(next, '', '')
+    setAiConsent(false)
+    setRomanceConfirmed(false)
+    setQuickTogether(true)
   }
   const updateGiftDraftText = (key: 'assistanceHintsText' | 'alternativeAnswersText', value: string) => {
     const current = giftDraftSnapshot.current
@@ -713,6 +745,7 @@ export default function SharedStoryPage() {
     }
     interaction.stopRecording()
     narrator.stop()
+    setQuickTogether(false)
     if (!reuseBrief) {
       setBrief({ ...blankBrief })
       setAssistanceHintsText('')
@@ -954,7 +987,8 @@ export default function SharedStoryPage() {
 
   const generate = async (event: FormEvent) => {
     event.preventDefault()
-    if (creatorStep < 2) { nextCreatorStep(); return }
+    if (!quickTogether && creatorStep < 2) { nextCreatorStep(); return }
+    if (busy) return
     if (voiceRecording || voiceUploading || pendingDraft || draftUnreadable) {
       setError('Finish the recording and restore or discard any saved draft before preparing the story.')
       return
@@ -1062,7 +1096,7 @@ export default function SharedStoryPage() {
           if (saved) setActionText(attempt.text)
           submission = { action: 'adventure', token: playToken, sessionToken, ...attempt, consentVersion: MUSE_AI_CONSENT_VERSION }
         }
-        const response = await fetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...submission, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }) })
+        const response = await accountFetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...submission, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }) })
         const data = await response.json()
         if (data.player) setPlayer(data.player)
         if (!refresh && data.player && (!data.player.adventure?.pending || response.ok)) {
@@ -1175,7 +1209,7 @@ export default function SharedStoryPage() {
   return (
     <main className="atelier-page" lang={interfaceLanguage} dir={STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
       <Head>
-        <title>{playToken ? 'Muse - A gift story for you' : creator ? 'Muse - Manage your gift story' : 'Muse - Create a gift story'}</title>
+        <title>{`Muse - ${pageText('giftEyebrow', playToken ? recipientLanguage.code : interfaceLanguage)}`}</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
@@ -1188,13 +1222,11 @@ export default function SharedStoryPage() {
         {cooperativeSyncError ? <p role="alert" style={cardStyle}>{cooperativeSyncError}</p> : null}
         {preferencesError ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{preferencesError}</p> : null}
         {notice ? <p role="status" style={cardStyle}>{notice}</p> : null}
-        {!playToken && !creator ? <p style={cardStyle}>Create and manage gift stories with your <Link href="/account">Muse account</Link>. Recipients can open their story link without an account.</p> : null}
         {!playToken && !creator && !showGiftCover && !(romanceNotice && !romanceAccepted) ? <details style={{ marginBottom: '1rem' }}>
-          <summary>Microphone settings</summary>
+          <summary>{flow('microphoneSettings')}</summary>
           {playToken ? <p lang={recipientLanguage.code} dir={recipientLanguage.dir}>{recipientText.settingsDisclosure}</p> : null}
-          <section aria-label="Voice input settings">
-          <p>Dictation fills editable text, not a saved recording. It may use your browser&apos;s online speech service.</p>
-          <p>Voice input follows the story language.</p>
+          <section aria-label={flow('microphoneSettings')}>
+          <p>{flow('voicePrivacy')}</p>
           <MicrophoneCheck stopSignal={voiceRecording ? 'gift-voice-recording' : interaction.recordingTarget} beforeTest={() => { interaction.stopRecording(); narrator.stop() }} />
           </section>
         </details> : null}
@@ -1209,7 +1241,8 @@ export default function SharedStoryPage() {
             </> : <>
               <p style={{ lineHeight: 1.8 }}>{romanceText.notice(romanceNotice.romance)}</p>
               <label style={{ display: 'block', lineHeight: 1.8, padding: '1rem 0' }}>
-                <input type="checkbox" checked={recipientConfirmation} disabled={busy} onChange={event => setRecipientConfirmation(event.target.checked)} /> {romanceText.confirm}
+                {!permissions.managed ? <><input type="checkbox" checked={recipientConfirmation} disabled={busy} onChange={event => setRecipientConfirmation(event.target.checked)} /> {romanceText.confirm}</> : null}
+                {permissions.managed && !permissions.romance ? <a href="/account">{registrationCopy(interfaceLanguage).settings}</a> : null}
               </label>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button type="button" disabled={busy || !recipientConfirmation} onClick={() => void acceptRomance()} style={primaryStyle}>{romanceText.open}</button>
@@ -1571,9 +1604,10 @@ export default function SharedStoryPage() {
                   <label style={{ display: 'block', fontWeight: 700 }}>Message after the reveal
                     <textarea id="follow-up-message" value={followUpMessage} onChange={event => setFollowUpMessage(event.target.value)} maxLength={2000} rows={3} style={fieldStyle} disabled={busy} />
                   </label>
-                  {creator.brief.romance ? <label style={{ display: 'block', padding: '0.75rem 0' }}>
+                  {creator.brief.romance && !permissions.managed ? <label style={{ display: 'block', padding: '0.75rem 0' }}>
                     <input type="checkbox" checked={followUpRomanceConfirmed} onChange={event => setFollowUpRomanceConfirmed(event.target.checked)} disabled={busy} /> I confirm the existing romance boundaries for this new story.
                   </label> : null}
+                  {creator.brief.romance && permissions.managed && !permissions.romance ? <p role="alert"><a href="/account">{registrationCopy(interfaceLanguage).settings}</a></p> : null}
                   <ExplicitConsent checked={followUpConsent} onChange={setFollowUpConsent}>
                     I reviewed this reply and consent to sending it, the previous story ending, and the new story details to the AI provider to create this follow-up.
                   </ExplicitConsent>
@@ -1661,8 +1695,8 @@ export default function SharedStoryPage() {
             </aside> : null}
             {draftStatus ? <p role="status" style={{ fontSize: '0.9rem' }}>{draftStatus}</p> : null}
             {draftReady && !pendingDraft && !draftUnreadable ? <details style={{ marginBottom: '1rem' }}>
-              <summary>Draft privacy</summary>
-              <p>Your writing, including the answer and final message, is saved unencrypted in this browser only. Not suitable for a shared device. No files, recordings or consent are saved.</p>
+              <summary>{flow('draftPrivacy')}</summary>
+              <p>{flow('draftPrivacyNote')}</p>
               <button type="button" disabled={busy || voiceRecording} style={buttonStyle} onClick={() => {
                 if (!window.confirm('Discard this draft and clear the form? Attached files and recordings will also be removed from this page. Existing sent stories are unchanged.')) return
                 try {
@@ -1681,6 +1715,43 @@ export default function SharedStoryPage() {
                 setDraftStatus('Unreadable draft discarded.')
               } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
+            {!quickTogether ? <section style={cardStyle} aria-labelledby="together-story-heading">
+              <h2 id="together-story-heading">{togetherStoryCopy(interfaceLanguage).title}</h2>
+              <p>{togetherStoryCopy(interfaceLanguage).intro}</p>
+              <button type="button" style={primaryStyle} disabled={busy || voiceRecording || voiceUploading || Boolean(pendingDraft) || draftUnreadable || Boolean(mediaFile) || Boolean(voiceFile)} onClick={startTogetherStory}>
+                {togetherStoryCopy(interfaceLanguage).start}
+              </button>
+            </section> : null}
+            {quickTogether ? <form onSubmit={generate} className="gift-story-form" aria-label={togetherStoryCopy(interfaceLanguage).title}>
+              <section style={cardStyle}>
+                <h2>{togetherStoryCopy(interfaceLanguage).title}</h2>
+                <p>{togetherStoryCopy(interfaceLanguage).intro}</p>
+                {textField('creatorName', giftFormText('yourName', interfaceLanguage), '', 80)}
+                {textField('recipientName', giftFormText('recipientName', interfaceLanguage), '', 80)}
+                <label htmlFor="together-language">{giftFormText('storyLanguage', interfaceLanguage)}
+                  <select id="together-language" style={fieldStyle} value={brief.language ?? 'en-US'} disabled={busy} onChange={event => {
+                    const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
+                    if (!language) return
+                    updateBrief(current => {
+                      const oldDefault = togetherStoryCopy(current.language ?? 'en-US').defaultMessage
+                      return togetherStoryBrief({ ...current, language: language.code, message: current.message === oldDefault ? '' : current.message })
+                    })
+                    setAiConsent(false)
+                  }}>{STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}</select>
+                </label>
+                {textField('recipientHints', togetherStoryCopy(interfaceLanguage).memory, '', 1500, true)}
+                {textField('message', togetherStoryCopy(interfaceLanguage).message, '', 2000)}
+                <p>{togetherStoryCopy(interfaceLanguage).limits}</p>
+                <details><summary>{flow('privacyLimits')}</summary><p>{flow('giftPrivacy')}</p><p>{flow('giftBackupNote')}</p></details>
+                <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>{flow('giftConsent')}</ExplicitConsent>
+                <button type="submit" style={primaryStyle} disabled={busy || !aiConsent || !brief.creatorName.trim() || !brief.recipientName.trim() || !brief.message.trim()}>
+                  {busy ? flow('preparingGift') : togetherStoryCopy(interfaceLanguage).prepare}
+                </button>
+                <button type="button" style={{ ...buttonStyle, marginInlineStart: '0.5rem' }} disabled={busy} onClick={() => { setQuickTogether(false); setCreatorStep(0) }}>
+                  {togetherStoryCopy(interfaceLanguage).customize}
+                </button>
+              </section>
+            </form> : <>
             <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
               {(['stepFor', 'stepStory', 'stepSurprise'] as const).map((key, index) => {
                 const label = giftFormText(key, interfaceLanguage)
@@ -1746,7 +1817,8 @@ export default function SharedStoryPage() {
                           const { adventure, ...rest } = current
                           return value === 'classic' ? rest : { ...rest, adventure: {
                             actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free',
-                            ...(adventure?.turnTaking ? { turnTaking: true } : {})
+                            ...(adventure?.turnTaking ? { turnTaking: true } : {}),
+                            ...(adventure?.cooperative ? { cooperative: true } : {})
                           } }
                         })
                         setAiConsent(false)
@@ -1851,7 +1923,7 @@ export default function SharedStoryPage() {
                 <p>{flow('giftRateLimitNote').replace('{attempts}', String(SHARED_MEDIA_ATTEMPTS_PER_STORY))}</p>
               </details>
               {brief.romance ? <label style={{ display: 'block', padding: '1rem 0', lineHeight: 1.7 }}>
-                <input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy(interfaceLanguage).creatorConfirmation}
+                {!permissions.managed ? <><input type="checkbox" checked={romanceConfirmed} disabled={busy} onChange={event => setRomanceConfirmed(event.target.checked)} /> {romanceCopy(interfaceLanguage).creatorConfirmation}</> : null}
               </label> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                 {flow('giftConsent')}
@@ -1863,6 +1935,7 @@ export default function SharedStoryPage() {
                 {creatorStep < 2 ? <button type="button" disabled={busy || Boolean(pendingDraft) || draftUnreadable} onClick={nextCreatorStep} style={{ ...primaryStyle, flex: 1 }}>{flow('continue')}</button> : null}
               </div>
             </form>
+            </>}
           </section>
         )}
       </div>

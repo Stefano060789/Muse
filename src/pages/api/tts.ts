@@ -20,9 +20,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(503).json({ error: 'Provider narration is disabled. Use browser narration.' })
   }
   if (!await apiSafety(req, res)) return
-  if (!await requireAccount(req, res)) return
-  try { requireProviderConsent(req.body) } catch {
-    return res.status(400).json({ error: `Cloud narration requires consent to send text to ${provider === 'google' ? 'Google' : 'ElevenLabs'} and use a paid attempt.` })
+  const account = await requireAccount(req, res)
+  if (!account) return
+  try { requireProviderConsent(req.body, account.permissions) } catch (error) {
+    return res.status(error instanceof SharedStoryError ? error.status : 400).json({ error: error instanceof SharedStoryError ? error.message : `Cloud narration requires consent to send text to ${provider === 'google' ? 'Google' : 'ElevenLabs'} and use a paid attempt.` })
   }
   const apiKey = process.env.ELEVEN_API_KEY
   const voiceId = process.env.ELEVEN_VOICE_ID

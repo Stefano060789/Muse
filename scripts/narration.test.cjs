@@ -198,6 +198,7 @@ async function main() {
     try {
       Module._load = function (id, ...args) {
         if (id === 'react') return react
+        if (id === './useAccountPermissions') return { useAccountPermissions: () => options.permissions || ({ managed: false, ready: true }) }
         if (id === './storyAmbience') return { StoryAmbience: FakeAmbience }
         if (id === './accountClient') return {
           accountFetch: (url, init) => global.fetch(url, {
@@ -227,6 +228,34 @@ async function main() {
       assert.equal(hook.render().busy, false)
     } finally { hook.dispose() }
   })
+  await check('registered permissions remove repeated cloud opt-in and revocation stops active audio', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
+    let fetches = 0, pausedAudio = 0
+    global.fetch = async () => { fetches++; return new Response(new Blob(['synthetic audio'], { type: 'audio/mpeg' }), { headers: { 'Content-Type': 'audio/mpeg' } }) }
+    const permissions = { managed: true, ready: true, services: true, accountId: 'reader-a' }
+    const hook = mount({}, voices, true, { permissions })
+    try {
+      assert.equal(hook.render().cloudConsent, true)
+      await hook.render().speak('A registered reader can listen.')
+      assert.equal(fetches, 1)
+      const player = { src: hook.render().cloudAudioUrl, pause() { pausedAudio++ }, play() { return Promise.resolve() }, currentTime: 0, duration: 1 }
+      hook.render().onCloudPlay(player)
+      permissions.services = false
+      hook.render(); hook.render()
+      assert.equal(hook.render().cloudConsent, false)
+      assert.equal(hook.render().busy, false)
+      assert.equal(hook.render().cloudAudioUrl, '')
+      assert.ok(pausedAudio > 0)
+      await hook.render().speak('Permission was revoked.')
+      assert.equal(fetches, 1, 'Revocation cannot start another paid request')
+      permissions.services = true
+      hook.render(); hook.render()
+      await hook.render().speak('A new recording after enabling permission.')
+      permissions.accountId = 'reader-b'
+      hook.render(); hook.render()
+      assert.equal(hook.render().cloudAudioUrl, '', 'Account changes release private audio')
+    } finally { hook.dispose() }
+  })
   await check('browser mode makes zero TTS requests and completes sentence chunks without stuck state', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     let fetches = 0
@@ -248,6 +277,15 @@ async function main() {
       hook.spoken[1].onend()
       assert.equal(hook.render().speaking, false)
       assert.equal(hook.render().loading, false)
+    } finally { hook.dispose() }
+  })
+  await check('revoked registered audio permission also prevents browser speech', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
+    const hook = mount({}, voices, true, { permissions: { managed: true, ready: true, services: false, accountId: 'revoked-reader' } })
+    try {
+      await hook.render().speak('This text must not be spoken.')
+      assert.equal(hook.spoken.length, 0)
+      assert.match(hook.render().error, /permission is disabled/)
     } finally { hook.dispose() }
   })
   await check('browser word boundaries map back to original paragraphs and repeated whitespace', async () => {
@@ -912,18 +950,18 @@ async function main() {
     assert.ok(!button(base).includes('disabled'))
     const speaking = { ...base, status: 'speaking', speaking: true, busy: true, activeText: 'Scene two text.', canPause: true }
     const own = button(speaking)
-    assert.match(own, /aria-label="Pause narration: Listen to scene two"/)
-    assert.match(own, /aria-label="Stop narration: Listen to scene two"/)
+    assert.match(own, /aria-label="Pause: Listen to scene two"/)
+    assert.match(own, /aria-label="Stop: Listen to scene two"/)
     assert.ok(!own.includes('>Listen to scene two<'))
     const other = button(speaking, 'Scene one text.', 'Listen to scene one')
     assert.match(other, /disabled=""/)
     assert.match(other, />Listen to scene one</, 'other contexts keep their own identity')
     assert.ok(!other.includes('Narrating'))
     const paused = button({ ...speaking, status: 'paused', speaking: false, paused: true, canPause: false })
-    assert.match(paused, /Narration paused/)
-    assert.match(paused, /aria-label="Resume narration: Listen to scene two"/)
-    assert.match(paused, /Stop narration/)
-    assert.ok(!paused.includes('Pause narration'))
+    assert.match(paused, />Pause</)
+    assert.match(paused, /aria-label="Resume: Listen to scene two"/)
+    assert.match(paused, /aria-label="Stop:/)
+    assert.ok(!paused.includes('aria-label="Pause:'))
     const longVoice = { ...voice('Microsoft Extremely Long Natural Online Voice Name With Many Words (English United States)', 'en-US'), localService: false }
     const html = renderToStaticMarkup(createElement(controls.default, { narrator: { ...speaking, voices: [...voices, longVoice], voiceNotice: 'Remembered voice gone.', preferenceNotice: 'Storage blocked.' } }))
     const selects = html.match(/<select[^>]*>/g)
@@ -938,11 +976,12 @@ async function main() {
     assert.match(html, /minmax\(min\(100%, 11rem\), 1fr\)/)
     assert.match(html, /Remembered voice gone\./)
     assert.match(html, /Storage blocked\./)
-    assert.match(html, /aria-label="Pause narration: current story narration"/)
-    assert.match(html, /Preview selected style<\/button>/)
-    assert.match(html, /<option value="auto" selected="">Follow this story \(recommended\)<\/option>/)
-    assert.match(html, /Use best available voice for each story/)
-    for (const style of NARRATION_STYLES) assert.ok(html.includes(`<option value="${style}">${style}</option>`))
+    assert.match(html, /aria-label="Pause: current story narration"/)
+    assert.match(html, /Preview<\/button>/)
+    assert.match(html, /<option value="auto" selected="">Automatic<\/option>/)
+    assert.match(html, /Automatic<\/button>/)
+    const { narrationStyleLabel } = require(path.join(output, 'lib', 'audioControlsCopy.js'))
+    for (const style of NARRATION_STYLES) assert.ok(html.includes(`<option value="${style}">${narrationStyleLabel(style, 'en-US')}</option>`))
   })
   await check('story-following reset stops playback without changing language or saved manual preferences on load', async () => {
     const storage = memoryStorage(stored({ version: 1, style: 'suspenseful', language: 'de-DE', voice: voiceKey(voices[5]) }))

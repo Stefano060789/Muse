@@ -155,8 +155,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const studioPreview = action === 'studio-audio' && body.preview === true
     const ownerActionRequested = !PLAYER_ACTIONS.includes(String(action)) || studioPreview
-    let account: AccountUser | null = ownerActionRequested ? await requireAccount(req, res) : null
-    if (ownerActionRequested && !account) return
+    const authenticatedRequest = ownerActionRequested || typeof req.headers.authorization === 'string'
+    let account: AccountUser | null = authenticatedRequest ? await requireAccount(req, res) : null
+    if (authenticatedRequest && !account) return
     if (action === 'library') {
       if (body.after !== undefined && body.after !== null && (typeof body.after !== 'string' || !UUID.test(body.after))) {
         throw new SharedStoryError('The story collection page is invalid.')
@@ -185,14 +186,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })))
       return res.status(200).json({ stories, next: page.length > 20 ? page[19].id : null })
     }
-    if (action === 'create' || action === 'adventure' || action === 'studio-generate' || action === 'follow-up') requireProviderConsent(body)
+    if (action === 'create' || action === 'adventure' || action === 'studio-generate' || action === 'follow-up') requireProviderConsent(body, account?.permissions)
+    if ((action === 'voice-start' || action === 'voice-finish') && account?.permissions?.managed && !account.permissions.services) {
+      throw new SharedStoryError('Enable audio processing in Settings before uploading a voice message.', 403)
+    }
     if (action === 'create') {
       // Media is declared outside the brief so its metadata can never reach the AI prompt.
       const finalMedia = body.finalMedia === undefined ? null : parseMediaDeclaration(body.finalMedia)
       const finalVoice = body.finalVoice === undefined ? null : parseVoiceDeclaration(body.finalVoice)
       let brief = parseSharedStoryBrief(body.brief, { allowEmptyMessage: Boolean(finalMedia) })
       if (account!.displayName) brief = { ...brief, creatorName: account!.displayName }
-      try { requireRomanceConfirmation(brief.romance, body.romanceConfirmed) } catch (error) {
+      try { requireRomanceConfirmation(brief.romance, body.romanceConfirmed, account?.permissions) } catch (error) {
         throw new SharedStoryError(error instanceof Error ? error.message : 'Confirm the romance boundaries before creating this story.')
       }
       if (finalVoice && !brief.gift) throw new SharedStoryError('Voice reveals are available only for gift stories.', 409)
@@ -260,7 +264,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try { romance = parseStoryRomance(story.brief.romance) } catch {
       throw new SharedStoryError('This story has invalid romance settings. Ask its creator for a new story.', 409)
     }
-    if (!ownerAction && romance && body.romanceConfirmed !== true) {
+    if (!ownerAction && romance && (account?.permissions?.managed ? !account.permissions.romance : body.romanceConfirmed !== true)) {
       if (action === 'open') {
         return res.status(200).json({ romanceNotice: { romance, ...(story.brief.language ? { language: story.brief.language } : {}) } })
       }
@@ -326,7 +330,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           dedication: 'Your reply inspired this next story. I made it for you.'
         }
       })
-      requireRomanceConfirmation(nextBrief.romance, body.romanceConfirmed)
+      requireRomanceConfirmation(nextBrief.romance, body.romanceConfirmed, account?.permissions)
       sharedStoryProviderConfig()
       await reserveBillingUsage(account!.id, `story:${randomUUID()}`, 'story')
       await reserveRequest(db, req, 'generate')

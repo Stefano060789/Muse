@@ -45,6 +45,10 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id.endsWith('/PersonalStoryShareCard')) return { __esModule: true, default: 'PersonalStoryShareCard' }
     if (id.endsWith('/StoryArchiveButton')) return { __esModule: true, default: 'StoryArchiveButton' }
     if (id.endsWith('/interfacePages')) return {
+      collectionCopy: () => ({
+        chapter: number => `Chapter ${number}`,
+        following: title => `Following ${title}`
+      }),
       interfacePageText: key => ({
         myStoriesTitle: 'My stories', myStoriesEyebrow: 'Your next adventure',
         myStoriesSubtitle: 'Start something new, or pick up where you left off.',
@@ -94,6 +98,22 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     async click(text) { const button = nodes().find(node => node.type === 'button' && label(node) === text); assert.ok(button, text); button.props.onClick(); await flush() } }
 }
 async function main() {
+  const interfacePagesSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'interfacePages.ts'), 'utf8')
+  const localized = { exports: {} }
+  const localizedCode = ts.transpileModule(interfacePagesSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  }).outputText
+  new Function('module', 'exports', localizedCode)(localized, localized.exports)
+  for (const language of ['en-US', 'it-IT', 'es-ES', 'zh-CN', 'hi-IN', 'uk-UA', 'ar-SA']) {
+    const copy = localized.exports.collectionCopy(language)
+    assert.ok(copy.chapter(2).includes('2'), `${language} chapter number`)
+    assert.ok(copy.following('A story'), `${language} following label`)
+    assert.ok(copy.storage.length > 50, `${language} archive privacy disclosure`)
+    if (language !== 'en-US') {
+      assert.doesNotMatch(copy.chapter(2), /Chapter/, `${language} chapter label is localized`)
+      assert.doesNotMatch(copy.following('A story'), /Following/, `${language} following label is localized`)
+    }
+  }
   const hub = await mount()
   assert.equal(hub.requests.length, 0, 'Signed-out hub uses local stories without AI or account calls')
   assert.ok(hub.nodes().some(node => node.props.href === '/story?new=1'))

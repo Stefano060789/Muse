@@ -232,6 +232,24 @@ main [role="status"] { line-height: 1.6; }
 .atelier-page [aria-label="Your gift"] { background-image: radial-gradient(ellipse at 50% 0%, #ede3ce70, transparent 65%); border-top: 3px solid var(--gold) !important; }
 .atelier-page [aria-label="Your gift"] h1 { color: var(--plum); }
 
+.muse-collection-page .atelier-title { font-size: clamp(2rem, 5vw, 3.25rem); margin: 0.25rem 0 0.4rem; }
+.muse-collection-page .atelier-eyebrow { margin: 0 0 0.25rem; }
+.muse-collection-page .atelier-subtitle { margin: 0 0 0.9rem; font-size: 0.98rem; line-height: 1.5; }
+.muse-collection-page .atelier-button { min-height: 44px; padding: 0.6rem 0.9rem; font-size: 0.92rem; }
+.muse-collection-page .atelier-shell { padding-block: 1.25rem 2rem; }
+.muse-collection-layout { max-width: 900px; margin: 0 auto; }
+.muse-collection-section { margin-top: 1.5rem; }
+.muse-collection-section > h2 { margin: 0 0 0.65rem; font-size: 1.4rem; }
+.muse-collection-card { margin: 0.65rem 0; padding: 1rem 1.1rem; border-radius: 16px; }
+.muse-collection-card > h3 { margin: 0 0 0.35rem; font-size: 1.25rem; }
+.muse-collection-card > p { margin: 0.3rem 0; line-height: 1.5; }
+.muse-collection-card > details { margin-top: 0.4rem; }
+.muse-collection-card > details > p,
+.muse-collection-page > div > details > p { margin: 0.35rem 0; font-size: 0.88rem; line-height: 1.55; }
+.muse-collection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.muse-collection-note { margin: 0.75rem 0; font-size: 0.88rem; line-height: 1.5; }
+.muse-collection-archive-link { margin-top: 1.25rem; }
+
 @media (max-width: 700px) {
   .muse-site-header .atelier-header { display: block; padding: 0.75rem; }
   .muse-site-header .atelier-brand { display: inline-block; padding: 0.25rem 0.6rem; margin-bottom: 0.5rem; }

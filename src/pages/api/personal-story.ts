@@ -51,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }))
       return res.status(200).json({ stories: stories.filter(Boolean) })
     }
-    if (!(req.body?.mode === 'journey' && ['resume', 'delete', 'archive', 'restore'].includes(req.body?.action))) requireProviderConsent(req.body)
+    if (!(req.body?.mode === 'journey' && ['resume', 'delete', 'archive', 'restore'].includes(req.body?.action))) requireProviderConsent(req.body, account.permissions)
     if (req.body?.action === 'share-teaser') {
       if (!account.shareTeaserConsent) {
         throw new SharedStoryError('Accept the optional AI sharing-summary permission in Settings before generating a summary.', 403)
@@ -65,7 +65,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ teaser })
     }
     if (req.body?.mode === 'journey') {
-      const body = req.body as Record<string, unknown>
+      const body = (account.permissions?.managed
+        ? { ...req.body, romanceConfirmed: account.permissions.romance } : req.body) as Record<string, unknown>
       const capability = journeyCapability(body.capability)
       const id = journeyIdentifier(body.id)
       const db = storyDatabase()
@@ -95,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
           if (parent.snapshot.pending) throw new SharedStoryError('Wait for the current chapter to finish.', 409)
           try {
-            requireRomanceConfirmation(parent.record.input.romance, body.romanceConfirmed)
+            requireRomanceConfirmation(parent.record.input.romance, body.romanceConfirmed, account.permissions)
           } catch (error) {
             if (error instanceof StoryRomanceError) throw new SharedStoryError(error.message, error.status)
             throw error
@@ -108,6 +109,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       } else if (body.action === 'respond' || body.action === 'conclude') {
         const current = await db.personalJourney({ ...common, operation: 'view' })
+        if (account.permissions?.managed) {
+          try { requireRomanceConfirmation(current.record.input.romance, body.romanceConfirmed, account.permissions) } catch (error) {
+            if (error instanceof StoryRomanceError) throw new SharedStoryError(error.message, error.status)
+            throw error
+          }
+        }
         const action = body.action === 'conclude'
           ? parseJourneyClosingAction(body, current.record) : parseJourneyAction(body, current.record)
         operation = { ...common, operation: 'reserve', ...action }
@@ -144,7 +151,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       }
     }
-    const input = parsePersonalStoryRequest(req.body)
+    const input = parsePersonalStoryRequest(account.permissions?.managed
+      ? { ...req.body, romanceConfirmed: account.permissions.romance } : req.body)
     storyProviderConfig()
     await reserveBillingUsage(account.id, `story:${randomBytes(16).toString('hex')}`, 'story')
     await reserveStoryRequest(storyDatabase(), req, 'generate')

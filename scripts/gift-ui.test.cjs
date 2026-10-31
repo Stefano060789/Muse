@@ -42,6 +42,7 @@ function mountPreSendCheck(initialProps) {
       if (id === 'react') return react
       if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
       if (id.endsWith('/storyRomance')) return romance
+      if (id.endsWith('/registrationCopy')) return plainModule('src/lib/registrationCopy.ts')
       if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
       throw new Error('Unexpected PreSendCheck dependency ' + id)
     }
@@ -153,7 +154,9 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (id.endsWith('/interfaceFlow')) return plainModule('src/lib/interfaceFlow.ts')
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
     if (id.endsWith('/profilePreferences')) return { loadProfileDisplayName: () => '' }
+    if (id.endsWith('/togetherStory')) return plainModule('src/lib/togetherStory.ts')
     if (id.endsWith('/storyRomance')) return romance
+    if (id.endsWith('/registrationCopy')) return plainModule('src/lib/registrationCopy.ts')
     if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory(story) {
@@ -165,6 +168,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
       return { stopRecording() {}, cancelRecording() {}, recordingTarget: null, error: '' }
     } }
     if (id.endsWith('/useNarration')) return { useNarration: () => narrator }
+    if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => failures.permissions ?? ({ managed: false, ready: true }) }
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/sharedStoryMedia')) return { formatMediaSize: () => '5 MB', SHARED_MEDIA_ATTEMPTS_PER_STORY: 6, validateVoiceBytes: () => ({ durationSeconds: 1 }) }
     if (id.endsWith('/sharedStoryGift')) return { validateVoiceBytes: () => ({ durationSeconds: 1 }) }
@@ -174,6 +178,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const fetchMock = async (_url, options) => {
     const request = JSON.parse(options.body)
     requests.push(request)
+    if (request.action === 'create' && failures.create) return { ok: false, json: async () => ({ error: 'Test preparation unavailable' }) }
     if (request.action === 'open' && player?.romance && request.romanceConfirmed !== true) {
       return { ok: true, json: async () => ({ romanceNotice: { romance: player.romance, language: player.language } }) }
     }
@@ -237,6 +242,44 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
 }
 async function main() {
+  const quick = await mount('#new', null, null, { create: true, permissions: { managed: true, ready: true, services: true, accountId: 'reader-a' } })
+  assert.equal(quick.requests.length, 0)
+  await quick.click('Start a story for two')
+  assert.equal(quick.requests.length, 0, 'Selecting a template never starts a paid request')
+  assert.ok(quick.nodes().some(node => node.type === 'form' && node.props['aria-label'] === 'Five minutes together'))
+  assert.equal(quick.nodes().filter(node => node.type === 'fieldset').length, 0, 'Short creation has no multi-step fieldsets')
+  assert.equal(quick.button('Prepare our story').props.disabled, true, 'Names must be supplied before generation')
+  const quickNames = quick.nodes().filter(node => node.type === 'input' && node.props.maxLength === 80)
+  assert.equal(quickNames.length, 2)
+  quickNames[0].props.onChange({ target: { value: 'Alex' } }); await quick.flush()
+  quick.nodes().filter(node => node.type === 'input' && node.props.maxLength === 80)[1].props.onChange({ target: { value: 'Sam' } }); await quick.flush()
+  assert.equal(quick.button('Prepare our story').props.disabled, false, 'Saved registration consent is reused without another tick')
+  quick.field('together-language').props.onChange({ target: { value: 'it-IT' } }); await quick.flush()
+  const quickDraft = JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY))
+  assert.equal(quickDraft.brief.durationMinutes, 5)
+  assert.deepEqual(quickDraft.brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
+  assert.equal(quickDraft.brief.creatorName, 'Alex')
+  assert.equal(quickDraft.brief.recipientName, 'Sam')
+  assert.equal(quickDraft.brief.solution, 'insieme')
+  assert.equal(quickDraft.brief.message, plainModule('src/lib/togetherStory.ts').togetherStoryCopy('it-IT').defaultMessage)
+  quick.nodes().find(node => node.type === 'form' && node.props['aria-label'] === 'Five minutes together').props.onSubmit({ preventDefault() {} })
+  await quick.flush()
+  assert.equal(quick.requests.length, 1, 'Only explicit preparation starts a request')
+  assert.equal(quick.requests[0].action, 'create')
+  assert.equal(quick.requests[0].brief.durationMinutes, 5)
+  assert.deepEqual(quick.requests[0].brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
+  assert.ok(quick.nodes().some(node => node.props.role === 'alert' && label(node).includes('Test preparation unavailable')))
+  assert.equal(JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY)).brief.creatorName, 'Alex', 'Preparation failure preserves the draft')
+  await quick.click('More options')
+  assert.ok(quick.nodes().some(node => node.type === 'fieldset'), 'Advanced creation retains the template for editing')
+  assert.equal(quick.requests.length, 1)
+  quick.unmount()
+  const legacyQuick = await mount('#new')
+  await legacyQuick.click('Start a story for two')
+  assert.equal(legacyQuick.button('Prepare our story').props.disabled, true)
+  assert.ok(legacyQuick.nodes().some(node => node.type === '../components/ExplicitConsent'), 'Legacy users retain explicit feature consent')
+  legacyQuick.unmount()
+  console.log('PASS short together-story setup preserves names, localizes defaults, uses saved permissions and never auto-generates')
   const reviewProps = {
     story: {
       ownerToken: 'creator-only-token',

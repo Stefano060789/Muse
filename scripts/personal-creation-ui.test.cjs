@@ -82,6 +82,7 @@ async function main() {
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/interfacePages')) return plain('src/lib/interfacePages.ts')
     if (id.endsWith('/interfaceFlow')) return plain('src/lib/interfaceFlow.ts')
+    if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => ({ managed: false, services: false, romance: false, ready: true }) }
     if (id.endsWith('/journeyLimits')) return plain('src/lib/journeyLimits.ts')
     if (id.endsWith('/chapterRecoveryCopy')) return plain('src/lib/chapterRecoveryCopy.ts')
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => interfaceLocale, interfaceText: () => 'Settings' }
@@ -89,6 +90,7 @@ async function main() {
     if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
     if (id.endsWith('/personalDraft')) return plain('src/lib/personalDraft.ts', browser)
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
+    if (id.endsWith('/registrationCopy')) return plain('src/lib/registrationCopy.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
       stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() },

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { loadStoryLibrary, saveLibraryPersonalStory, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { accountFetch, supabase } from '../lib/accountClient'
-import { interfacePageText as text } from '../lib/interfacePages'
+import { collectionCopy, interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 import StoryArchiveButton from '../components/StoryArchiveButton'
@@ -14,6 +14,7 @@ type PersonalEntry = Extract<LibraryEntry, { kind: 'personal' }>
 
 export default function MyStoriesPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const collectionText = collectionCopy(interfaceLanguage)
   const [entries, setEntries] = useState<PersonalEntry[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -75,13 +76,13 @@ export default function MyStoriesPage() {
   }
   return <>
     <Head><title>{`Muse - ${text('myStoriesTitle', interfaceLanguage)}`}</title><meta name="description" content={text('myStoriesSubtitle', interfaceLanguage)} /></Head>
-    <main className="atelier-page" lang={interfaceLanguage}>
+    <main className="atelier-page muse-collection-page" lang={interfaceLanguage}>
       <div className="atelier-shell atelier-shell--narrow">
         <p className="atelier-eyebrow">{text('myStoriesEyebrow', interfaceLanguage)}</p>
         <h1 className="atelier-title">{text('myStoriesTitle', interfaceLanguage)}</h1>
         <p className="atelier-subtitle">{text('myStoriesSubtitle', interfaceLanguage)}</p>
         <Link href="/story?new=1" className="atelier-button">{text('startNewStory', interfaceLanguage)}</Link>
-        <section aria-labelledby="previous-stories-heading" style={{ marginTop: '2rem' }}>
+        <section className="muse-collection-section" aria-labelledby="previous-stories-heading">
           <h2 id="previous-stories-heading">{text('yourStories', interfaceLanguage)}</h2>
           <button type="button" disabled={syncing} onClick={() => void sync()}>{syncing ? text('syncingStories', interfaceLanguage) : text('syncAccountStories', interfaceLanguage)}</button>
           {error ? <p role="alert">{error} <Link href="/account">Check your account</Link>.</p> : null}
@@ -93,14 +94,14 @@ export default function MyStoriesPage() {
               ? ['concluded', 'exhausted'].includes(entry.story.journey.status)
               : entry.story.responses.length >= entry.story.scenes.length ||
                 (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
-            return <article className="atelier-card" key={entry.id} style={{ marginTop: '1rem' }}>
+            return <article className="atelier-card muse-collection-card" key={entry.id}>
               <h3>{entry.story.title}</h3>
-              {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `Chapter ${chapterNumber} · Following ${entry.story.chapter.parentTitle}` : `Chapter ${chapterNumber}`}</p> : null}
-              <p>{journey?.status === 'concluded' ? `Chapter ${chapterNumber} · ${text('storyCompleted', interfaceLanguage)}`
+              {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `${collectionText.chapter(chapterNumber)} · ${collectionText.following(entry.story.chapter.parentTitle)}` : collectionText.chapter(chapterNumber)}</p> : null}
+              <p>{journey?.status === 'concluded' ? `${collectionText.chapter(chapterNumber ?? 1)} · ${text('storyCompleted', interfaceLanguage)}`
                 : journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
-                  : journey ? `Chapter ${chapterNumber} · ${text('inProgress', interfaceLanguage)}`
+                  : journey ? `${collectionText.chapter(chapterNumber ?? 1)} · ${text('inProgress', interfaceLanguage)}`
                     : completed ? text('storyCompleted', interfaceLanguage) : text('inProgress', interfaceLanguage)}</p>
-              {journey?.status === 'concluded' ? <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {journey?.status === 'concluded' ? <div className="muse-collection-actions">
                 <button type="button" onClick={() => open(entry, true, 'read')}>{text('readChapter', interfaceLanguage)} {chapterNumber}</button>
                 <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>{text('continueToChapter', interfaceLanguage)} {(chapterNumber ?? 1) + 1}</button>
               </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : completed ? text('readStory', interfaceLanguage) : text('continueStory', interfaceLanguage)}</button>}
@@ -111,7 +112,7 @@ export default function MyStoriesPage() {
             </article>
           })}
         </section>
-        <p className="atelier-note"><Link href="/library">{text('visitArchive', interfaceLanguage)}</Link></p>
+        <p className="atelier-note muse-collection-archive-link"><Link href="/library">{text('visitArchive', interfaceLanguage)}</Link></p>
       </div>
     </main>
   </>

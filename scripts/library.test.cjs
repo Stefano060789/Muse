@@ -96,6 +96,13 @@ try {
         if (name === '../components/StoryArchiveButton') return { __esModule: true, default: 'story-archive-button' }
         if (name === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
         if (name === '../lib/interfacePages') return {
+          collectionCopy: () => ({
+            chapter: number => `Chapter ${number}`,
+            following: title => `Following ${title}`,
+            scene: number => `Scene ${number}`,
+            sceneRange: (current, total) => `Scene ${current} of ${total}`,
+            storage: 'Saved entries include private access links; anyone using this browser can view them. Gift briefs stay saved independently of recipient completion until removed or browser storage is cleared. Server stories do not expire; removing a browser copy does not delete them or disable recipient links. Progress loads only on request, and recipient links work without an account. Share only recipient links; sign in to manage gifts and view progress.'
+          }),
           archiveSyncNote: () => 'Account stories sync when you sign in.',
           interfacePageText: key => ({
             archiveTitle: 'Archive', myStoriesTitle: 'My stories',
@@ -104,6 +111,7 @@ try {
             createGift: 'Create a gift story', noPersonalStories: 'No personal stories yet.',
             storyCompleted: 'Completed', inProgress: 'In progress',
             storyDetails: 'Story details', readStory: 'Read story',
+            readSavedScenes: 'Read saved scenes',
             removeFromBrowser: 'Remove from this browser',
             syncingStories: 'Syncing stories…', syncAccountStories: 'Sync account stories',
             noGiftStories: 'No gift stories yet.'
@@ -118,6 +126,9 @@ try {
             const response = typeof progressResponse === 'function' ? progressResponse(body) : progressResponse
             return { ok: response.ok, json: async () => response.data }
           }
+        }
+        if (name === '../lib/chapterRecoveryCopy') return {
+          chapterRecoveryCopy: () => ({ exhausted: 'Ending not completed · saved scenes kept' })
         }
         if (name === '../lib/storyLibrary') return {
           loadStoryLibrary: () => lib.loadStoryLibrary(store),
@@ -335,8 +346,9 @@ try {
       assert.ok(!all.some(node => node.type === 'time'), 'Legacy expiry dates no longer block migrated stories')
       assert.ok(text.includes('Account stories sync when you sign in.'))
       assert.ok(text.includes('independently of recipient completion'))
-      assert.ok(text.includes('View story progress'))
-      assert.ok(text.includes('private owner access; do not share them'))
+      assert.ok(text.includes('Progress loads only on request'))
+      assert.ok(text.includes('private access links'))
+      assert.ok(text.includes('Share only recipient links'))
       for (const field of ['message', 'solution', 'recipientHints']) assert.ok(!text.includes(story.brief[field]))
     } finally { ui.cleanup() }
   })
@@ -422,6 +434,25 @@ try {
       assert.ok(textOf(nodes(card).find(node => node.type === 'details')).includes('in this browser'))
       assert.ok(button(card, 'Read story'))
       assert.ok(button(card, 'Remove from this browser'))
+    } finally { ui.cleanup() }
+  })
+  check('exhausted chapter endings remain recoverable scenes, not completed archive stories', () => {
+    const story = personal('exhausted')
+    story.scenes = [{ title: 'Opening', body: 'Begin here.', question: '', choices: [] }]
+    story.journey = {
+      duration: 5, maxTurns: 3, revision: 5, pending: false, status: 'exhausted',
+      state: { inventory: [], discoveries: [], relationships: [], progress: 'Started' },
+      capability: 'a'.repeat(64), choiceMode: 'free'
+    }
+    story.chapter = { number: 2, rootId: 'root', parentId: 'parent', parentTitle: 'First story' }
+    const ui = mountLibrary([], 'https://muse.example', [story])
+    try {
+      const tree = ui.render(), card = nodes(tree).find(node => node.type === 'article')
+      assert.ok(textOf(card).includes('Ending not completed · saved scenes kept'))
+      assert.match(textOf(card), /Chapter 2\s+·\s+Following First story/)
+      assert.ok(button(card, 'Read saved scenes'))
+      assert.ok(!nodes(card).some(node => node.type === 'personal-story-share-card'))
+      assert.ok(!textOf(card).includes('Completed'))
     } finally { ui.cleanup() }
   })
   await checkAsync('legacy expiry does not block migrated links, while missing links remain disabled', async () => {

@@ -13,10 +13,12 @@ import { recipientCopy } from '../lib/storyLanguage'
 import { useStoryInteraction } from '../lib/useStoryInteraction'
 import type { StoryChoiceMode } from '../lib/freeformStory'
 import ExplicitConsent from '../components/ExplicitConsent'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import { STORY_LANGUAGES, storyLanguage, type StoryLanguageCode } from '../lib/storyLanguage'
 import RomanceOptions from '../components/RomanceOptions'
 import { requireRomanceConfirmation, romanceCopy, type StoryRomance } from '../lib/storyRomance'
+import { registrationCopy } from '../lib/registrationCopy'
 import { removeLibraryEntry, loadStoryLibrary, selectPersonalStory } from '../lib/storyLibrary'
 import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
@@ -27,6 +29,7 @@ import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { interfaceFlowText as flowText, type InterfaceFlowKey } from '../lib/interfaceFlow'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
 import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
+import StoryLifeBridge from '../components/StoryLifeBridge'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -71,7 +74,9 @@ export default function StoryPage() {
   const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const [romance, setRomance] = useState<StoryRomance | undefined>()
-  const [romanceConfirmed, setRomanceConfirmed] = useState(false)
+  const permissions = useAccountPermissions()
+  const [localRomanceConfirmed, setRomanceConfirmed] = useState(false)
+  const romanceConfirmed = permissions.managed ? permissions.romance : localRomanceConfirmed
   const [reconciled, setReconciled] = useState(false)
   const [reconciliationBlocked, setReconciliationBlocked] = useState(false)
   const [preparation, setPreparation] = useState<Preparation | null>(null)
@@ -79,7 +84,8 @@ export default function StoryPage() {
   const [storyNotice, setStoryNotice] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(true)
-  const [aiConsent, setAiConsent] = useState(false)
+  const [localAiConsent, setAiConsent] = useState(false)
+  const aiConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localAiConsent)
   const [creationStep, setCreationStep] = useState(0)
   const [draftsReady, setDraftsReady] = useState(false)
   const [draftNotice, setDraftNotice] = useState('')
@@ -91,9 +97,17 @@ export default function StoryPage() {
   const storyMode = experience?.key === experienceKey ? experience.mode : null
   const setStoryMode = (mode: StoryMode) => setExperience({ key: experienceKey, mode })
   const [chapterFormOpen, setChapterFormOpen] = useState(false)
-  const [chapterConsent, setChapterConsent] = useState(false)
+  const [localChapterConsent, setChapterConsent] = useState(false)
+  const chapterConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localChapterConsent)
   const [chapterDuration, setChapterDuration] = useState(10)
-  const [chapterRomanceConfirmed, setChapterRomanceConfirmed] = useState(false)
+  const [localChapterRomanceConfirmed, setChapterRomanceConfirmed] = useState(false)
+  const chapterRomanceConfirmed = permissions.managed ? permissions.romance : localChapterRomanceConfirmed
+  useEffect(() => {
+    setAiConsent(false)
+    setChapterConsent(false)
+    setRomanceConfirmed(false)
+    setChapterRomanceConfirmed(false)
+  }, [permissions.accountId])
   const [answerLoaded, setAnswerLoaded] = useState<string | null>(null)
   const draftWritable = useRef(true)
   const answerWritable = useRef(true)
@@ -746,13 +760,20 @@ export default function StoryPage() {
                     <ExplicitConsent checked={chapterConsent} onChange={setChapterConsent}>
                       {flow('chapterConsentText')}
                     </ExplicitConsent>
-                    {story.romance ? <label><input type="checkbox" checked={chapterRomanceConfirmed} disabled={isGenerating} onChange={event => setChapterRomanceConfirmed(event.target.checked)} />{romanceCopy(interfaceLanguage).creatorConfirmation}</label> : null}
+                    {story.romance && !permissions.managed ? <label><input type="checkbox" checked={chapterRomanceConfirmed} disabled={isGenerating} onChange={event => setChapterRomanceConfirmed(event.target.checked)} />{romanceCopy(interfaceLanguage).creatorConfirmation}</label> : null}
+                    {story.romance && permissions.managed && !permissions.romance ? <p role="alert"><a href="/account">{registrationCopy(interfaceLanguage).settings}</a></p> : null}
                     <button type="button" disabled={!chapterConsent || isGenerating || Boolean(preparation) || Boolean(story.romance && !chapterRomanceConfirmed)} onClick={() => void continueChapter()}>{isGenerating ? flow('startingChapter') : flow('confirmStartChapter')}</button>
                   </div> : null}
                 </section> : null}
                 {rereading ? savedScenes : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
+                <StoryLifeBridge
+                  key={`${story.id}:${story.chapter?.number ?? 1}`}
+                  story={story}
+                  archiveReading={archiveReading}
+                  language={interfaceLanguage}
+                />
               </section> : null}
               <div style={{ marginTop: '2rem' }}>
                 <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>

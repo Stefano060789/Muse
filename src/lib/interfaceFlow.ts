@@ -1,6 +1,9 @@
 import type { StoryLanguageCode } from './storyLanguage'
 
 const english = {
+  privacy: 'Privacy', accountBusy: 'Please wait…', microphoneSettings: 'Microphone',
+  voicePrivacy: 'Dictation edits text and may use an online browser service. It follows the story language.',
+  draftPrivacy: 'Browser draft', draftPrivacyNote: 'Text is saved unencrypted on this browser only. Avoid shared devices. Files, recordings and consent are not saved.',
   storyPace: 'Story length',
   creationSteps: 'Story steps',
   duration: 'Length',
@@ -153,6 +156,9 @@ type FlowCopy = Record<keyof typeof english, string>
 const copies: Record<StoryLanguageCode, FlowCopy> = {
   'en-US': english,
   'it-IT': {
+    privacy: 'Privacy', accountBusy: 'Attendi…', microphoneSettings: 'Microfono',
+    voicePrivacy: 'La dettatura modifica il testo e può usare un servizio online del browser. Segue la lingua della storia.',
+    draftPrivacy: 'Bozza nel browser', draftPrivacyNote: 'Il testo è salvato senza crittografia solo in questo browser. Evita dispositivi condivisi. File, registrazioni e consenso non vengono salvati.',
     storyPace: 'Durata', creationSteps: 'Fasi della storia', duration: 'Durata', storyLanguageNote: 'Storia e voce usano questa lingua.',
     giftStoryIdea: 'Idea per la storia', preparedClueMode: 'Segui gli indizi preparati', preparedModeNote: 'Senza IA in tempo reale.',
     groupInteraction: 'Come giocate in gruppo?', actionBudget: 'Tentativi IA', actionBudgetNote: '1–1.000 azioni IA; max 12 per partita. Gli errori contano; preparazione, indizi e audio del dispositivo no.',
@@ -218,6 +224,9 @@ const copies: Record<StoryLanguageCode, FlowCopy> = {
     romanceRecipientNotice: 'I destinatari vedono un avviso prima di aprire la storia.'
   },
   'es-ES': {
+    privacy: 'Privacidad', accountBusy: 'Espera…', microphoneSettings: 'Micrófono',
+    voicePrivacy: 'El dictado edita texto y puede usar un servicio en línea del navegador. Sigue el idioma de la historia.',
+    draftPrivacy: 'Borrador del navegador', draftPrivacyNote: 'El texto se guarda sin cifrar solo en este navegador. Evita dispositivos compartidos. No se guardan archivos, grabaciones ni permisos.',
     storyPace: 'Duración', creationSteps: 'Pasos de la historia', duration: 'Duración', storyLanguageNote: 'La historia y la voz usan este idioma.',
     giftStoryIdea: 'Idea de la historia', preparedClueMode: 'Seguir las pistas preparadas', preparedModeNote: 'Sin IA en directo.',
     groupInteraction: '¿Cómo jugará el grupo?', actionBudget: 'Intentos de IA', actionBudgetNote: '1–1.000 acciones de IA; máximo 12 por partida. Los fallos cuentan; preparación, pistas y audio del dispositivo no.',
@@ -283,6 +292,9 @@ const copies: Record<StoryLanguageCode, FlowCopy> = {
     romanceRecipientNotice: 'Quien la recibe verá un aviso antes de abrir la historia.'
   },
   'zh-CN': {
+    privacy: '隐私', accountBusy: '请稍候…', microphoneSettings: '麦克风',
+    voicePrivacy: '听写可编辑文本，可能使用浏览器在线服务。语言与故事一致。',
+    draftPrivacy: '浏览器草稿', draftPrivacyNote: '文本仅在此浏览器中以未加密形式保存。请勿使用共享设备。不保存文件、录音或同意记录。',
     storyPace: '故事时长', creationSteps: '故事步骤', duration: '时长', storyLanguageNote: '故事和语音使用此语言。',
     giftStoryIdea: '故事构想', preparedClueMode: '跟随预设线索', preparedModeNote: '不使用实时 AI。',
     groupInteraction: '小组如何参与？', actionBudget: '实时 AI 行动次数', actionBudgetNote: '总计 1–1,000 次，每局最多 12 次。失败也计入；准备、提示和设备语音不计入。',
@@ -348,6 +360,9 @@ const copies: Record<StoryLanguageCode, FlowCopy> = {
     romanceRecipientNotice: '收件人打开故事前会看到内容提示。'
   },
   'hi-IN': {
+    privacy: 'गोपनीयता', accountBusy: 'कृपया प्रतीक्षा करें…', microphoneSettings: 'माइक्रोफ़ोन',
+    voicePrivacy: 'श्रुतलेखन पाठ संपादित करता है और ब्राउज़र की ऑनलाइन सेवा उपयोग कर सकता है। यह कहानी की भाषा में है।',
+    draftPrivacy: 'ब्राउज़र मसौदा', draftPrivacyNote: 'पाठ केवल इस ब्राउज़र में बिना एन्क्रिप्शन सहेजा जाता है। साझा डिवाइस से बचें। फ़ाइलें, रिकॉर्डिंग और सहमति नहीं सहेजी जातीं।',
     storyPace: 'कहानी की अवधि', creationSteps: 'कहानी के चरण', duration: 'अवधि', storyLanguageNote: 'कहानी और आवाज़ इसी भाषा में होगी।',
     giftStoryIdea: 'कहानी का विचार', preparedClueMode: 'तैयार संकेतों का अनुसरण करें', preparedModeNote: 'लाइव AI नहीं।',
     groupInteraction: 'समूह कैसे खेले?', actionBudget: 'लाइव AI प्रयास', actionBudgetNote: 'कुल 1–1,000 AI कदम; प्रति खेल अधिकतम 12। विफलताएँ गिनी जाती हैं; तैयारी, संकेत और डिवाइस ऑडियो नहीं।',
@@ -413,6 +428,9 @@ const copies: Record<StoryLanguageCode, FlowCopy> = {
     romanceRecipientNotice: 'कहानी खोलने से पहले प्राप्तकर्ता को सामग्री सूचना दिखेगी।'
   },
   'uk-UA': {
+    privacy: 'Приватність', accountBusy: 'Зачекайте…', microphoneSettings: 'Мікрофон',
+    voicePrivacy: 'Диктування редагує текст і може використовувати онлайн-службу браузера. Мова відповідає історії.',
+    draftPrivacy: 'Чернетка браузера', draftPrivacyNote: 'Текст зберігається без шифрування лише в цьому браузері. Уникайте спільних пристроїв. Файли, записи та згода не зберігаються.',
     storyPace: 'Тривалість', creationSteps: 'Етапи історії', duration: 'Тривалість', storyLanguageNote: 'Історія та озвучення будуть цією мовою.',
     giftStoryIdea: 'Ідея історії', preparedClueMode: 'Йти за підготовленими підказками', preparedModeNote: 'Без ШІ наживо.',
     groupInteraction: 'Як гратиме група?', actionBudget: 'Спроби ШІ наживо', actionBudgetNote: '1–1 000 дій ШІ, до 12 за гру. Невдачі враховуються; підготовка, підказки й аудіо пристрою — ні.',
@@ -478,6 +496,9 @@ const copies: Record<StoryLanguageCode, FlowCopy> = {
     romanceRecipientNotice: 'Перед відкриттям історії отримувач побачить попередження.'
   },
   'ar-SA': {
+    privacy: 'الخصوصية', accountBusy: 'يرجى الانتظار…', microphoneSettings: 'الميكروفون',
+    voicePrivacy: 'يحرر الإملاء النص وقد يستخدم خدمة المتصفح عبر الإنترنت. يتبع لغة القصة.',
+    draftPrivacy: 'مسودة المتصفح', draftPrivacyNote: 'يُحفظ النص دون تشفير في هذا المتصفح فقط. تجنب الأجهزة المشتركة. لا تُحفظ الملفات أو التسجيلات أو الموافقة.',
     storyPace: 'مدة القصة', creationSteps: 'خطوات القصة', duration: 'المدة', storyLanguageNote: 'القصة والصوت بهذه اللغة.',
     giftStoryIdea: 'فكرة القصة', preparedClueMode: 'اتبع الأدلة المعدّة', preparedModeNote: 'من دون ذكاء اصطناعي مباشر.',
     groupInteraction: 'كيف ستلعب المجموعة؟', actionBudget: 'محاولات الذكاء الاصطناعي', actionBudgetNote: 'إجمالي 1–1000 إجراء، بحد أقصى 12 لكل لعبة. تُحتسب المحاولات الفاشلة؛ ولا تُحتسب التهيئة والتلميحات وصوت الجهاز.',

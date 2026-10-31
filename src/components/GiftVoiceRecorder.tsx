@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { VOICE_MAX_BYTES, VOICE_SAMPLE_RATE, VOICE_SECONDS, wavRecording } from '../lib/voiceRecording'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { registrationCopy } from '../lib/registrationCopy'
 
 export default function GiftVoiceRecorder({ file, onChange, disabled, beforeRecord, onActiveChange }: {
   file: File | null
@@ -8,7 +11,10 @@ export default function GiftVoiceRecorder({ file, onChange, disabled, beforeReco
   beforeRecord: () => void
   onActiveChange: (active: boolean) => void
 }) {
-  const [consent, setConsent] = useState(false)
+  const permissions = useAccountPermissions()
+  const language = useInterfaceLanguage()
+  const [localConsent, setConsent] = useState(false)
+  const consent = permissions.managed ? permissions.services : localConsent
   const [recording, setRecording] = useState(false)
   const [starting, setStarting] = useState(false)
   const [seconds, setSeconds] = useState(0)
@@ -26,9 +32,21 @@ export default function GiftVoiceRecorder({ file, onChange, disabled, beforeReco
   }, [file])
   useEffect(() => () => { generation.current++; stopRef.current?.() }, [])
   useEffect(() => { onActiveChange(recording || starting) }, [recording, starting, onActiveChange])
+  useEffect(() => {
+    generation.current++
+    stopRef.current?.()
+    setStarting(false)
+    setRecording(false)
+    setConsent(false)
+    if (permissions.managed && !permissions.services) onChange(null)
+  }, [permissions.accountId, permissions.managed, permissions.services, permissions.error])
 
   const start = async () => {
     if (!consent || disabled || starting || recording) return
+    if (!permissions.ready || permissions.error) {
+      setError(permissions.error || 'Account permissions are still loading. Try again shortly.')
+      return
+    }
     setError(''); setStarting(true)
     const attempt = ++generation.current
     let stream: MediaStream | null = null
@@ -106,7 +124,7 @@ export default function GiftVoiceRecorder({ file, onChange, disabled, beforeReco
   }
   return <section aria-label="Personal voice message">
     <p>Add your own voice to the final reveal. Up to 60 seconds, 5 MB. No cloning, transcription or AI processing.</p>
-    <label style={{ display: 'block', marginBottom: 12 }}><input type="checkbox" checked={consent} disabled={recording || starting || disabled} onChange={event => { setConsent(event.target.checked); if (!event.target.checked) onChange(null) }} /> I choose to record or upload my voice for the recipient. It will be stored privately with this story until removed or the story is deleted, with no automatic expiry.</label>
+    {!permissions.managed ? <label style={{ display: 'block', marginBottom: 12 }}><input type="checkbox" checked={consent} disabled={recording || starting || disabled} onChange={event => { setConsent(event.target.checked); if (!event.target.checked) onChange(null) }} /> I choose to record or upload my voice for the recipient. It will be stored privately with this story until removed or the story is deleted, with no automatic expiry.</label> : !consent ? <p role="alert"><a href="/account">{registrationCopy(language).settings}</a></p> : null}
     {error ? <p role="alert">{error}</p> : null}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       {recording ? <button type="button" onClick={() => stopRef.current?.()} style={{ minHeight: 44, padding: '0.8rem' }}>Stop recording ({seconds}s / 60s)</button> : <button type="button" disabled={!consent || disabled || starting} onClick={() => void start()} style={{ minHeight: 44, padding: '0.8rem' }}>{starting ? 'Opening microphone...' : 'Record a message'}</button>}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAccountPermissions } from './useAccountPermissions'
 
 type RecognitionEvent = Event & { results: SpeechRecognitionResultList }
 type Recognition = {
@@ -19,6 +20,7 @@ type RecognitionWindow = Window & {
 }
 
 export function useStoryInteraction(beforeDictate?: () => void, language = 'en-US') {
+  const permissions = useAccountPermissions()
   const [recordingTarget, setRecordingTarget] = useState('')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -61,6 +63,10 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
     }
   }
 
+  useEffect(() => {
+    if (recognitionRef.current) cancelRecording()
+  }, [permissions.accountId, permissions.managed, permissions.services, permissions.error])
+
   useEffect(() => () => {
     const recognition = recognitionRef.current
     recognitionRef.current = null
@@ -70,6 +76,14 @@ export function useStoryInteraction(beforeDictate?: () => void, language = 'en-U
   }, [])
 
   const dictate = (target: string, onTranscript: (value: string) => void, singlePhrase = false) => {
+    if (!permissions.ready || permissions.error) {
+      setError(permissions.error || 'Account permissions are still loading. Try again shortly.')
+      return
+    }
+    if (permissions.managed && !permissions.services) {
+      setError('Enable audio processing in Settings before using dictation.')
+      return
+    }
     cancelRecording()
     beforeDictate?.()
     const Constructor = (window as RecognitionWindow).SpeechRecognition || (window as RecognitionWindow).webkitSpeechRecognition

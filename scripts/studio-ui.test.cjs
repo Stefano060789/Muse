@@ -46,7 +46,9 @@ function mount(extra = {}) {
   }
   const module = { exports: {} }
   new Function('module', 'exports', 'require', 'URL', source)(module, module.exports,
-    id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx, Fragment: 'fragment' } : require(id),
+    id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx, Fragment: 'fragment' }
+      : id.endsWith('/useAccountPermissions') ? { useAccountPermissions: () => ({ managed: false }) }
+        : id === './ExplicitConsent' ? { default: 'ExplicitConsent' } : require(id),
     { createObjectURL() { return `blob:synthetic-${++serial}` }, revokeObjectURL(value) { revoked.push(value) } })
   const render = () => { cursor = 0; tree = module.exports.default(props); return tree }
   const flush = async () => {
@@ -89,6 +91,10 @@ async function main() {
   new Function('module', 'exports', 'require', controlsSource)(controls, controls.exports, id => {
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === '../lib/narration') return { NARRATION_STYLES: ['calm'], voiceKey: voice => voice.name }
+    if (id === './ExplicitConsent') return { default: 'ExplicitConsent' }
+    if (id === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
+    if (id === '../lib/audioControlsCopy') return { audioControlsCopy: () => ({ stop: 'Stop' }) }
+    if (id === '../lib/interfaceFlow') return { interfaceFlowText: key => key }
     return require(id)
   })
   const preparedNarrator = {
@@ -101,7 +107,7 @@ async function main() {
   assert.equal(personalAudio.props.autoPlay, undefined)
   assert.equal(personalAudio.props.preload, 'metadata')
   const unconsented = flatten(controls.exports.NarrationButton({ narrator: { ...preparedNarrator, cloudConsent: false, cloudAudioUrl: null }, text: 'A new story' }))
-  assert.ok(unconsented.some(node => node?.type === 'input' && node.props.checked === false))
+  assert.ok(unconsented.some(node => node?.type === 'ExplicitConsent' && node.props.checked === false))
   console.log('PASS personal Google audio uses native controls, explicit Play and visible consent')
   const google = mount({ provider: 'google' })
   await google.flush()
@@ -127,7 +133,7 @@ async function main() {
   prepare.props.onClick()
   await owner.flush()
   assert.ok(!owner.calls.includes('generate'), 'Unchecked consent blocks generation even when handler is invoked')
-  owner.nodes().find(node => node.type === 'input').props.onChange({ target: { checked: true } })
+  owner.nodes().find(node => node.type === 'ExplicitConsent').props.onChange(true)
   await owner.flush()
   owner.button('Prepare this scene\'s Studio audio').props.onClick()
   await owner.flush()
@@ -152,7 +158,7 @@ async function main() {
   await generationFailure.flush()
   generationFailure.button('Check Studio availability').props.onClick()
   await generationFailure.flush()
-  generationFailure.nodes().find(node => node.type === 'input').props.onChange({ target: { checked: true } })
+  generationFailure.nodes().find(node => node.type === 'ExplicitConsent').props.onChange(true)
   await generationFailure.flush()
   generationFailure.button('Prepare this scene\'s Studio audio').props.onClick()
   await generationFailure.flush()

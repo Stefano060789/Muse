@@ -15,6 +15,8 @@
     "test:creator-access": "node scripts/creator-access.test.cjs",
     "test:personal-journey": "node scripts/personal-journey.test.cjs",
     "test:story-archive": "node scripts/story-archive-ui.test.cjs && node scripts/my-stories-ui.test.cjs",
+    "test:registration": "node scripts/registration-permissions.test.cjs",
+    "test:connection": "node scripts/together-story.test.cjs && node scripts/story-life-bridge.test.cjs && node scripts/gift-ui.test.cjs",
     "test:interaction": "node scripts/interaction-modes.test.cjs",
     "dev": "next dev -p 3000",
     "build": "next build",

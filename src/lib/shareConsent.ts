@@ -1,9 +1,12 @@
 import { MUSE_AI_CONSENT_VERSION } from './legalContact'
+import { accountPermissions } from './accountPermissions'
 
 export const SHARE_CONSENT_METADATA_KEY = 'muse_share_teaser_consent'
 export type ShareConsentRecord = { version: string; acceptedAt: string }
 
 export function hasShareConsent(metadata: Record<string, unknown> | undefined): boolean {
+  const permissions = accountPermissions(metadata)
+  if (permissions.managed) return permissions.services
   const record = metadata?.[SHARE_CONSENT_METADATA_KEY]
   if (!record || typeof record !== 'object') return false
   const value = record as Record<string, unknown>

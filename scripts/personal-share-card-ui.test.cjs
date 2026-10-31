@@ -21,6 +21,8 @@ new Function('module', 'exports', 'require', code)(moduleUnderTest, moduleUnderT
   if (id.endsWith('/personalStoryShareVisual')) return {}
   if (id.endsWith('/providerConsent')) return { PROVIDER_CONSENT_VERSION: 'fixture' }
   if (id.endsWith('/useShareConsent')) return { useShareConsent: () => ({ accepted, ready: true, saving: false }) }
+  if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => ({ managed: false, ready: true }) }
+  if (id.endsWith('/registrationCopy')) return { registrationCopy: () => ({ settings: 'Settings' }) }
   if (id.endsWith('/shareConsentCopy')) return { shareConsentCopy: () => ({ remembered: 'remembered', allow: 'allow' }) }
   throw new Error('Unexpected dependency: ' + id)
 })

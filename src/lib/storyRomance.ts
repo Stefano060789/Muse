@@ -1,4 +1,5 @@
 import type { StoryLanguageCode } from './storyLanguage'
+import type { AccountPermissions } from './accountPermissions'
 
 export type StoryRomance = 'sweet' | 'spicy'
 
@@ -16,9 +17,9 @@ export function parseStoryRomance(value: unknown): StoryRomance | undefined {
   return value
 }
 
-export function requireRomanceConfirmation(romance: StoryRomance | undefined, confirmation: unknown): void {
+export function requireRomanceConfirmation(romance: StoryRomance | undefined, confirmation: unknown, permissions?: AccountPermissions): void {
   const mode = parseStoryRomance(romance)
-  if (mode && confirmation !== true) {
+  if (mode && (permissions?.managed ? !permissions.romance : confirmation !== true)) {
     throw new StoryRomanceError('Confirm that you are 18+, all romantic characters are adults, the content is consensual and non-graphic, and you have permission to include any real people.')
   }
 }

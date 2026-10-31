@@ -16,13 +16,16 @@ try {
     '--target', 'es2020', '--skipLibCheck', '--noEmit', 'false'], { cwd: root, stdio: 'inherit' })
   const states = []
   const refs = []
+  const effects = []
+  let permissions = { managed: false, ready: true }
   global.setTimeout = (callback, delay) => { assert.equal(delay, 1500); timers.set(++nextTimer, callback); return nextTimer }
   global.clearTimeout = id => timers.delete(id)
   Module._load = function (name, ...args) {
+    if (name.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => permissions }
     if (name === 'react') return {
       useState: initial => { const slot = { value: initial }; states.push(slot); return [initial, value => { slot.value = value }] },
       useRef: initial => { const slot = { current: initial }; refs.push(slot); return slot },
-      useEffect: () => {}
+      useEffect: effect => { effects.push(effect) }
     }
     return originalLoad.call(this, name, ...args)
   }
@@ -97,7 +100,24 @@ try {
   ukrainianHook.dictate('guess', () => {})
   assert.equal(current.lang, 'uk-UA', 'Dictation recognizes Ukrainian when the selected story language is Ukrainian')
   ukrainianHook.cancelRecording()
+  permissions = { managed: true, ready: true, services: true, accountId: 'registered-reader' }
+  const effectStart = effects.length
+  const registeredHook = useStoryInteraction(undefined, 'it-IT')
+  registeredHook.dictate('response', value => { text = value })
+  const activeRecognition = current
+  const previousText = text
+  permissions = { ...permissions, services: false }
+  effects[effectStart]()
+  assert.equal(activeRecognition.aborted, true, 'Permission lifecycle cleanup aborts the active microphone')
+  activeRecognition.onresult({ results: [[{ transcript: 'private late result' }]] })
+  assert.equal(text, previousText, 'Revocation discards late transcripts')
+  const stateStart = states.length
+  const revokedHook = useStoryInteraction(undefined, 'it-IT')
+  revokedHook.dictate('response', value => { text = value })
+  assert.equal(current, activeRecognition, 'Revoked permission never creates another recognition session')
+  assert.match(states[stateStart + 1].value, /Enable audio processing in Settings/)
   console.log('PASS name dictation, stale callback isolation, network/permission/no-result guidance')
+  console.log('PASS registered permission revocation releases the microphone and discards late transcripts')
 } finally {
   Module._load = originalLoad
   global.window = originalWindow

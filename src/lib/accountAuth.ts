@@ -3,8 +3,9 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { storyStorageMode } from './storyRepository'
 import { hasShareConsent } from './shareConsent'
+import { accountPermissions, type AccountPermissions } from './accountPermissions'
 
-export type AccountUser = { id: string; email: string | undefined; displayName?: string; shareTeaserConsent?: boolean }
+export type AccountUser = { id: string; email: string | undefined; displayName?: string; shareTeaserConsent?: boolean; permissions?: AccountPermissions }
 
 export async function requireAccount(req: NextApiRequest, res: NextApiResponse): Promise<AccountUser | null> {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && storyStorageMode() === 'sqlite') {
@@ -35,7 +36,8 @@ export async function requireAccount(req: NextApiRequest, res: NextApiResponse):
       : ''
     return {
       id: data.user.id, email: data.user.email, ...(displayName ? { displayName } : {}),
-      ...(hasShareConsent(metadata) ? { shareTeaserConsent: true } : {})
+      ...(hasShareConsent(metadata) ? { shareTeaserConsent: true } : {}),
+      permissions: accountPermissions(metadata)
     }
   } catch (error) {
     if (error instanceof SharedStoryError) throw error

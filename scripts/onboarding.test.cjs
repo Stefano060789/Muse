@@ -21,6 +21,8 @@ function load(relative, mocks = {}) {
     if (name === '../lib/demoPageLocalization' || name === './demoPageLocalization') return load('src/lib/demoPageLocalization.ts', mocks)
     if (name === '../lib/interfaceFlow') return load('src/lib/interfaceFlow.ts', mocks)
     if (name === '../lib/interfacePages') return load('src/lib/interfacePages.ts', mocks)
+    if (name === '../lib/useAccountPermissions') return { useAccountPermissions: () => ({ ready: true, managed: false, services: false, romance: false }) }
+    if (name === '../lib/registrationCopy') return load('src/lib/registrationCopy.ts', mocks)
     if (name === './storyLanguage' || name === '../lib/storyLanguage') return load('src/lib/storyLanguage.ts', mocks)
     throw new Error('Unexpected dependency: ' + name)
   })

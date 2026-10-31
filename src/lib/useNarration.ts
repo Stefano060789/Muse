@@ -7,6 +7,7 @@ import {
 import { StoryAmbience } from './storyAmbience'
 import { MUSE_AI_CONSENT_VERSION } from './legalContact'
 import { accountFetch } from './accountClient'
+import { useAccountPermissions } from './useAccountPermissions'
 import {
   DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, LEGACY_IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES,
   narrativeDelivery, narrationPauseAfter, parseImmersivePreferences, serializeImmersivePreferences, storySoundscape,
@@ -39,7 +40,9 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [textPosition, setTextPosition] = useState(0)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [cloudConsent, setCloudConsent] = useState(false)
+  const permissions = useAccountPermissions()
+  const [localCloudConsent, setCloudConsent] = useState(false)
+  const cloudConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localCloudConsent)
   const [deviceOnly, setDeviceOnly] = useState(false)
   const [cloudAudioUrl, setCloudAudioUrl] = useState('')
   const [preferenceNotice, setPreferenceNotice] = useState('')
@@ -136,6 +139,13 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     release()
     if (mounted.current) { setStatus('idle'); setActiveText(''); setTextPosition(0); setCloudAudioUrl(''); setAmbientKind('none') }
   }, [release])
+  useEffect(() => {
+    if (!cloudConsent || permissions.error) stop()
+  }, [cloudConsent, permissions.error, stop])
+  useEffect(() => {
+    stop()
+    setCloudConsent(false)
+  }, [permissions.accountId, stop])
   const fail = (message = '') => {
     release()
     if (!mounted.current) return
@@ -240,6 +250,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setAmbientNotice('')
     setAmbientKind('none')
     if (!text.trim()) { setError('There is no text to narrate.'); return }
+    if (!permissions.ready || permissions.error) { setError(permissions.error || 'Account permissions are still loading. Try again shortly.'); return }
+    if (permissions.managed && !permissions.services) { setError('Audio processing permission is disabled. Manage permission in Settings.'); return }
     const id = active.current
     setActiveText(text)
     setTextPosition(0)

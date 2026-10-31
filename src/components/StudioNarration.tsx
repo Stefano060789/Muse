@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
+import ExplicitConsent from './ExplicitConsent'
 
 export type StudioSceneStatus = { enabled: boolean; ready: boolean; blocked?: boolean; message?: string }
 
@@ -26,7 +28,9 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9, playRequest = 0,
   provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
-  const [consent, setConsent] = useState(false)
+  const permissions = useAccountPermissions()
+  const [localConsent, setConsent] = useState(false)
+  const consent = permissions.managed ? permissions.services : localConsent
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [url, setUrl] = useState('')
@@ -47,6 +51,21 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   useEffect(() => {
     if (stopSignal || disabled) audioRef.current?.pause()
   }, [stopSignal, disabled, audioRef])
+  useEffect(() => {
+    setConsent(false)
+    if (!pending.current && !blobUrl.current) return
+    generation.current++
+    pending.current?.abort()
+    pending.current = null
+    playWhenLoaded.current = false
+    audioRef.current?.pause()
+    ambientCallbacks.current.onAmbientStop?.()
+    ambientCallbacks.current.onReadAlong?.(0, false)
+    if (blobUrl.current) URL.revokeObjectURL(blobUrl.current)
+    blobUrl.current = ''
+    setUrl('')
+    setBusy(false)
+  }, [permissions.accountId, permissions.managed, permissions.services, permissions.error, audioRef])
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = voiceVolume
   }, [voiceVolume, url, audioRef])
@@ -114,7 +133,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
       {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
       {status?.enabled && !status.ready && !status.blocked ? <>
-        <label style={{ display: 'block', margin: '1rem 0' }}><input type="checkbox" checked={consent} disabled={busy || disabled} onChange={event => setConsent(event.target.checked)} /> Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></label>
+        <ExplicitConsent checked={consent} onChange={setConsent}>Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></ExplicitConsent>
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}

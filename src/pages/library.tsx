@@ -10,11 +10,13 @@ import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 import StoryArchiveButton from '../components/StoryArchiveButton'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
-import { archiveSyncNote, interfacePageText as text } from '../lib/interfacePages'
+import { archiveSyncNote, collectionCopy, interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 
 export default function LibraryPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const collectionText = collectionCopy(interfaceLanguage)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -129,8 +131,8 @@ export default function LibraryPage() {
   return (
     <>
       <Head><title>{`Muse - ${text('archiveTitle', interfaceLanguage)}`}</title><meta name="description" content={text('archiveSubtitle', interfaceLanguage)} /></Head>
-      <main className="atelier-page" lang={interfaceLanguage} style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <main className="atelier-page muse-collection-page" lang={interfaceLanguage} style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
+        <div className="muse-collection-layout">
           <p className="atelier-eyebrow">{text('archiveEyebrow', interfaceLanguage)}</p>
           <h1 className="atelier-title">{text('archiveTitle', interfaceLanguage)}</h1>
           <p className="atelier-subtitle">{text('archiveSubtitle', interfaceLanguage)}</p>
@@ -139,31 +141,33 @@ export default function LibraryPage() {
             <a href="#personal-stories-heading">{text('storiesForMe', interfaceLanguage)} ({personalEntries.length})</a>
             <a href="#shared-stories-heading">{text('giftsForOthers', interfaceLanguage)} ({sharedEntries.length})</a>
           </nav>
-          <p role="note">{archiveSyncNote(interfaceLanguage)}</p>
+          <p className="muse-collection-note" role="note">{archiveSyncNote(interfaceLanguage)}</p>
           <details>
             <summary>{text('privacyAndStorage', interfaceLanguage)}</summary>
-            <p>Entries contain answers, progress and private access links. Anyone using this browser may access them.</p>
-            <p>Server stories have no automatic expiry. Shared briefs stay saved in this browser independently of recipient completion, until you remove them or clear browser storage. View story progress loads progress only when you ask.</p>
-            <p>Removing an entry does not delete its server story, disable recipient links or reset its allowance. Saved entries contain private owner access; do not share them. Only copy the recipient link for sharing.</p>
-            <p>Sign in to manage your gift stories and view their progress. Recipient links remain available without an account.</p>
+            <p>{collectionText.storage}</p>
           </details>
           {error && <div role="alert"><p>{error} Unreadable entries are hidden, not deleted.</p><button onClick={refresh}>Retry</button></div>}
           {!ready && <p role="status">{text('loadingLibrary', interfaceLanguage)}</p>}
           {ready && !error && !entries.length && <p>{text('emptyLibrary', interfaceLanguage)} <Link href="/story">{text('personalStoryTitle', interfaceLanguage)}</Link> · <Link href="/shared#new">{text('createGift', interfaceLanguage)}</Link>.</p>}
-          {ready && <section aria-labelledby="personal-stories-heading">
+          {ready && <section className="muse-collection-section" aria-labelledby="personal-stories-heading">
           <h2 id="personal-stories-heading">{text('storiesForMe', interfaceLanguage)}</h2>
           {!personalEntries.length && <p>{text('noPersonalStories', interfaceLanguage)}</p>}
           {personalEntries.map(entry => (
-            <article className="atelier-card" key={`${entry.kind}:${entry.id}`} style={{ margin: '1rem 0' }}>
+            <article className="atelier-card muse-collection-card" key={`${entry.kind}:${entry.id}`}>
               <h3>{entry.story.title}</h3>
               {(() => {
                 const completed = entry.story.journey
-                  ? entry.story.journey.status === 'concluded' || entry.story.journey.status === 'exhausted'
+                  ? entry.story.journey.status === 'concluded'
                   : entry.story.responses.length >= entry.story.scenes.length ||
                     (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
                 return <>
-                  <p>{completed ? text('storyCompleted', interfaceLanguage) : entry.story.journey ? `${text('inProgress', interfaceLanguage)} · Scene ${entry.story.currentStep + 1}` : `${text('inProgress', interfaceLanguage)} · Scene ${Math.min(entry.story.currentStep + 1, entry.story.scenes.length)} of ${entry.story.scenes.length}`}</p>
-                  {entry.story.chapter ? <p>Chapter {entry.story.chapter.number} · Following {entry.story.chapter.parentTitle}</p> : null}
+                  <p>{entry.story.journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
+                    : completed ? text('storyCompleted', interfaceLanguage)
+                      : entry.story.journey ? `${text('inProgress', interfaceLanguage)} · ${collectionText.scene(entry.story.currentStep + 1)}`
+                        : `${text('inProgress', interfaceLanguage)} · ${collectionText.sceneRange(Math.min(entry.story.currentStep + 1, entry.story.scenes.length), entry.story.scenes.length)}`}</p>
+                  {entry.story.chapter ? <p>{entry.story.chapter.parentTitle
+                    ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
+                    : collectionText.chapter(entry.story.chapter.number)}</p> : null}
                   {completed ? <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
@@ -172,9 +176,9 @@ export default function LibraryPage() {
                   </details>
                 </>
               })()}
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <div className="muse-collection-actions">
                 <button className="atelier-button" onClick={() => openPersonal(entry.id)}>
-                  {text('readStory', interfaceLanguage)}
+                {entry.story.journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : text('readStory', interfaceLanguage)}
                 </button>
                 <button className="atelier-secondary" onClick={() => remove(entry)}>{text('removeFromBrowser', interfaceLanguage)}</button>
                 {entry.story.archived ? <StoryArchiveButton story={entry.story} language={interfaceLanguage} onSaved={refresh} /> : null}

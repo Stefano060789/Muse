@@ -7,6 +7,8 @@ import type { PersonalStory } from '../lib/story'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
 import { useShareConsent } from '../lib/useShareConsent'
 import { shareConsentCopy } from '../lib/shareConsentCopy'
+import { useAccountPermissions } from '../lib/useAccountPermissions'
+import { registrationCopy } from '../lib/registrationCopy'
 
 export default function PersonalStoryShareCard({
   story,
@@ -16,6 +18,7 @@ export default function PersonalStoryShareCard({
   interfaceLanguage: StoryLanguageCode
 }) {
   const consent = useShareConsent()
+  const permissions = useAccountPermissions()
   const permissionCopy = shareConsentCopy(interfaceLanguage)
   const [teaser, setTeaser] = useState('')
   const [busy, setBusy] = useState(false)
@@ -130,7 +133,7 @@ export default function PersonalStoryShareCard({
     </button>
     {expanded ? <>
     {!teaser ? <>
-      {!consent.accepted ? <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', margin: '1rem 0', lineHeight: 1.6 }}>
+      {permissions.managed && !permissions.services ? <p role="alert"><a href="/account">{registrationCopy(interfaceLanguage).settings}</a></p> : !consent.accepted ? <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', margin: '1rem 0', lineHeight: 1.6 }}>
         <input type="checkbox" checked={false} disabled={!consent.ready || consent.saving} onChange={event => {
           void consent.save(event.target.checked).catch(() => setMessage(permissionCopy.error))
         }} />
