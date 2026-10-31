@@ -51,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }))
       return res.status(200).json({ stories: stories.filter(Boolean) })
     }
-    if (!(req.body?.mode === 'journey' && ['resume', 'delete'].includes(req.body?.action))) requireProviderConsent(req.body)
+    if (!(req.body?.mode === 'journey' && ['resume', 'delete', 'archive', 'restore'].includes(req.body?.action))) requireProviderConsent(req.body)
     if (req.body?.action === 'share-teaser') {
       if (!account.shareTeaserConsent) {
         throw new SharedStoryError('Accept the optional AI sharing-summary permission in Settings before generating a summary.', 403)
@@ -78,6 +78,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const common = { id, capabilityHash: journeyHash(capability), accountId: account.id, cap: adventureGlobalCap() }
       if (body.action === 'resume') {
         return res.status(200).json(publicJourney(await db.personalJourney({ ...common, operation: 'view' }), capability))
+      }
+      if (body.action === 'archive' || body.action === 'restore') {
+        return res.status(200).json(publicJourney(await db.personalJourney({
+          ...common, operation: 'archive', archived: body.action === 'archive'
+        }), capability))
       }
       let operation: JourneyOperation
       if (body.action === 'create' || body.action === 'continue') {

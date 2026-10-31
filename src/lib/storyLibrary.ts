@@ -3,6 +3,7 @@ import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, 
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
 import { parseFreeformState, parseStoryChoiceMode, parseSuggestedChoices } from './freeformStory'
 import type { JourneyDuration, JourneySnapshot } from './personalJourney'
+import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from './journeyLimits'
 import { assertStoryNarrationLanguage, parseStoryLanguage } from './storyLanguage'
 import { parseStoryRomance } from './storyRomance'
 
@@ -80,12 +81,13 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   })
   if (!scenes.length || typeof input.currentStep !== 'number' || !Number.isInteger(input.currentStep) || input.currentStep < 0 || input.currentStep >= scenes.length) throw new Error('Invalid story progress.')
   if (input.generation !== undefined && input.generation !== 'ai') throw new Error('Invalid story generation.')
+  if (input.archived !== undefined && typeof input.archived !== 'boolean') throw new Error('Invalid story archive state.')
   let journey: (JourneySnapshot & { capability: string }) | undefined
   if (input.journey !== undefined) {
     const saved = record(input.journey)
     const caps: Record<number, number> = { 5: 3, 10: 6, 15: 9, 20: 12 }
     if (typeof saved.duration !== 'number' || !caps[saved.duration] || saved.maxTurns !== caps[saved.duration] ||
-      !Number.isInteger(saved.revision) || Number(saved.revision) < 0 || Number(saved.revision) > Number(saved.maxTurns) ||
+      !Number.isInteger(saved.revision) || Number(saved.revision) < 0 || Number(saved.revision) > Number(saved.maxTurns) + JOURNEY_ENDING_RECOVERY_ATTEMPTS ||
       typeof saved.pending !== 'boolean' || !['active', 'concluded', 'exhausted'].includes(String(saved.status)) ||
       typeof saved.capability !== 'string' || !/^[0-9a-f]{64}$/i.test(saved.capability) ||
       scenes.length > Number(saved.maxTurns) + 1 || scenes.some(scene => scene.choices.length || scene.question)) throw new Error('Invalid personal journey snapshot.')
@@ -100,6 +102,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
     }
   }
   return {
+    ...(typeof input.archived === 'boolean' ? { archived: input.archived } : {}),
     ...(language ? { language } : {}),
     ...(romance ? { romance } : {}),
     ...(chapter ? { chapter } : {}),

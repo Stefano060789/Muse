@@ -26,6 +26,8 @@ import { accountFetch } from '../lib/accountClient'
 import { interfacePageText as pageText } from '../lib/interfacePages'
 import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { interfaceFlowText as flowText, type InterfaceFlowKey } from '../lib/interfaceFlow'
+import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
+import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -345,7 +347,11 @@ export default function StoryPage() {
 
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status)
     : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
-  const readyForClosing = Boolean(story?.journey && !finished && story.journey.revision === story.journey.maxTurns - 1)
+  const recoveringEnding = story?.journey?.status === 'exhausted'
+  const recoveryCopy = chapterRecoveryCopy(interfaceLanguage)
+  const readyForClosing = Boolean(story?.journey && story.journey.status !== 'concluded' &&
+    story.journey.revision >= story.journey.maxTurns - 1 &&
+    story.journey.revision < story.journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS)
   const writeClosingScene = async () => {
     if (!story?.journey || !readyForClosing || archiveReading || requestLock.current) return
     if (!reconciled || story.journey.pending) {
@@ -625,7 +631,7 @@ export default function StoryPage() {
               </ExplicitConsent> : null}
               <details style={{ marginTop: '1rem' }}>
                 <summary>Privacy and limits</summary>
-                <p>Your need and selected memories go to the configured AI provider. Duration is approximate, not a timer. The last successful response concludes the story; failed final attempts cannot be retried or refunded.</p>
+                <p>{recoveryCopy.help}</p>
                 <p>Your creator code is never saved. Private story access stays in this browser. Browser narration is free; narration and dictation may use online speech services.</p>
               </details>
               <button className="atelier-button" onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem' }}>{isGenerating ? flow('creatingStory') : flow('createStory')}</button>
@@ -677,7 +683,7 @@ export default function StoryPage() {
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
                 {story.journey?.state ? <details><summary>{flow('journeyMemory')}</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{flow(key)}: {story.journey!.state![key].join(', ') || flow('noneYet')}</p>)}<p>{story.journey.state.progress}</p></details> : null}
-                {readyForClosing && !archiveReading ? <section aria-label={flow('chapterClosingScene')}>
+                {readyForClosing && !recoveringEnding && !archiveReading ? <section aria-label={flow('chapterClosingScene')}>
                   <h3>{flow('writeEnding')}</h3>
                   <button type="button" className="atelier-button" disabled={isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
                     {isGenerating ? flow('writing') : flow('writeEnding')}
@@ -718,7 +724,15 @@ export default function StoryPage() {
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
                 <h2>{story.journey?.status === 'exhausted' ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('savedScenes')}`
                   : story.journey ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('storyComplete')}` : pageText('storyCompleted', interfaceLanguage)}</h2>
-                <p>{story.journey?.status === 'exhausted' ? flow('exhaustedStoryNote') : flow('completedStoryNote')}</p>
+                <p>{story.journey?.status === 'exhausted' ? recoveryCopy.exhausted : flow('completedStoryNote')}</p>
+                {recoveringEnding && !archiveReading ? <section aria-label={recoveryCopy.recover}>
+                  <p>{readyForClosing ? recoveryCopy.help : recoveryCopy.limit}</p>
+                  {readyForClosing ? <>
+                    <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>{recoveryCopy.consent}</ExplicitConsent>
+                    <button type="button" disabled={!aiConsent || isGenerating || !reconciled || Boolean(story.journey?.pending)}
+                      onClick={() => void writeClosingScene()}>{isGenerating ? flow('writing') : recoveryCopy.recover}</button>
+                  </> : null}
+                </section> : null}
                 <button type="button" onClick={() => { stopSpeaking(); setRereading(value => !value) }}>{rereading ? flow('closeReading') : flow('readAgain')}</button>
                 {story.journey?.status === 'concluded' ? <section aria-label="Continue with a new chapter">
                   <button type="button" disabled={isGenerating || Boolean(preparation)} onClick={() => {

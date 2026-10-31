@@ -82,6 +82,8 @@ async function main() {
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/interfacePages')) return plain('src/lib/interfacePages.ts')
     if (id.endsWith('/interfaceFlow')) return plain('src/lib/interfaceFlow.ts')
+    if (id.endsWith('/journeyLimits')) return plain('src/lib/journeyLimits.ts')
+    if (id.endsWith('/chapterRecoveryCopy')) return plain('src/lib/chapterRecoveryCopy.ts')
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => interfaceLocale, interfaceText: () => 'Settings' }
     if (id.endsWith('/browserDrafts')) return plain('src/lib/browserDrafts.ts', browser)
     if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
@@ -119,7 +121,7 @@ async function main() {
       if (body.action === 'delete') return { ok: deletionSuccess, json: async () => deletionSuccess ? { deleted: true } : { error: 'Deletion denied' } }
       if (body.action === 'respond' && responseGate) await responseGate
       if (body.action === 'conclude') {
-        loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: 3, status: 'concluded' },
+        loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: loadedStory.journey.revision + 1, status: 'concluded' },
           currentStep: 1, scenes: [...loadedStory.scenes.slice(0, 1), { title: 'The conclusion', body: 'The door closes and the garden is safe.', question: '', choices: [] }] }
       }
       if (respondSuccessfully) return { ok: true, json: async () => ({
@@ -522,6 +524,35 @@ async function main() {
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true, 'Confirmation covers the new chapter responses')
   loadedStory = parentStory
   chapterResponse = undefined
+  loadedStory = { ...parentStory, journey: { ...parentStory.journey, revision: 3, status: 'exhausted' } }
+  browser.location = { search: '' }
+  slots.length = 0; effects.length = 0
+  await flush()
+  const recoveryPermission = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('write its ending'))
+  assert.ok(recoveryPermission(), 'Exhausted chapters offer ending-specific processing consent')
+  assert.equal(find('button', 'Recover the ending').props.disabled, true)
+  const beforeEndingRecovery = requests.length
+  await click('Recover the ending')
+  assert.equal(requests.length, beforeEndingRecovery, 'No ending recovery without explicit consent')
+  interfaceLocale = 'it-IT'
+  await flush()
+  assert.ok(find('button', 'Recupera il finale'))
+  assert.ok(nodes().some(node => node.type === '../components/ExplicitConsent' && label(node).includes('scrivere il finale')))
+  interfaceLocale = 'en-US'
+  await flush()
+  recoveryPermission().props.onChange(true)
+  await flush()
+  await click('Recover the ending')
+  assert.equal(requests.at(-1).action, 'conclude')
+  assert.equal(requests.at(-1).revision, 3)
+  assert.equal(loadedStory.journey.revision, 4)
+  assert.ok(find('button', 'Continue · Chapter 2'), 'Saved recovered endings expose the usual next-chapter action')
+  loadedStory = { ...parentStory, journey: { ...parentStory.journey, revision: 5, status: 'exhausted' } }
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Recover the ending'))
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Ending recovery attempts used')))
+  loadedStory = parentStory
   loadedStory = { ...loadedStory, responses: [], currentStep: 0 }
   browser.location = { search: '?read=1' }
   slots.length = 0; effects.length = 0

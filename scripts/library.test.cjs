@@ -93,6 +93,7 @@ try {
         if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
         if (name === '../components/PersonalStoryShareCard') return { __esModule: true, default: 'personal-story-share-card' }
+        if (name === '../components/StoryArchiveButton') return { __esModule: true, default: 'story-archive-button' }
         if (name === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
         if (name === '../lib/interfacePages') return {
           archiveSyncNote: () => 'Account stories sync when you sign in.',
@@ -386,6 +387,21 @@ try {
       assert.ok(textOf(ui.render()).includes('Account session expired.'))
       assert.ok(textOf(ui.render()).includes('Sign in or create an account'))
       assert.equal(read(ui.store).library.entries.length, 1, 'Failed account sync preserves existing browser entries')
+    } finally { ui.cleanup() }
+  })
+  check('archived stories remain readable and expose restoration in Archive', () => {
+    const story = { ...personal('closed'), archived: true }
+    const ui = mountLibrary([], 'https://muse.example', [story])
+    try {
+      const tree = ui.render()
+      assert.ok(button(tree, 'Read story'))
+      const restore = nodes(tree).find(node => node.type === 'story-archive-button')
+      assert.ok(restore)
+      assert.equal(restore.props.story.archived, true)
+      lib.saveLibraryPersonalStory({ ...story, archived: false }, ui.store)
+      restore.props.onSaved()
+      assert.ok(!nodes(ui.render()).some(node => node.type === 'story-archive-button'))
+      assert.equal(read(ui.store).library.entries.length, 1, 'Restoration does not delete the saved story')
     } finally { ui.cleanup() }
   })
   check('personal cards keep progress simple and place journey allowances and storage details under disclosure', () => {

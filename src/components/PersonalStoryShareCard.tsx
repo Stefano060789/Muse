@@ -20,6 +20,7 @@ export default function PersonalStoryShareCard({
   const [teaser, setTeaser] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [expanded, setExpanded] = useState(false)
   const language = story.language ?? interfaceLanguage
   const mood = personalStoryMoodText(story.mood, language)
   const copy = (key: Parameters<typeof personalStoryShareText>[0]) => personalStoryShareText(key, interfaceLanguage)
@@ -123,16 +124,18 @@ export default function PersonalStoryShareCard({
     }
   }
 
-  return <section className="atelier-card" aria-labelledby="share-story-heading" style={{ marginTop: '1rem' }}>
-    <h4 id="share-story-heading">{copy('shareStoryTitle')}</h4>
-    <p>{copy('shareStoryDescription')}</p>
+  return <section aria-label={copy('shareStoryTitle')} style={{ marginTop: '1rem' }}>
+    <button type="button" className="atelier-button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
+      {copy('shareStoryTitle')}
+    </button>
+    {expanded ? <>
     {!teaser ? <>
       {!consent.accepted ? <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', margin: '1rem 0', lineHeight: 1.6 }}>
         <input type="checkbox" checked={false} disabled={!consent.ready || consent.saving} onChange={event => {
           void consent.save(event.target.checked).catch(() => setMessage(permissionCopy.error))
         }} />
         <span>{copy('teaserConsent')} {permissionCopy.allow}</span>
-      </label> : <p className="atelier-note">{permissionCopy.remembered}</p>}
+      </label> : null}
       {consent.failed ? <p role="alert">{permissionCopy.error}</p> : null}
       <button type="button" className="atelier-button" disabled={!consent.accepted || !consent.ready || consent.saving || busy} onClick={() => void requestTeaser()}>
         {busy ? copy('creatingTeaser') : copy('createTeaser')}
@@ -148,5 +151,6 @@ export default function PersonalStoryShareCard({
       </div>
     </>}
     {message ? <p role="status">{message}</p> : null}
+    </> : null}
   </section>
 }

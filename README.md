@@ -151,6 +151,8 @@ The server checks the current account permission before reserving an interaction
 older consent versions require acceptance again. Other AI and speech permissions
 remain separate. Share the text through a device app, copy it, or download a
 PNG card from **My stories** or the Archive.
+Sharing starts with a single **Share your story** button. Consent and card options
+appear only when opened; opening the controls does not use an AI interaction.
 Personal touches also remain optional inside story creation. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
 The compact footer shows configured contacts only, or a localized link to
@@ -246,11 +248,20 @@ continuity is never trusted. Each chapter is a separate saved story linked to it
 parent and root, so previous chapters remain unchanged and can be reread. Retrying
 the same request reconciles saved progress instead of spending another AI call;
 failed attempts are not automatically retried or refunded. A separately confirmed
-continuation from an older chapter can start another branch. Unfinished/exhausted
-journeys and legacy browser-only saves cannot start a new chapter this way.
+continuation from an older chapter can start another branch. Exhausted journeys
+can explicitly recover a real ending with up to two additional ending-only
+attempts, then start the next chapter. Unfinished journeys and legacy browser-only
+saves still cannot start a new chapter this way.
 Chapter metadata uses existing JSON storage; no database migration is required.
 Scenes use stable numbers while unfolding, not a growing "Scene 2 of 2" total.
 **Archive** (`/library`) keeps the saved collection and gift management tools.
+**Close story** hides a personal story from My stories without concluding or
+deleting it. **Restore to My stories** in Archive brings it back so it can
+continue from the same saved progress. Account journeys sync this reversible
+archive state across devices; legacy browser-only stories remain local.
+Closing/restoring consumes no AI interaction and never resets story allowances.
+Hosted installations must apply the updated `supabase/personal-journeys.sql`
+for the archive operation; the flag is stored in existing journey JSON.
 Personal entries open a reading-only view of saved scenes, with no response
 submission controls. Starting or continuing personal adventures belongs in
 My stories. Existing `/story` and `/story?new=1` links remain supported.
@@ -923,8 +934,16 @@ listened to, kept as it is, or followed by a separately confirmed new chapter.
 Older three-scene AI saves likewise stop asking for an answer once their
 already-generated final scene is reached.
 The last successful response at the cap must return a validated conclusion,
-not another required action. Failed final attempts exhaust the allowance
-without fabricating an ending or charging another call.
+not another required action. Failed final attempts keep the saved scenes
+without fabricating an ending or automatically charging another call.
+**Recover the ending** offers up to two explicitly requested ending-only attempts
+per chapter, including previously exhausted chapters. These consume the normal
+account AI-interaction allowance and UTC daily budget. They cannot add ordinary
+turns, reset failed attempts or unlock a new chapter before a real conclusion is
+saved. Request replay/concurrency and the original scenes remain protected.
+Apply the updated `supabase/personal-journeys.sql` on hosted deployments before
+using recovery; it updates the atomic RPC and revision constraint to 14 without
+resetting stories or budgets. SQLite uses the same rules without a manual migration.
 
 The initial mood, duration, cap, opted-in five profile points and prepared
 plan are authoritative server data. Live prompts send only that bounded

@@ -262,7 +262,7 @@ async function main() {
     assert.equal(calls, before)
     concurrency = resumed.body
   })
-  await check('failed final response exhausts cap permanently, preserving last narration without fake conclusion', async () => {
+  await check('failed final response blocks ordinary turns, preserving last narration without fake conclusion', async () => {
     const action = responseBody(concurrency)
     providerMode = 'network'
     const before = calls
@@ -316,7 +316,7 @@ async function main() {
       { ...opening, narrationLanguage: 'invalid-lang-tag' }, { ...opening, narrationStyle: 'evil' },
       { ...opening, title: 'x'.repeat(161) }, { ...opening, secret: 'hidden answer' }
     ]) assert.throws(() => journey.parseJourneyOpening(invalid))
-    for (const patch of [{ text: '' }, { text: 'x'.repeat(801) }, { text: '\u0000x' }, { revision: 13 }, { requestId: 'x' }]) assert.throws(() => journey.parseJourneyAction({ ...responseBody(concurrency), ...patch }))
+    for (const patch of [{ text: '' }, { text: 'x'.repeat(801) }, { text: '\u0000x' }, { revision: 15 }, { requestId: 'x' }]) assert.throws(() => journey.parseJourneyAction({ ...responseBody(concurrency), ...patch }))
   })
   await check('Shared Adventure and personal journeys share the identical atomic UTC daily attempt bucket', async () => {
     const creation = newCreation()
@@ -452,9 +452,9 @@ async function main() {
     assert.ok(ui.includes('useStoryInteraction'))
     assert.ok(!ui.includes('Dictation language'))
     assert.ok(ui.includes('useStoryInteraction(stopSpeaking, story?.language || language)'))
-    assert.ok(ui.includes('Editable response'))
+    assert.ok(ui.includes("aria-label={flow('responseLabel')}"))
     assert.ok(ui.includes('accountFetch'))
-    assert.ok(ui.includes('Go to your Muse account'))
+    assert.ok(ui.includes('href="/account"'))
     assert.ok(!ui.includes('x-muse-creator-code'))
     assert.ok(!ui.includes('setInterval'))
     assert.ok(ui.includes('window.setTimeout') && ui.includes('window.clearTimeout'))
@@ -622,6 +622,133 @@ async function main() {
     assert.notEqual(failure.body.story.scenes.at(-1).body, conclusion, 'Failure does not fabricate an ending')
     assert.equal((await api(failedAction)).body.status, 'failed')
     assert.equal(calls, afterFailure, 'Closing failures are consumed without automatic retries')
+    const recoveryAction = { ...responseBody(failure.body), action: 'conclude' }
+    const beforeRecovery = calls
+    const recovered = await api(recoveryAction)
+    assert.equal(recovered.status, 200)
+    assert.equal(recovered.body.snapshot.status, 'concluded')
+    assert.equal(recovered.body.snapshot.revision, 4)
+    assert.equal(recovered.body.story.scenes.at(-1).body, conclusion)
+    assert.equal(requests.at(-1).input.action, journey.JOURNEY_CLOSING_ACTION)
+    assert.equal((await api(recoveryAction)).body.snapshot.status, 'concluded')
+    assert.equal(calls, beforeRecovery + 1, 'Recovery replay never regenerates')
+    const child = await api({ ...newCreation(), action: 'continue',
+      sourceId: recovered.body.story.id, sourceCapability: recovered.body.story.journey.capability })
+    assert.equal(child.status, 200)
+    assert.equal(child.body.story.chapter.number, 2, 'Only a saved actual conclusion unlocks chapter two')
+    assert.equal(requests.at(-1).input.continuation.previousEnding, conclusion)
+  })
+  await check('ending recovery is bounded, persistent, charged and cannot enable arbitrary extra turns', async () => {
+    let result = await api(newCreation())
+    for (let step = 0; step < 2; step++) result = await api(responseBody(result.body))
+    providerMode = 'network'
+    result = await api({ ...responseBody(result.body), action: 'conclude' })
+    assert.equal(result.body.snapshot.status, 'exhausted')
+    const initialScenes = result.body.story.scenes
+    const before = calls
+    const budget = dayUsed()
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.equal((await api(responseBody(result.body))).status, 409, 'No arbitrary extra action')
+      assert.equal((await api({ ...newCreation(), action: 'continue',
+        sourceId: result.body.story.id, sourceCapability: result.body.story.journey.capability })).status, 409)
+      const action = { ...responseBody(result.body), action: 'conclude' }
+      result = await api(action)
+      assert.equal(result.body.snapshot.status, 'exhausted')
+      assert.deepEqual(result.body.story.scenes, initialScenes)
+      assert.equal((await api(action)).body.status, 'failed')
+    }
+    providerMode = 'ok'
+    assert.equal(calls, before + 2)
+    assert.equal(dayUsed(), budget + 2, 'Recovery retains global daily accounting')
+    assert.equal(result.body.snapshot.revision, 5)
+    assert.equal((await api({ ...responseBody(result.body), action: 'conclude' })).status, 409)
+    const resumed = await api({ mode: 'journey', action: 'resume',
+      id: result.body.story.id, capability: result.body.story.journey.capability })
+    assert.equal(resumed.body.snapshot.revision, 5, 'Reopening does not reset recovery attempts')
+  })
+  await check('longest chapter recovers at revision 14 with daily gating, concurrency and browser persistence', async () => {
+    let result = await api(newCreation(20))
+    for (let step = 0; step < 11; step++) result = await api(responseBody(result.body))
+    providerMode = 'network'
+    result = await api({ ...responseBody(result.body), action: 'conclude' })
+    assert.equal(result.body.snapshot.revision, 12)
+    const scenes = result.body.story.scenes
+    const before = calls
+    const budget = dayUsed()
+    process.env.MUSE_ADVENTURE_DAILY_ACTION_CAP = String(budget)
+    const firstRecovery = { ...responseBody(result.body), action: 'conclude' }
+    assert.equal((await api(firstRecovery)).status, 429)
+    assert.equal(calls, before)
+    assert.equal(dayUsed(), budget)
+    process.env.MUSE_ADVENTURE_DAILY_ACTION_CAP = '1000'
+    result = await api(firstRecovery)
+    assert.equal(result.body.snapshot.revision, 13)
+    assert.deepEqual(result.body.story.scenes, scenes)
+    providerMode = 'ok'
+    const secondRecovery = { ...responseBody(result.body), action: 'conclude' }
+    let release, notify
+    hold = new Promise(resolve => { release = resolve })
+    const arrived = new Promise(resolve => { notify = resolve })
+    received = notify
+    const pending = api(secondRecovery)
+    await arrived
+    assert.equal((await api(secondRecovery)).body.status, 'pending')
+    assert.equal((await api({ ...secondRecovery, requestId: randomUUID() })).status, 409)
+    release(); hold = null
+    result = await pending
+    assert.equal(result.body.snapshot.revision, 14)
+    assert.equal(result.body.snapshot.status, 'concluded')
+    assert.deepEqual(result.body.story.scenes.slice(0, -1), scenes)
+    assert.equal(result.body.story.scenes.at(-1).body, conclusion)
+    assert.equal(calls, before + 2)
+    assert.equal(dayUsed(), budget + 2)
+    const storeMap = new Map()
+    const storage = { getItem: key => storeMap.get(key) ?? null, setItem: (key, value) => storeMap.set(key, value), removeItem: key => storeMap.delete(key) }
+    library.saveLibraryPersonalStory(result.body.story, storage)
+    const restored = library.loadStoryLibrary(storage)
+    assert.equal(restored.error, null)
+    assert.deepEqual(restored.library.entries[0].story, result.body.story)
+    assert.throws(() => library.saveLibraryPersonalStory({
+      ...result.body.story, journey: { ...result.body.story.journey, revision: 15 }
+    }, storage))
+  })
+  await check('account archive and restore preserve progress, cost nothing and remain owner-isolated', async () => {
+    let result = await api(newCreation(10))
+    result = await api(responseBody(result.body))
+    const originalStory = result.body.story
+    const beforeCalls = calls, beforeBudget = dayUsed()
+    const move = action => api({
+      mode: 'journey', action, id: originalStory.id, capability: originalStory.journey.capability, consentVersion: null
+    })
+    const closed = await move('archive')
+    assert.equal(closed.status, 200)
+    assert.equal(closed.body.story.archived, true)
+    assert.deepEqual(closed.body.story.journey, originalStory.journey)
+    assert.deepEqual(closed.body.story.scenes, originalStory.scenes)
+    assert.deepEqual(closed.body.story.responses, originalStory.responses)
+    assert.equal((await move('archive')).body.story.archived, true, 'Repeated close is idempotent')
+    const collection = await api({ mode: 'journey', action: 'library' })
+    assert.equal(collection.body.stories.find(story => story.id === originalStory.id).archived, true)
+    await assert.rejects(storyRepository().personalJourney({
+      operation: 'archive', id: originalStory.id, accountId: 'another-account',
+      capabilityHash: journey.journeyHash(originalStory.journey.capability), cap: 1000, archived: false
+    }), error => error.status === 404)
+    const restored = await move('restore')
+    assert.equal(restored.body.story.archived, false)
+    assert.deepEqual(restored.body.story.journey, originalStory.journey)
+    assert.equal(calls, beforeCalls)
+    assert.equal(dayUsed(), beforeBudget)
+    const storeMap = new Map()
+    const storage = { getItem: key => storeMap.get(key) ?? null, setItem: (key, value) => storeMap.set(key, value), removeItem: key => storeMap.delete(key) }
+    library.saveLibraryPersonalStory(closed.body.story, storage)
+    assert.equal(library.loadStoryLibrary(storage).library.entries[0].story.archived, true)
+    library.saveLibraryPersonalStory(restored.body.story, storage)
+    assert.equal(library.loadStoryLibrary(storage).library.entries[0].story.archived, false)
+    assert.throws(() => library.validatePersonalStory({ ...restored.body.story, archived: 'yes' }))
+    const continued = await api(responseBody(restored.body))
+    assert.equal(continued.status, 200)
+    assert.equal(continued.body.snapshot.revision, originalStory.journey.revision + 1)
+    assert.deepEqual(continued.body.story.scenes.slice(0, -1), originalStory.scenes)
   })
   console.log(`\n${passed} personal journey checks passed; ${calls + childCalls} mocked provider calls, zero real AI/hosted database requests.`)
 }

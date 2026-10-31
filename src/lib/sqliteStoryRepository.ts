@@ -8,7 +8,7 @@ import type { SharedStoryProgress } from './sharedStoryProgress'
 import { storyStorageError } from './storyStorageErrors'
 import type { AdventureRequest, AdventureResult, AdventureTurn } from './sharedAdventure'
 import { PERMANENT_STORY_EXPIRY } from './storyRetention'
-import { JOURNEY_TURNS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
+import { JOURNEY_TURNS, JOURNEY_CLOSING_ACTION, JOURNEY_ENDING_RECOVERY_ATTEMPTS, journeySnapshot, type JourneyOperation, type JourneyRecord, type JourneyResult } from './personalJourney'
 import {
   SHARED_MEDIA_PENDING_GRACE_MS as MEDIA_PENDING_GRACE_MS, type SharedGiftReply, type SharedMediaRecord,
   type SharedVoiceRecord
@@ -503,6 +503,12 @@ export class SqliteStoryRepository implements StoryRepository {
       const result = (status?: JourneyResult['status']): JourneyResult => ({ record, snapshot: journeySnapshot(record, pending()), ...(status ? { status } : {}) })
       save()
       if (input.operation === 'view') return result()
+      if (input.operation === 'archive') {
+        if (typeof input.archived !== 'boolean') throw new SharedStoryError('Journey: invalid archive state')
+        record.archived = input.archived
+        save()
+        return result()
+      }
       const previous = db.prepare('SELECT * FROM muse_personal_journey_requests WHERE journey_id = ? AND request_id = ?').get(input.id, input.requestId!)
       if (input.operation === 'finish') {
         if (!previous || previous.fingerprint !== input.fingerprint || previous.status !== 'pending' || previous.revision !== record.used) throw new SharedStoryError('Journey: attempt expired or already completed', 409)
@@ -534,7 +540,10 @@ export class SqliteStoryRepository implements StoryRepository {
       if (record.creationStatus !== 'done') throw new SharedStoryError('Journey: preparation incomplete or failed', 409)
       if (pending()) throw new SharedStoryError('Journey: response in progress; reconcile before continuing', 409)
       if (input.revision !== record.used) throw new SharedStoryError('Journey: stale state; reconcile before continuing', 409)
-      if (record.used >= JOURNEY_TURNS[record.input.duration] || record.turn?.concluded) throw new SharedStoryError('Journey: response allowance exhausted', 409)
+      const maxTurns = JOURNEY_TURNS[record.input.duration]
+      const recovering = record.used >= maxTurns && input.text === JOURNEY_CLOSING_ACTION &&
+        record.used < maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS
+      if ((record.used >= maxTurns && !recovering) || record.turn?.concluded) throw new SharedStoryError('Journey: response allowance exhausted', 409)
       const bucket = `day:${new Date(now).toISOString().slice(0, 10)}`
       db.prepare('INSERT INTO muse_adventure_budgets(bucket) VALUES (?) ON CONFLICT DO NOTHING').run(bucket)
       const daily = Number(db.prepare('SELECT used FROM muse_adventure_budgets WHERE bucket = ?').get(bucket)!.used)

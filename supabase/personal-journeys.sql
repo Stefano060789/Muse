@@ -22,9 +22,14 @@ create table if not exists public.muse_personal_journey_requests (
   kind text not null check (kind in ('create', 'turn')),
   status text not null check (status in ('pending', 'done', 'failed')),
   reserved_at timestamptz not null default now(),
-  revision integer not null check (revision between 0 and 12),
+  revision integer not null check (revision between 0 and 14),
   primary key (journey_id, request_id)
 );
+-- Upgrade existing installations too; no story records or attempts are reset.
+alter table public.muse_personal_journey_requests
+  drop constraint if exists muse_personal_journey_requests_revision_check;
+alter table public.muse_personal_journey_requests
+  add constraint muse_personal_journey_requests_revision_check check (revision between 0 and 14);
 alter table public.muse_personal_journeys enable row level security;
 alter table public.muse_personal_journey_requests enable row level security;
 revoke all on public.muse_personal_journeys, public.muse_personal_journey_requests from public, anon, authenticated;
@@ -57,7 +62,7 @@ declare
 begin
   if account_id is null then raise exception 'Journey: account required'; end if;
   if cap is null or cap not between 1 and 10000 then raise exception 'Journey: invalid daily cap'; end if;
-  if op is null or op not in ('create', 'view', 'reserve', 'finish') then raise exception 'Journey: invalid operation'; end if;
+  if op is null or op not in ('create', 'view', 'reserve', 'finish', 'archive') then raise exception 'Journey: invalid operation'; end if;
   if ch is null or ch !~ '^[0-9a-f]{64}$' then raise exception 'Journey: invalid capability'; end if;
   -- This serializes first creation as well as existing-session operations.
   -- Lock order is always session then UTC budget, as in Shared Adventure.
@@ -95,7 +100,11 @@ begin
   used := (r->>'used')::integer;
   select exists(select 1 from public.muse_personal_journey_requests where journey_id = sid and status = 'pending') into pending;
 
-  if not reserved and op <> 'view' then
+  if op = 'archive' then
+    if jsonb_typeof(input->'archived') is distinct from 'boolean' then raise exception 'Journey: invalid archive state'; end if;
+    r := r || jsonb_build_object('archived', input->'archived');
+  end if;
+  if not reserved and op not in ('view', 'archive') then
     if rid is null or rid !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       or fp is null or fp !~ '^[0-9a-f]{64}$' then raise exception 'Journey: invalid request'; end if;
     select * into previous from public.muse_personal_journey_requests where journey_id = sid and request_id = rid;
@@ -134,7 +143,11 @@ begin
       if r->>'creationStatus' <> 'done' then raise exception 'Journey: preparation incomplete or failed'; end if;
       if pending then raise exception 'Journey: response in progress; reconcile before continuing'; end if;
       if (input->>'revision')::integer is distinct from used then raise exception 'Journey: stale state; reconcile before continuing'; end if;
-      if used >= max_turns or (r->'turn'->>'concluded')::boolean then raise exception 'Journey: response allowance exhausted'; end if;
+      if (r->'turn'->>'concluded')::boolean or
+        (used >= max_turns and not (
+          input->>'text' = 'Bring this chapter to a close using the choices and discoveries already made. Do not require another player action.'
+          and used < max_turns + 2
+        )) then raise exception 'Journey: response allowance exhausted'; end if;
       insert into public.muse_adventure_budgets(bucket) values (day_bucket) on conflict do nothing;
       select b.used into daily from public.muse_adventure_budgets b where b.bucket = day_bucket for update;
       if daily >= cap then raise exception 'Journey: daily cap reached'; end if;

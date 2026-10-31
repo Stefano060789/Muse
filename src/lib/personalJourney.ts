@@ -1,4 +1,6 @@
 import { createHash } from 'crypto'
+export { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from './journeyLimits'
+import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from './journeyLimits'
 import type { PersonalStory, PersonalStoryMood } from './story'
 import { SharedStoryError } from './sharedStory'
 import { parsePersonalStoryRequest } from './personalStoryGenerator'
@@ -44,6 +46,7 @@ export type JourneyOpening = NarrationMetadata & {
   choiceMode?: StoryChoiceMode
 }
 export type JourneyRecord = {
+  archived?: boolean
   id: string
   capabilityHash: string
   input: JourneyInput
@@ -69,7 +72,8 @@ export type JourneySnapshot = {
 }
 export type JourneyResult = { record: JourneyRecord; snapshot: JourneySnapshot; status?: 'reserved' | 'pending' | 'done' | 'failed' }
 export type JourneyOperation = {
-  operation: 'create' | 'view' | 'reserve' | 'finish'
+  operation: 'create' | 'view' | 'reserve' | 'finish' | 'archive'
+  archived?: boolean
   id: string
   capabilityHash: string
   accountId: string
@@ -133,7 +137,7 @@ export function nextChapterInput(parent: JourneyRecord, duration: unknown): Jour
 }
 export function parseJourneyAction(body: Record<string, unknown>, authoritativeRecord?: JourneyRecord) {
   const requestId = journeyIdentifier(body.requestId)
-  if (!Number.isInteger(body.revision) || Number(body.revision) < 0 || Number(body.revision) > 12) {
+  if (!Number.isInteger(body.revision) || Number(body.revision) < 0 || Number(body.revision) > 12 + JOURNEY_ENDING_RECOVERY_ATTEMPTS) {
     throw new SharedStoryError('Provide the current revision.')
   }
   const mode = authoritativeRecord ? authoritativeRecord.input.choiceMode ?? 'free' : parseStoryChoiceMode(body.choiceMode)
@@ -148,7 +152,10 @@ export const JOURNEY_CLOSING_ACTION = 'Bring this chapter to a close using the c
 
 export function parseJourneyClosingAction(body: Record<string, unknown>, record: JourneyRecord) {
   const finalRevision = JOURNEY_TURNS[record.input.duration] - 1
-  if (body.revision !== finalRevision) throw new SharedStoryError('The closing scene is available at the end of this chapter.', 409)
+  if (!Number.isInteger(body.revision) || Number(body.revision) < finalRevision ||
+      Number(body.revision) >= finalRevision + 1 + JOURNEY_ENDING_RECOVERY_ATTEMPTS) {
+    throw new SharedStoryError('The closing scene is unavailable or its recovery attempts have been used.', 409)
+  }
   return parseJourneyAction({ ...body, text: JOURNEY_CLOSING_ACTION, choiceMode: 'free' })
 }
 export function parseJourneyTurn(value: unknown, concluding: boolean, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyTurn {
@@ -192,6 +199,7 @@ export function publicJourney(result: JourneyResult, capability: string) {
   const { record, status } = result
   const snapshot = journeySnapshot(record, result.snapshot.pending)
   const story: PersonalStory | null = record.opening ? {
+    archived: record.archived === true,
     ...(record.input.language ? { language: record.input.language } : {}),
     ...(record.input.romance ? { romance: record.input.romance } : {}),
     id: record.id, createdAt: record.createdAt, generation: 'ai', title: record.opening.title, description: record.opening.description,
@@ -239,7 +247,7 @@ export async function generateJourneyOpening(input: JourneyInput): Promise<Journ
 }
 export async function generateJourneyTurn(record: JourneyRecord): Promise<JourneyTurn> {
   if (!record.opening || !record.turn) throw new SharedStoryError('Journey is not ready.', 409)
-  const remaining = JOURNEY_TURNS[record.input.duration] - record.used
+  const remaining = Math.max(0, JOURNEY_TURNS[record.input.duration] - record.used)
   const mode = record.input.choiceMode ?? 'free'
   const language = record.input.language
   const system = journeySystem(mode) + '\n' + romanceInstruction(record.input.romance) + '\n' + storyLanguageInstruction(language)

@@ -7,6 +7,7 @@ import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
+import StoryArchiveButton from '../components/StoryArchiveButton'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
 import { archiveSyncNote, interfacePageText as text } from '../lib/interfacePages'
@@ -176,6 +177,7 @@ export default function LibraryPage() {
                   {text('readStory', interfaceLanguage)}
                 </button>
                 <button className="atelier-secondary" onClick={() => remove(entry)}>{text('removeFromBrowser', interfaceLanguage)}</button>
+                {entry.story.archived ? <StoryArchiveButton story={entry.story} language={interfaceLanguage} onSaved={refresh} /> : null}
               </div>
             </article>
           ))}

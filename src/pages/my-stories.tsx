@@ -6,6 +6,9 @@ import { accountFetch, supabase } from '../lib/accountClient'
 import { interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
+import StoryArchiveButton from '../components/StoryArchiveButton'
+import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
+import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
 
 type PersonalEntry = Extract<LibraryEntry, { kind: 'personal' }>
 
@@ -19,7 +22,7 @@ export default function MyStoriesPage() {
   const syncPending = useRef(false)
   const refresh = () => {
     const result = loadStoryLibrary()
-    setEntries(result.library.entries.filter((entry): entry is PersonalEntry => entry.kind === 'personal')
+    setEntries(result.library.entries.filter((entry): entry is PersonalEntry => entry.kind === 'personal' && !entry.story.archived)
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
     setError(result.error || '')
     setReady(true)
@@ -94,14 +97,17 @@ export default function MyStoriesPage() {
               <h3>{entry.story.title}</h3>
               {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `Chapter ${chapterNumber} · Following ${entry.story.chapter.parentTitle}` : `Chapter ${chapterNumber}`}</p> : null}
               <p>{journey?.status === 'concluded' ? `Chapter ${chapterNumber} · ${text('storyCompleted', interfaceLanguage)}`
-                : journey?.status === 'exhausted' ? `Chapter ${chapterNumber} · Attempt limit reached; saved scenes available`
+                : journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
                   : journey ? `Chapter ${chapterNumber} · ${text('inProgress', interfaceLanguage)}`
                     : completed ? text('storyCompleted', interfaceLanguage) : text('inProgress', interfaceLanguage)}</p>
               {journey?.status === 'concluded' ? <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <button type="button" onClick={() => open(entry, true, 'read')}>{text('readChapter', interfaceLanguage)} {chapterNumber}</button>
                 <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>{text('continueToChapter', interfaceLanguage)} {(chapterNumber ?? 1) + 1}</button>
               </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : completed ? text('readStory', interfaceLanguage) : text('continueStory', interfaceLanguage)}</button>}
+              {journey?.status === 'exhausted' && journey.revision < journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS ? <button
+                type="button" onClick={() => open(entry, false)}>{chapterRecoveryCopy(interfaceLanguage).recover}</button> : null}
               {completed ? <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
+              <StoryArchiveButton story={entry.story} language={interfaceLanguage} onSaved={refresh} />
             </article>
           })}
         </section>

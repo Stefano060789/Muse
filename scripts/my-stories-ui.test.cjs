@@ -16,9 +16,10 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
   let cursor = 0, tree
   const entries = [
     { kind: 'personal', id: 'active', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Active story', journey: { status: 'active' } } },
+    { kind: 'personal', id: 'archived', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Archived story', archived: true, journey: { status: 'active' } } },
     { kind: 'personal', id: 'done', updatedAt: '2026-10-25T01:00:00Z', story: { title: 'Completed story', journey: { status: 'concluded' } } },
     { kind: 'personal', id: 'child', updatedAt: '2026-10-24T12:00:00Z', story: { title: 'Next chapter', chapter: { number: 2, rootId: 'done', parentId: 'done', parentTitle: 'Completed story' }, journey: { status: 'active' } } },
-    { kind: 'personal', id: 'exhausted', updatedAt: '2026-10-24T01:00:00Z', story: { title: 'Saved scenes', journey: { status: 'exhausted' } } },
+    { kind: 'personal', id: 'exhausted', updatedAt: '2026-10-24T01:00:00Z', story: { title: 'Saved scenes', journey: { status: 'exhausted', revision: 6, maxTurns: 6 } } },
     { kind: 'shared', id: 'gift', updatedAt: '2026-10-26T02:00:00Z', story: { title: 'Private gift' } }
   ]
   const react = {
@@ -42,6 +43,7 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link') return { __esModule: true, default: id }
     if (id.endsWith('/PersonalStoryShareCard')) return { __esModule: true, default: 'PersonalStoryShareCard' }
+    if (id.endsWith('/StoryArchiveButton')) return { __esModule: true, default: 'StoryArchiveButton' }
     if (id.endsWith('/interfacePages')) return {
       interfacePageText: key => ({
         myStoriesTitle: 'My stories', myStoriesEyebrow: 'Your next adventure',
@@ -56,6 +58,10 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
       })[key] || key
     }
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
+    if (id.endsWith('/journeyLimits')) return { JOURNEY_ENDING_RECOVERY_ATTEMPTS: 2 }
+    if (id.endsWith('/chapterRecoveryCopy')) return { chapterRecoveryCopy: () => ({
+      recover: 'Recover the ending', exhausted: 'Ending not completed · saved scenes kept'
+    }) }
     if (id.endsWith('/storyLibrary')) return {
       loadStoryLibrary: () => ({ library: { entries: [...entries] }, error: '' }),
       saveLibraryPersonalStory(story) {
@@ -93,6 +99,8 @@ async function main() {
   assert.ok(hub.nodes().some(node => node.props.href === '/story?new=1'))
   assert.ok(hub.nodes().some(node => node.props.href === '/library'))
   assert.ok(!hub.nodes().some(node => label(node) === 'Private gift'))
+  assert.ok(!hub.nodes().some(node => node.type === 'h3' && label(node) === 'Archived story'))
+  assert.equal(hub.nodes().filter(node => node.type === 'StoryArchiveButton').length, 4)
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · In progress'))
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 2 · In progress'))
   assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · Completed'))
@@ -106,6 +114,9 @@ async function main() {
   await hub.click('Continue story')
   assert.equal(hub.selections.at(-1), 'active')
   assert.deepEqual(hub.navigations, ['/story?continue=1', '/story?read=1', '/story'])
+  await hub.click('Recover the ending')
+  assert.equal(hub.selections.at(-1), 'exhausted')
+  assert.equal(hub.navigations.at(-1), '/story', 'Exhausted stories open recovery instead of read-only archive')
   const account = await mount({ signedIn: true })
   assert.equal(account.requests.length, 1)
   assert.deepEqual(account.requests[0], { mode: 'journey', action: 'library' })
