@@ -42,7 +42,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const [notice, setNotice] = useState('')
   const permissions = useAccountPermissions()
   const [localCloudConsent, setCloudConsent] = useState(false)
-  const cloudConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localCloudConsent)
+  const cloudConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : permissions.accountId ? permissions.cloudAudio === true : localCloudConsent)
   const [deviceOnly, setDeviceOnly] = useState(false)
   const [cloudAudioUrl, setCloudAudioUrl] = useState('')
   const [preferenceNotice, setPreferenceNotice] = useState('')

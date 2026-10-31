@@ -33,7 +33,7 @@ export function NarrationButton({ narrator, text, beforeSpeak, label: requestedL
   const current = narrator.busy && narrator.activeText === text
   const elsewhere = narrator.busy && !current
   return <div style={rowStyle}>
-    {showCloudConsent && narrator.provider === 'google' && !narrator.cloudConsent ? <ExplicitConsent checked={false} onChange={narrator.setCloudConsent}>
+    {showCloudConsent && narrator.provider === 'google' && !narrator.cloudConsent ? <ExplicitConsent scope="cloudAudio" checked={false} onChange={narrator.setCloudConsent}>
       Allow Google Cloud to narrate this text (paid generation when not already saved). <a href="/privacy">Privacy</a>
     </ExplicitConsent> : null}
     {narrator.cloudAudioUrl && narrator.activeText === text ? <div style={{ width: '100%' }}>
@@ -62,7 +62,7 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
   return <aside aria-label={copy.settings} className="muse-audio-settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
     <p style={{ marginTop: 0 }}><strong>{narrator.provider === 'browser' ? copy.device : `${copy.cloud} · ${narrator.provider === 'google' ? 'Google' : 'ElevenLabs'}`}</strong></p>
     {narrator.provider !== 'browser' || narrator.deviceOnly ? <label><input type="checkbox" checked={narrator.deviceOnly} onChange={event => narrator.setDeviceOnly(event.target.checked)} /> {copy.deviceChoice}</label> : null}
-    {showCloudConsent && narrator.provider !== 'browser' ? <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>Send spoken text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></ExplicitConsent> : null}
+    {showCloudConsent && narrator.provider !== 'browser' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>Send spoken text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></ExplicitConsent> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>{copy.style} <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
         <option value="auto">{copy.automatic}</option>

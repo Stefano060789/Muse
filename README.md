@@ -167,6 +167,11 @@ signed-in account (version and acceptance date), follows that account across
 devices, and can be revoked in Settings. New accounts explicitly accept the
 combined processing permission at registration; it includes sharing summaries.
 Existing accounts retain their previous optional sharing permission.
+Existing accounts can now save a separate cloud-audio permission once in
+Settings. Story pages link to Settings instead of showing another audio
+checkbox; both personal cloud narration and Studio generation enforce the
+saved permission before synthesis. Revoking it stops active cloud playback.
+This does not migrate story-AI or adult permissions or grant microphone access.
 The server checks the current account permission before reserving an interaction;
 older consent versions require acceptance again. Existing accounts retain separate
 AI and speech opt-ins. Share the text through a device app, copy it, or download a

@@ -3,6 +3,15 @@ import { MUSE_AI_CONSENT_VERSION } from './legalContact'
 import type { AccountPermissions } from './accountPermissions'
 
 export const PROVIDER_CONSENT_VERSION = MUSE_AI_CONSENT_VERSION
+export function requireCloudAudioConsent(body: unknown, permissions?: AccountPermissions) {
+  if (permissions) {
+    if (!(permissions.managed ? permissions.services : permissions.cloudAudio)) {
+      throw new SharedStoryError('Enable cloud audio permission once in Settings before using cloud narration.', 403)
+    }
+    return
+  }
+  requireProviderConsent(body)
+}
 export function requireProviderConsent(body: unknown, permissions?: AccountPermissions) {
   if (permissions?.managed) {
     if (!permissions.services) throw new SharedStoryError('Enable Muse processing permission in Settings before using AI or cloud audio.', 403)

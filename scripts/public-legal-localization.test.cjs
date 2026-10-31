@@ -42,6 +42,7 @@ function load(relative) {
     }
     if (id.endsWith('/publicLegalCopy')) return load('src/lib/publicLegalCopy.ts')
     if (id.endsWith('/shareConsentCopy')) return load('src/lib/shareConsentCopy.ts')
+    if (id.endsWith('/audioControlsCopy')) return load('src/lib/audioControlsCopy.ts')
     throw new Error(`Unexpected dependency ${id} in ${relative}`)
   }
   new Function('module', 'exports', 'require', code)(module, module.exports, resolve)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './accountClient'
-import { accountPermissions, accountPermissionsUpdate } from './accountPermissions'
+import { accountPermissions, accountPermissionsUpdate, cloudAudioPermissionUpdate } from './accountPermissions'
 
 export function useAccountPermissions() {
   const [permissions, setPermissions] = useState(() => accountPermissions(undefined))
@@ -26,14 +26,14 @@ export function useAccountPermissions() {
     })
     return () => { active = false; data.subscription.unsubscribe() }
   }, [])
-  const save = async (services: boolean, romance: boolean) => {
+  const saveMetadata = async (metadata: ReturnType<typeof accountPermissionsUpdate> | ReturnType<typeof cloudAudioPermissionUpdate>) => {
     setSaving(true); setError('')
     try {
       if (!supabase) throw new Error('Account permission storage is unavailable.')
       const current = await supabase.auth.getSession()
       const id = current.data.session?.user.id
       if (current.error || !id) throw new Error('Sign in to update permissions.')
-      const result = await supabase.auth.updateUser({ data: accountPermissionsUpdate(services, romance) })
+      const result = await supabase.auth.updateUser({ data: metadata })
       if (result.error || result.data.user?.id !== id) throw new Error('Could not save account permissions.')
       const after = await supabase.auth.getSession()
       if (after.error || after.data.session?.user.id !== id) throw new Error('Your account changed. Check permissions again.')
@@ -43,5 +43,7 @@ export function useAccountPermissions() {
       throw cause
     } finally { setSaving(false) }
   }
-  return { ...permissions, accountId, ready, error, saving, save }
+  const save = (services: boolean, romance: boolean) => saveMetadata(accountPermissionsUpdate(services, romance))
+  const saveCloudAudio = (accepted: boolean) => saveMetadata(cloudAudioPermissionUpdate(accepted))
+  return { ...permissions, accountId, ready, error, saving, save, saveCloudAudio }
 }

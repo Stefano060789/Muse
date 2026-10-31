@@ -15,7 +15,7 @@ import {
 } from '../../lib/sharedStoryMedia'
 import { sharedMediaStore, type SharedMediaStore } from '../../lib/sharedMediaStore'
 import { apiSafety, reportOperation } from '../../lib/operations'
-import { requireProviderConsent } from '../../lib/providerConsent'
+import { requireProviderConsent, requireCloudAudioConsent } from '../../lib/providerConsent'
 import { parseStoryRomance, requireRomanceConfirmation } from '../../lib/storyRomance'
 import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } from '../../lib/studioNarration'
 import { PERMANENT_STORY_EXPIRY, publicStoryExpiry } from '../../lib/storyRetention'
@@ -186,7 +186,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })))
       return res.status(200).json({ stories, next: page.length > 20 ? page[19].id : null })
     }
-    if (action === 'create' || action === 'adventure' || action === 'studio-generate' || action === 'follow-up') requireProviderConsent(body, account?.permissions)
+    if (action === 'create' || action === 'adventure' || action === 'follow-up') requireProviderConsent(body, account?.permissions)
+    if (action === 'studio-generate') requireCloudAudioConsent(body, account?.permissions)
     if ((action === 'voice-start' || action === 'voice-finish') && account?.permissions?.managed && !account.permissions.services) {
       throw new SharedStoryError('Enable audio processing in Settings before uploading a voice message.', 403)
     }

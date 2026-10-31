@@ -47,7 +47,7 @@ function mount(extra = {}) {
   const module = { exports: {} }
   new Function('module', 'exports', 'require', 'URL', source)(module, module.exports,
     id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx, Fragment: 'fragment' }
-      : id.endsWith('/useAccountPermissions') ? { useAccountPermissions: () => ({ managed: false }) }
+      : id.endsWith('/useAccountPermissions') ? { useAccountPermissions: () => ({ managed: false, ready: true }) }
         : id === './ExplicitConsent' ? { default: 'ExplicitConsent' } : require(id),
     { createObjectURL() { return `blob:synthetic-${++serial}` }, revokeObjectURL(value) { revoked.push(value) } })
   const render = () => { cursor = 0; tree = module.exports.default(props); return tree }

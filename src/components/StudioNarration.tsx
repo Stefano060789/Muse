@@ -30,7 +30,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const permissions = useAccountPermissions()
   const [localConsent, setConsent] = useState(false)
-  const consent = permissions.managed ? permissions.services : localConsent
+  const consent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : permissions.accountId ? permissions.cloudAudio === true : localConsent)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [url, setUrl] = useState('')
@@ -65,7 +65,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
     blobUrl.current = ''
     setUrl('')
     setBusy(false)
-  }, [permissions.accountId, permissions.managed, permissions.services, permissions.error, audioRef])
+  }, [permissions.accountId, permissions.managed, permissions.services, permissions.cloudAudio, permissions.error, audioRef])
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = voiceVolume
   }, [voiceVolume, url, audioRef])
@@ -133,7 +133,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
       {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
       {status?.enabled && !status.ready && !status.blocked ? <>
-        <ExplicitConsent checked={consent} onChange={setConsent}>Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></ExplicitConsent>
+        <ExplicitConsent scope="cloudAudio" checked={consent} onChange={setConsent}>Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></ExplicitConsent>
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}

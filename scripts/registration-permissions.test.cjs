@@ -52,6 +52,14 @@ async function main() {
   const share = load('src/lib/shareConsent.ts')
   const romance = load('src/lib/storyRomance.ts')
   assert.deepEqual(permissions.accountPermissions({}), { managed: false, services: false, romance: false })
+  const audioGranted = permissions.accountPermissions(permissions.cloudAudioPermissionUpdate(true))
+  assert.equal(audioGranted.managed, false, 'Audio opt-in never migrates legacy story permissions')
+  assert.equal(audioGranted.services, false)
+  assert.equal(audioGranted.cloudAudio, true)
+  provider.requireCloudAudioConsent({}, audioGranted)
+  const audioRevoked = permissions.accountPermissions(permissions.cloudAudioPermissionUpdate(false))
+  assert.throws(() => provider.requireCloudAudioConsent({ consentVersion: provider.PROVIDER_CONSENT_VERSION }, audioRevoked), error => error.status === 403)
+  assert.throws(() => provider.requireCloudAudioConsent({ consentVersion: provider.PROVIDER_CONSENT_VERSION }, permissions.accountPermissions({})), error => error.status === 403)
   const granted = permissions.accountPermissionsUpdate(true, true)
   const active = permissions.accountPermissions(granted)
   assert.equal(share.hasShareConsent(granted), true)
@@ -84,11 +92,13 @@ async function main() {
     onAuthStateChange(callback) { listeners.add(callback); return { data: { subscription: { unsubscribe() { listeners.delete(callback) } } } } },
     async signUp(options) { signup = options; return { data: { session: null, user: { email: options.email } }, error: null } }
   } }
+  const savedAudioChoices = []
+  let pagePermissions = { managed: false, ready: true, saveCloudAudio: async accepted => { savedAudioChoices.push(accepted) } }
   const account = load('src/pages/account.tsx', {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'next/head': { default: 'Head' }, 'next/link': { default: 'Link' },
     '../lib/accountClient': { supabase: client },
-    '../lib/useAccountPermissions': { useAccountPermissions: () => ({ managed: false, ready: true }) },
+    '../lib/useAccountPermissions': { useAccountPermissions: () => pagePermissions },
     '../lib/useShareConsent': { useShareConsent: () => ({ accepted: false, ready: true }) },
     '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'en-US', interfaceText: key => key, loadInterfaceLanguage: () => 'en-US' },
     '../lib/storyPreferences': { loadStoryPreferences: () => ({ language: 'en-US' }) },
@@ -118,6 +128,15 @@ async function main() {
   assert.equal(signup.email, 'reader@example.com')
   assert.deepEqual(permissions.accountPermissions(signup.options.data), { managed: true, services: true, romance: false })
   assert.equal(session, null, 'Confirmation-email registrations retain permission in signup metadata without a session')
+  session = { user: { id: 'existing-settings-reader', email: 'reader@example.com', user_metadata: {} } }
+  listeners.forEach(callback => callback('SIGNED_IN', session))
+  nodes = await render()
+  const audioSection = nodes.find(node => node.props['aria-labelledby'] === 'cloud-audio-permission-heading')
+  assert.ok(audioSection, 'Existing signed-in accounts can save audio permission in Settings')
+  const audioCheckbox = flatten(audioSection).find(node => node?.type === 'input' && node.props.type === 'checkbox')
+  assert.equal(audioCheckbox.props.checked, false)
+  audioCheckbox.props.onChange({ target: { checked: true } }); await tick()
+  assert.deepEqual(savedAudioChoices, [true])
   let current = { user: { id: 'reader-a', user_metadata: granted } }
   const authListeners = new Set()
   let finishInitial
@@ -150,6 +169,12 @@ async function main() {
   authListeners.forEach(callback => callback('SIGNED_IN', current))
   assert.equal(remount.render().managed, false, 'Account changes do not transfer a previous grant')
   assert.equal(remount.render().accountId, 'legacy-b')
+  await remount.render().saveCloudAudio(true)
+  assert.equal(remount.render().managed, false)
+  assert.equal(remount.render().cloudAudio, true)
+  assert.equal(remount.render().services, false, 'Saving audio leaves story AI permissions unchanged')
+  await remount.render().saveCloudAudio(false)
+  assert.equal(remount.render().cloudAudio, false)
   authClient.auth.updateUser = async () => {
     const formerUser = current.user
     current = { user: { id: 'different-account', user_metadata: {} } }
@@ -176,6 +201,17 @@ async function main() {
   assert.ok(flatten(consent.render()).some(node => node?.props?.type === 'checkbox'), 'Legacy consent is unchanged')
   assert.deepEqual(consentChanges, [false], 'Switching accounts resets feature consent instead of transferring it')
   consent.dispose()
+  const audioProps = { scope: 'cloudAudio', checked: false, onChange() {}, children: 'Cloud audio' }
+  const audioComponent = runner('src/components/ExplicitConsent.tsx', 'default', {
+    ...jsxMocks, '../lib/useAccountPermissions': { useAccountPermissions: () => componentPermissions }
+  }, audioProps)
+  assert.ok(flatten(audioComponent.render()).some(node => node?.props?.href === '/account'))
+  assert.ok(!flatten(audioComponent.render()).some(node => node?.props?.type === 'checkbox'), 'Existing account audio opt-in lives only in Settings')
+  componentPermissions.cloudAudio = true
+  assert.equal(audioComponent.render(), null)
+  componentPermissions.cloudAudio = false
+  assert.ok(flatten(audioComponent.render()).some(node => node?.props?.href === '/account'))
+  audioComponent.dispose()
   let bills = 0, serverPermissions = revoked
   const endpoint = load('src/pages/api/personal-story.ts', {
     '../../lib/accountAuth': { requireAccount: async () => ({ id: 'reader-a', permissions: serverPermissions }) },
@@ -192,6 +228,31 @@ async function main() {
     }
   }).default
   const response = () => ({ code: 0, body: null, setHeader() {}, status(code) { this.code = code; return this }, json(body) { this.body = body; return this } })
+  let syntheses = 0
+  const tts = load('src/pages/api/tts.ts', {
+    '../../lib/accountAuth': { requireAccount: async () => ({ id: 'reader-a', permissions: serverPermissions }) },
+    '../../lib/providerConsent': provider, '../../lib/sharedStory': { SharedStoryError },
+    '../../lib/operations': { apiSafety: async () => true, reserveAiAttempt: async () => {}, reportOperation: async () => {} },
+    '../../lib/googleNarration': { synthesizeGoogleNarration: async () => { syntheses++; return new Uint8Array([1, 2]) } }
+  }).default
+  const previousProvider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER
+  process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
+  try {
+    serverPermissions = audioRevoked
+    const deniedAudio = response()
+    await tts({ method: 'POST', body: { text: 'Hello', consentVersion: provider.PROVIDER_CONSENT_VERSION } }, deniedAudio)
+    assert.equal(deniedAudio.code, 403)
+    assert.equal(syntheses, 0, 'Revoked saved audio permission blocks synthesis before paid use')
+    serverPermissions = audioGranted
+    const allowedAudio = { ...response(), send(body) { this.body = body; return this } }
+    await tts({ method: 'POST', body: { text: 'Hello' } }, allowedAudio)
+    assert.equal(allowedAudio.code, 200)
+    assert.equal(syntheses, 1, 'Saved legacy audio consent needs no repeated body consent')
+  } finally {
+    if (previousProvider === undefined) delete process.env.NEXT_PUBLIC_NARRATION_PROVIDER
+    else process.env.NEXT_PUBLIC_NARRATION_PROVIDER = previousProvider
+    serverPermissions = revoked
+  }
   const deniedResponse = response()
   await endpoint({ method: 'POST', headers: {}, body: { action: 'create', consentVersion: provider.PROVIDER_CONSENT_VERSION } }, deniedResponse)
   assert.equal(deniedResponse.code, 403)

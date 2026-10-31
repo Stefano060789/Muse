@@ -16,7 +16,15 @@ const copyCompiled = ts.transpileModule(copySource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText
 const legalCopy = {}
-new Function('exports', copyCompiled)(legalCopy)
+const audioCopy = {}
+const audioCompiled = ts.transpileModule(fs.readFileSync(path.join(root, 'src', 'lib', 'audioControlsCopy.ts'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText
+new Function('exports', audioCompiled)(audioCopy)
+new Function('exports', 'require', copyCompiled)(legalCopy, id => {
+  if (id === './audioControlsCopy') return audioCopy
+  throw new Error('Unexpected legal copy dependency: ' + id)
+})
 const englishPublicCopy = legalCopy.publicLegalCopy('en-US')
 const allParagraphs = sectionSet => Object.values(sectionSet)
   .flatMap(section => [section.heading, ...section.paragraphs])

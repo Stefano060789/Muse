@@ -3,7 +3,7 @@ import { legacyNarrationStyle, parseNarrationMetadata } from '../../lib/narratio
 import { requireAccount } from '../../lib/accountAuth'
 import { apiSafety, reserveAiAttempt, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
-import { requireProviderConsent } from '../../lib/providerConsent'
+import { requireCloudAudioConsent } from '../../lib/providerConsent'
 import { synthesizeGoogleNarration } from '../../lib/googleNarration'
 
 export const config = { api: { bodyParser: { sizeLimit: '64kb' } } }
@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!await apiSafety(req, res)) return
   const account = await requireAccount(req, res)
   if (!account) return
-  try { requireProviderConsent(req.body, account.permissions) } catch (error) {
+  try { requireCloudAudioConsent(req.body, account.permissions) } catch (error) {
     return res.status(error instanceof SharedStoryError ? error.status : 400).json({ error: error instanceof SharedStoryError ? error.message : `Cloud narration requires consent to send text to ${provider === 'google' ? 'Google' : 'ElevenLabs'} and use a paid attempt.` })
   }
   const apiKey = process.env.ELEVEN_API_KEY

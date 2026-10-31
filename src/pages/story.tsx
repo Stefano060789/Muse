@@ -639,7 +639,7 @@ export default function StoryPage() {
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
                 {flow('aiConsent')} {flow('attemptNote')}
               </ExplicitConsent>
-              {narrator.provider !== 'browser' ? <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
+              {narrator.provider !== 'browser' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                 Enable optional narration: send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
               </ExplicitConsent> : null}
               <details style={{ marginTop: '1rem' }}>
@@ -682,7 +682,7 @@ export default function StoryPage() {
               {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
                 <p>{interfaceCopy.listenDescription}</p>
-                <ExplicitConsent checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
+                <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                   Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}

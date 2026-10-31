@@ -18,6 +18,7 @@ import { personalStoryShareText } from '../lib/personalStoryShareCopy'
 import { useAccountPermissions } from '../lib/useAccountPermissions'
 import { accountPermissionsUpdate } from '../lib/accountPermissions'
 import { registrationCopy } from '../lib/registrationCopy'
+import { cloudAudioPermissionCopy } from '../lib/audioControlsCopy'
 
 type Account = { email?: string; displayName?: string }
 
@@ -25,6 +26,7 @@ export default function AccountPage() {
   const interfaceLanguage = useInterfaceLanguage()
   const permissions = useAccountPermissions()
   const registrationText = registrationCopy(interfaceLanguage)
+  const audioPermissionText = cloudAudioPermissionCopy(interfaceLanguage)
   const [registrationConsent, setRegistrationConsent] = useState(false)
   const [registrationRomance, setRegistrationRomance] = useState(false)
   const shareConsent = useShareConsent()
@@ -251,6 +253,13 @@ export default function AccountPage() {
             {permissionCopy.allow}
           </label>
           {shareConsent.failed ? <p role="alert">{permissionCopy.error}</p> : null}
+        </section> : null}
+        {account && permissions.ready && !permissions.managed ? <section className="atelier-card" aria-labelledby="cloud-audio-permission-heading">
+          <h2 id="cloud-audio-permission-heading">{audioPermissionText.title}</h2>
+          <label><input type="checkbox" checked={permissions.cloudAudio === true} disabled={permissions.saving}
+            onChange={event => { void permissions.saveCloudAudio(event.target.checked).catch(cause => setSettingsError(cause instanceof Error ? cause.message : registrationText.required)) }} /> {audioPermissionText.allow}</label>
+          <details><summary>{registrationText.title}</summary><p>{audioPermissionText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
+          {permissions.error ? <p role="alert">{permissions.error}</p> : null}
         </section> : null}
         <section aria-labelledby="account-settings-heading">
         <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>

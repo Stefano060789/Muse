@@ -279,6 +279,29 @@ async function main() {
       assert.equal(hook.render().loading, false)
     } finally { hook.dispose() }
   })
+  await check('existing accounts reuse saved cloud audio and cannot bypass revocation with a local checkbox', async () => {
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
+    let fetches = 0
+    global.fetch = async () => { fetches++; return new Response(new Blob(['audio'], { type: 'audio/mpeg' }), { headers: { 'Content-Type': 'audio/mpeg' } }) }
+    const permissions = { managed: false, ready: true, cloudAudio: true, accountId: 'existing-reader' }
+    const hook = mount({}, voices, true, { permissions })
+    try {
+      assert.equal(hook.render().cloudConsent, true)
+      await hook.render().speak('Saved audio permission.')
+      assert.equal(fetches, 1)
+      permissions.cloudAudio = false
+      hook.render(); hook.render()
+      assert.equal(hook.render().cloudAudioUrl, '')
+      hook.render().setCloudConsent(true)
+      assert.equal(hook.render().cloudConsent, false)
+      await hook.render().speak('No new request.')
+      assert.equal(fetches, 1)
+      permissions.accountId = 'another-reader'
+      delete permissions.cloudAudio
+      hook.render(); hook.render()
+      assert.equal(hook.render().cloudConsent, false)
+    } finally { hook.dispose() }
+  })
   await check('revoked registered audio permission also prevents browser speech', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     const hook = mount({}, voices, true, { permissions: { managed: true, ready: true, services: false, accountId: 'revoked-reader' } })
