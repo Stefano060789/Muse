@@ -18,7 +18,7 @@ function load(file, mocks) {
 const tick = () => new Promise(resolve => setImmediate(resolve))
 async function main() {
   const slots = [], requests = [], saves = []
-  let cursor = 0, refreshes = 0, deny = false, release
+  let cursor = 0, refreshes = 0, deny = false, status = 200, release
   const jsx = (type, props) => ({ type, props })
   const component = load('src/components/StoryArchiveButton.tsx', {
     react: {
@@ -31,7 +31,7 @@ async function main() {
       const body = JSON.parse(options.body)
       requests.push(body)
       await new Promise(resolve => { release = resolve })
-      return { ok: !deny, json: async () => deny ? { error: 'Permission denied' } : {
+      return { ok: !deny, status, json: async () => deny ? { error: 'Permission denied' } : {
         story: { ...story, archived: body.action === 'archive' }
       } }
     } }
@@ -67,10 +67,21 @@ async function main() {
   release(); await tick()
   assert.equal(saves.length, 2, 'Failed server move never alters browser copy')
   assert.ok(render().some(node => node.props.role === 'alert' && node.props.children === 'Permission denied'))
+  assert.equal(render().filter(node => node.type === 'button').length, 1, 'No local fallback for authorization or generic failures')
+  status = 404
+  render().find(node => node.type === 'button').props.onClick()
+  release(); await tick()
+  assert.equal(saves.length, 2, 'Unavailable server story is not automatically moved locally')
+  const localMove = render().find(node => node.type === 'button' && node.props.children === 'Sposta solo la copia del browser')
+  assert.ok(localMove)
+  localMove.props.onClick(); await tick()
+  assert.equal(saves.at(-1).archived, false)
+  assert.deepEqual(saves.at(-1).journey, story.journey, 'Browser-only restore retains original journey access and progress')
+  assert.equal(requests.length, 4, 'Explicit local move makes no extra network call')
   story = { id: 'legacy', title: 'Local' }
   render().find(node => node.type === 'button').props.onClick()
   await tick()
-  assert.equal(requests.length, 3, 'Legacy stories move locally without a server call')
+  assert.equal(requests.length, 4, 'Legacy stories move locally without a server call')
   assert.equal(saves.at(-1).archived, true)
   for (const language of ['en-US', 'it-IT', 'es-ES', 'zh-CN', 'hi-IN', 'uk-UA', 'ar-SA']) {
     assert.ok(load('src/lib/storyArchiveCopy.ts', {}).storyArchiveCopy(language).restore.trim())

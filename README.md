@@ -55,7 +55,7 @@ recordings are loaded and played, never generated automatically. Live shared
 turns use device speech. Personal cloud narration still requires explicit
 provider consent before sending text or spending an allowance. Switching to
 Read stops voice and ambience and reveals the full text.
-Settings, hints, keepsakes,
+Settings, hints,
 privacy explanations and the full footer are collapsed; required romance and
 AI-processing consent remain explicit. No create-your-own promotion appears
 after the reveal. Recipient dictation uses the story language. Dictation is
@@ -260,6 +260,9 @@ deleting it. **Restore to My stories** in Archive brings it back so it can
 continue from the same saved progress. Account journeys sync this reversible
 archive state across devices; legacy browser-only stories remain local.
 Closing/restoring consumes no AI interaction and never resets story allowances.
+If an account journey is unavailable (404), moving fails explicitly and offers
+an opt-in browser-copy-only move. This retains its scenes and journey metadata;
+it does not restore online access or promise that the story can continue.
 Hosted installations must apply the updated `supabase/personal-journeys.sql`
 for the archive operation; the flag is stored in existing journey JSON.
 Personal entries open a reading-only view of saved scenes, with no response
@@ -313,11 +316,6 @@ Optional extras stay collapsed:
   No voice cloning, transcription or AI processing. The microphone requires
   consent and HTTPS/device permission. Failed uploads can be retried without
   generating another story.
-- A printable keepsake; private answers, links, replies and media are excluded.
-  The final written message is excluded unless explicitly selected. Device
-  print/PDF support varies; disable print headers/footers to omit page URLs.
-  Live-adventure recipient keepsakes contain available scenes and the latest
-  turn, not an invented full transcript.
 
 Written drafts autosave only in the current browser and offer explicit
 restore/discard. They contain private text, not files, recordings, creator
@@ -351,8 +349,7 @@ notices, so keep it appropriate for the printed card.
 
 Anyone with the card can use its recipient link. Replacing that link, deleting
 the story invalidates printed copies. Printing does not
-extend retention or make an offline interactive story. A separate text keepsake
-can be kept offline, but excludes attachments and is not a full live transcript.
+extend retention or make an offline interactive story.
 iPhone print/PDF steps vary by iOS; physical-device printing and QR scanning
 remain release checks. Run `npm run test:gift-card` for local PNG QR generation,
 recipient-link validation and escaped printable HTML.
@@ -440,8 +437,7 @@ generates story text or restores AI, narration or romance consent. Storage error
 are explicit and unreadable drafts are not overwritten. Browser-local drafts
 are unencrypted, not synced or backed up. Language and duration are remembered;
 existing narration settings already remember voice/style and ambient preferences.
-Completed personal stories offer a read-only rereading view and printable text
-keepsake without private answers, memories or access links; an exhausted allowance
+Completed personal stories offer a read-only rereading view; an exhausted allowance
 is not presented as a completed ending.
 
 The same visual foundation covers gifts, the browser-local library, personal
@@ -495,7 +491,7 @@ proposes one 20-minute, 9-scene story and up to 60 live interactions in one
 playthrough. This proposed limit is not yet enforced: the
 current prototype allows up to 12 actions per playthrough and creator-configured
 story totals. Current Plus benefits include personal chapters, optional memories,
-gift media, printable keepsakes and cooperative group play. Separate personal
+gift media and cooperative group play. Separate personal
 story puzzles remain planned. Long Gift and Annual cards are marked as planned
 and not on sale. Premium cloud narration is excluded. Prices, taxes and final
 payment terms remain subject to checkout launch; the page does not turn on

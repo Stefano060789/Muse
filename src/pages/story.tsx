@@ -21,7 +21,6 @@ import { removeLibraryEntry, loadStoryLibrary, selectPersonalStory } from '../li
 import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
-import StoryKeepsake from '../components/StoryKeepsake'
 import { accountFetch } from '../lib/accountClient'
 import { interfacePageText as pageText } from '../lib/interfacePages'
 import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
@@ -751,8 +750,6 @@ export default function StoryPage() {
                     <button type="button" disabled={!chapterConsent || isGenerating || Boolean(preparation) || Boolean(story.romance && !chapterRomanceConfirmed)} onClick={() => void continueChapter()}>{isGenerating ? flow('startingChapter') : flow('confirmStartChapter')}</button>
                   </div> : null}
                 </section> : null}
-                <StoryKeepsake story={{ title: story.title, creatorName: 'Muse', recipientName: 'you', scenes: story.scenes }} />
-                <p className="atelier-note">The keepsake includes available story text, not your private answers, personal touches or access links.</p>
                 {rereading ? savedScenes : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}

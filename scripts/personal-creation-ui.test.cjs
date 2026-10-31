@@ -468,10 +468,10 @@ async function main() {
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Send response'))
   await click('Read again')
   assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Door'))
-  const keepsake = nodes().find(node => node.type === '../components/StoryKeepsake')
-  assert.deepEqual(Object.keys(keepsake.props.story).sort(), ['creatorName', 'recipientName', 'scenes', 'title'],
-    'Keepsakes receive text only, not answers or capabilities')
-  assert.ok(!JSON.stringify(keepsake.props.story).includes('test-capability'))
+  assert.ok(!nodes().some(node => node.type === '../components/StoryKeepsake'),
+    'Completed stories no longer offer PDF keepsakes')
+  assert.ok(!fs.readFileSync(path.join(root, 'src/pages/shared.tsx'), 'utf8').includes('StoryKeepsake'),
+    'Shared stories no longer offer PDF keepsakes')
   loadedStory = { ...loadedStory, journey: {
     capability: 'parent-capability', revision: 3, maxTurns: 3, duration: 5, status: 'concluded', choiceMode: 'free'
   } }

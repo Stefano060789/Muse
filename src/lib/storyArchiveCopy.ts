@@ -10,3 +10,14 @@ const copies: Record<StoryLanguageCode, { close: string; restore: string; busy: 
   'ar-SA': { close: 'إغلاق القصة', restore: 'إعادة إلى قصصي', busy: 'جارٍ الحفظ…', error: 'تعذر نقل القصة. حاول مجددًا.', local: 'قصة محلية: يُحفظ هذا التغيير في هذا المتصفح فقط.' }
 }
 export const storyArchiveCopy = (language: StoryLanguageCode) => copies[language]
+
+const unavailable: Record<StoryLanguageCode, { notice: string; move: string }> = {
+  'en-US': { notice: 'This story is unavailable in your current account. You can move the browser copy only; saved scenes are kept, but continuing requires access to the online story.', move: 'Move browser copy only' },
+  'it-IT': { notice: 'Questa storia non è disponibile nell’account attuale. Puoi spostare solo la copia del browser: le scene restano, ma per continuare serve accesso alla storia online.', move: 'Sposta solo la copia del browser' },
+  'es-ES': { notice: 'Esta historia no está disponible en tu cuenta actual. Puedes mover solo la copia del navegador; las escenas se conservan, pero continuar requiere acceso a la historia en línea.', move: 'Mover solo la copia del navegador' },
+  'zh-CN': { notice: '当前账号无法访问此故事。可仅移动浏览器副本并保留场景，但继续故事需要访问在线故事。', move: '仅移动浏览器副本' },
+  'hi-IN': { notice: 'यह कहानी वर्तमान खाते में उपलब्ध नहीं है। केवल ब्राउज़र की प्रति स्थानांतरित कर सकते हैं; दृश्य सुरक्षित रहेंगे, लेकिन जारी रखने के लिए ऑनलाइन कहानी तक पहुँच चाहिए।', move: 'केवल ब्राउज़र की प्रति स्थानांतरित करें' },
+  'uk-UA': { notice: 'Історія недоступна в поточному обліковому записі. Можна перемістити лише копію браузера: сцени збережуться, але продовження потребує доступу до онлайн-історії.', move: 'Перемістити лише копію браузера' },
+  'ar-SA': { notice: 'هذه القصة غير متاحة في حسابك الحالي. يمكنك نقل نسخة المتصفح فقط مع حفظ المشاهد، لكن المتابعة تتطلب الوصول إلى القصة عبر الإنترنت.', move: 'نقل نسخة المتصفح فقط' }
+}
+export const storyArchiveUnavailableCopy = (language: StoryLanguageCode) => unavailable[language]

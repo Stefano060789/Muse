@@ -16,7 +16,6 @@ import StoryPassage from '../components/StoryPassage'
 import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryReveal'
 import ExplicitConsent from '../components/ExplicitConsent'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
-import StoryKeepsake from '../components/StoryKeepsake'
 import PreSendCheck from '../components/PreSendCheck'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
@@ -1271,12 +1270,6 @@ export default function SharedStoryPage() {
                   <button type="button" style={buttonStyle} onClick={() => void loadVoice()}>{voiceUrl ? recipientText.reloadVoice : recipientText.loadVoice}</button>
                 </section> : null}
                 {player.adventure?.turn ? <><h3>{recipientText.yourJourney}</h3><p>{passage(player.adventure.turn.narration)}</p><p>{passage(player.adventure.turn.state.progress)}</p></> : null}
-                <details style={{ marginTop: '1rem' }}>
-                  <summary>Keep this story</summary>
-                  {player.adventure ? <p>Your keepsake contains the available scenes and latest adventure turn, not a transcript of every live action.</p> : null}
-                  <StoryKeepsake story={{ title: player.title, creatorName: player.creatorName, recipientName: player.recipientName, dedication: player.gift?.dedication,
-                    scenes: [...player.discoveries, player.scene, ...(player.adventure?.turn ? [{ title: 'Your adventure', body: player.adventure.turn.narration }] : [])].map(scene => ({ title: scene.title, body: scene.body })), message: player.message }} />
-                </details>
                 {player.gift?.allowReply ? <details style={{ marginTop: '1.5rem' }}>
                   <summary>{recipientText.reply}</summary>
                   <p>{recipientText.replyPrivacy(player.creatorName)}</p>
@@ -1476,9 +1469,6 @@ export default function SharedStoryPage() {
             </details>
             <details style={{ marginTop: '1rem' }} aria-label="Sender tools">
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Share and sender tools</summary>
-            <details><summary>Keep this story</summary>
-            <StoryKeepsake story={{ title: creator.content.title, creatorName: creator.brief.creatorName, recipientName: creator.brief.recipientName, dedication: creator.brief.gift?.dedication, scenes: creator.content.scenes.map(scene => ({ title: scene.title, body: scene.body })), message: creator.brief.message }} />
-            </details>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
             <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
             <p>{creator.expiresAt === null ? 'Recipient access has no automatic expiry.' : `Recipient access expires ${new Date(creator.expiresAt).toLocaleString()}.`} The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>

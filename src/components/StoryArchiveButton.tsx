@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { accountFetch } from '../lib/accountClient'
 import type { PersonalStory } from '../lib/story'
 import { saveLibraryPersonalStory, validatePersonalStory } from '../lib/storyLibrary'
-import { storyArchiveCopy } from '../lib/storyArchiveCopy'
+import { storyArchiveCopy, storyArchiveUnavailableCopy } from '../lib/storyArchiveCopy'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
 
 export default function StoryArchiveButton({ story, language, onSaved }: {
@@ -10,15 +10,17 @@ export default function StoryArchiveButton({ story, language, onSaved }: {
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [unavailable, setUnavailable] = useState(false)
   const lock = useRef(false)
   const copy = storyArchiveCopy(language)
-  const move = async () => {
+  const missingCopy = storyArchiveUnavailableCopy(language)
+  const move = async (browserOnly = false) => {
     if (lock.current) return
     lock.current = true
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setUnavailable(false)
     try {
       let saved: PersonalStory
-      if (story.journey) {
+      if (story.journey && !browserOnly) {
         const response = await accountFetch('/api/personal-story', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -27,6 +29,11 @@ export default function StoryArchiveButton({ story, language, onSaved }: {
           })
         })
         const data = await response.json()
+        if (response.status === 404) {
+          setUnavailable(true)
+          setError(missingCopy.notice)
+          return
+        }
         if (!response.ok) throw new Error(data.error || copy.error)
         saved = validatePersonalStory(data.story)
         if (saved.id !== story.id || saved.archived !== !story.archived) throw new Error(copy.error)
@@ -44,5 +51,6 @@ export default function StoryArchiveButton({ story, language, onSaved }: {
     <button type="button" disabled={busy} onClick={() => void move()}>{busy ? copy.busy : story.archived ? copy.restore : copy.close}</button>
     {!story.journey ? <small>{copy.local}</small> : null}
     {error ? <p role="alert">{error}</p> : null}
+    {unavailable ? <button type="button" disabled={busy} onClick={() => void move(true)}>{missingCopy.move}</button> : null}
   </>
 }
