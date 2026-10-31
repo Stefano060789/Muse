@@ -8,7 +8,8 @@ import { StoryAmbience } from './storyAmbience'
 import { MUSE_AI_CONSENT_VERSION } from './legalContact'
 import { accountFetch } from './accountClient'
 import {
-  DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES, narrativeDelivery, parseImmersivePreferences, storySoundscape,
+  DEFAULT_IMMERSIVE_PREFERENCES, IMMERSIVE_PREFERENCES_KEY, LEGACY_IMMERSIVE_PREFERENCES_KEY, SOUNDSCAPES,
+  narrativeDelivery, narrationPauseAfter, parseImmersivePreferences, serializeImmersivePreferences, storySoundscape,
   type ImmersivePreferences, type NarrationContext
 } from './immersiveNarration'
 
@@ -155,9 +156,15 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     ambience.current?.stop()
     const engine = new StoryAmbience()
     ambience.current = engine
-    void engine.start(sound, preferences.ambientVolume * Math.min(1, preferences.voiceVolume / 0.9)).then(() => {
+    const voiceBalance = Math.max(0.7, Math.min(1, preferences.voiceVolume / 0.9))
+    void engine.start(sound, preferences.ambientVolume * voiceBalance, () => {
+      if (ambience.current !== engine || !mounted.current) return
+      setAmbientKind('none')
+      setAmbientNotice('Background sound was interrupted by the browser. Tap Retry background sound to resume it.')
+    }).then(() => {
       if (ambience.current !== engine) { engine.stop(); return }
       setAmbientKind(sound)
+      setAmbientNotice('')
     }).catch(() => {
       engine.stop()
       if (ambience.current !== engine) return
@@ -190,9 +197,16 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setSelectedVoice(stored.preferences.voice)
     setPreferenceNotice(stored.notice)
     try {
-      const saved = parseImmersivePreferences(window.localStorage.getItem(IMMERSIVE_PREFERENCES_KEY))
+      const currentPreferences = window.localStorage.getItem(IMMERSIVE_PREFERENCES_KEY)
+      const legacyPreferences = currentPreferences === null
+        ? window.localStorage.getItem(LEGACY_IMMERSIVE_PREFERENCES_KEY) : null
+      const saved = parseImmersivePreferences(currentPreferences ?? legacyPreferences)
       setImmersive(saved.preferences)
       if (saved.invalid) setPreferenceNotice(STORAGE_INVALID_NOTICE)
+      else if (legacyPreferences !== null) {
+        window.localStorage.setItem(IMMERSIVE_PREFERENCES_KEY, serializeImmersivePreferences(saved.preferences))
+        window.localStorage.removeItem(LEGACY_IMMERSIVE_PREFERENCES_KEY)
+      }
     } catch { setPreferenceNotice(STORAGE_READ_NOTICE) }
     const synth = window.speechSynthesis
     setSupported(Boolean(synth && typeof SpeechSynthesisUtterance !== 'undefined'))
@@ -288,7 +302,9 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         current.onend = () => {
           if (valid() && utterance.current === current) {
             reveal(chunkStart + chunk.length)
-            next()
+            if (index >= chunks.length) finish()
+            else if (paused.current) pendingAdvance.current = next
+            else armTimer(narrationPauseAfter(current.text), next)
           }
         }
         current.onerror = () => finish('Browser narration failed. You can retry or keep reading.')
@@ -307,7 +323,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       await browser(); return
     }
     setStatus('loading')
-    if (provider !== 'google') startAmbientFor(text)
+    if (provider !== 'google' || options.autoPlay) startAmbientFor(text)
     const controller = new AbortController()
     request.current = controller
     armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
@@ -337,7 +353,6 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       const player = new Audio(url.current)
       audio.current = player
       player.volume = immersiveRef.current.voiceVolume
-      if (provider === 'google') startAmbientFor(text)
       player.ontimeupdate = () => {
         if (valid() && Number.isFinite(player.duration) && player.duration > 0) {
           setTextPosition(Math.floor(text.length * Math.min(1, Math.max(0, player.currentTime / player.duration))))
@@ -452,14 +467,14 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
 
   const setImmersivePreference = <K extends keyof ImmersivePreferences>(key: K, value: ImmersivePreferences[K]) => {
     const next = { ...immersive, [key]: value }
-    if (parseImmersivePreferences(JSON.stringify({ version: 1, ...next })).invalid || !SOUNDSCAPES.includes(next.soundscape)) {
+    if (parseImmersivePreferences(serializeImmersivePreferences(next)).invalid || !SOUNDSCAPES.includes(next.soundscape)) {
       setError('Choose a valid audio setting within the displayed limits.')
       return
     }
     stop()
     setImmersive(next)
     try {
-      window.localStorage.setItem(IMMERSIVE_PREFERENCES_KEY, JSON.stringify({ version: 1, ...next }))
+      window.localStorage.setItem(IMMERSIVE_PREFERENCES_KEY, serializeImmersivePreferences(next))
       setPreferenceNotice('')
     } catch { setPreferenceNotice(STORAGE_WRITE_NOTICE) }
   }

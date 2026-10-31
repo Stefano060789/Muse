@@ -673,7 +673,7 @@ export default function StoryPage() {
                 {storyMode === 'listen' ? <>
                 {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label={interfaceCopy.listenScene} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
                 {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
-                {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+                {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrationText)}>{flow('retryAmbient')}</button></p> : null}
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
                 {story.journey?.state ? <details><summary>{flow('journeyMemory')}</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{flow(key)}: {story.journey!.state![key].join(', ') || flow('noneYet')}</p>)}<p>{story.journey.state.progress}</p></details> : null}
@@ -711,7 +711,7 @@ export default function StoryPage() {
                 <h2>{flow('savedScenes')}</h2>
                 {savedScenes}
                 {storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
-                {storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+                {storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
                 {storyMode === 'listen' && narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
                 <p><Link href="/my-stories">{flow('backMyStoriesLink')}</Link></p>
               </section> : null}
@@ -741,7 +741,7 @@ export default function StoryPage() {
                 <p className="atelier-note">The keepsake includes available story text, not your private answers, personal touches or access links.</p>
                 {rereading ? savedScenes : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
-                {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
+                {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
               </section> : null}
               <div style={{ marginTop: '2rem' }}>
                 <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>

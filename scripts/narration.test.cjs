@@ -9,6 +9,10 @@ const output = fs.mkdtempSync(path.join(__dirname, '.narration-tests-'))
 const saved = { fetch: global.fetch, window: global.window, utterance: global.SpeechSynthesisUtterance, audio: global.Audio, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout, now: Date.now, createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL, env: { ...process.env } }
 let passed = 0
 async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
+function waitForNarrationPause(text) {
+  const delay = /[?！？]$/.test(text) ? 450 : /…$|\.{3,}$/.test(text) ? 550 : 300
+  return new Promise(resolve => saved.setTimeout(resolve, delay))
+}
 
 async function main() {
   process.env.MUSE_OPERATIONS_SQLITE_PATH = path.join(output, 'operations.sqlite')
@@ -238,6 +242,7 @@ async function main() {
       assert.equal(hook.render().textPosition, 4)
       const normalized = 'Die Tür öffnet sich. Eine neue Geschichte beginnt.'
       hook.spoken[0].onend()
+      await waitForNarrationPause(hook.spoken[0].text)
       hook.spoken[1].onboundary({ charIndex: 2 })
       assert.equal(hook.render().textPosition, normalized.indexOf(hook.spoken[1].text) + 2)
       hook.spoken[1].onend()
@@ -254,6 +259,7 @@ async function main() {
       hook.spoken[0].onboundary({ charIndex: 5 })
       assert.equal(hook.render().textPosition, text.indexOf('falls'))
       hook.spoken[0].onend()
+      await waitForNarrationPause(hook.spoken[0].text)
       hook.spoken[1].onboundary({ charIndex: 2 })
       assert.equal(hook.render().textPosition, text.indexOf('quiet'))
     } finally { hook.dispose() }
@@ -275,7 +281,9 @@ async function main() {
       let index = 0
       while (hook.render().busy) {
         assert.ok(index < 100, 'preview must finish')
-        hook.spoken[index++].onend()
+        const utterance = hook.spoken[index++]
+        utterance.onend()
+        if (hook.render().busy) await waitForNarrationPause(utterance.text)
       }
       assert.equal(hook.spoken.map(item => item.text).join(' '), narrationChunks(preview).join(' '))
       resolveAmbient()
@@ -426,8 +434,10 @@ async function main() {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
     const players = []
     let fetches = 0
+    const startupOrder = []
     global.fetch = async () => {
       fetches++
+      startupOrder.push('tts-request')
       return new Response('synthetic audio', { headers: { 'Content-Type': 'audio/mpeg' } })
     }
     global.Audio = class {
@@ -437,12 +447,15 @@ async function main() {
     }
     URL.createObjectURL = () => 'blob:direct-google'
     URL.revokeObjectURL = () => {}
-    const hook = mount({ narrationLanguage: 'en-US' }, voices)
+    const hook = mount({ narrationLanguage: 'en-US' }, voices, true, {
+      ambientStart: () => { startupOrder.push('ambient-start') }
+    })
     try {
       await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
       assert.equal(fetches, 0, 'Listen cannot bypass cloud consent')
       hook.render().setCloudConsent(true)
       await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
+      assert.deepEqual(startupOrder, ['ambient-start', 'tts-request'], 'ambient playback starts in the Listen gesture before the asynchronous cloud request')
       assert.equal(players[0].plays, 1, 'One Listen tap starts loaded audio without native Play')
       assert.equal(hook.render().textPosition, 0)
       assert.equal(hook.render().speaking, true)
@@ -468,7 +481,8 @@ async function main() {
     return {
       data, writes,
       getItem(key) { if (failRead) throw new Error('SecurityError'); return data.has(key) ? data.get(key) : null },
-      setItem(key, value) { if (failWrite) throw new Error('QuotaExceededError'); writes.push([key, value]); data.set(key, value) }
+      setItem(key, value) { if (failWrite) throw new Error('QuotaExceededError'); writes.push([key, value]); data.set(key, value) },
+      removeItem(key) { data.delete(key) }
     }
   }
   function fakeClock() {
@@ -490,20 +504,33 @@ async function main() {
 
   const immersiveLib = require(path.join(output, 'lib', 'immersiveNarration.js'))
   await check('immersive settings validate bounds and preserve valid fields without overwriting old voice preferences', () => {
-    const { parseImmersivePreferences, DEFAULT_IMMERSIVE_PREFERENCES } = immersiveLib
+    const { parseImmersivePreferences, DEFAULT_IMMERSIVE_PREFERENCES, LEGACY_IMMERSIVE_PREFERENCES_KEY, IMMERSIVE_PREFERENCES_KEY } = immersiveLib
     assert.deepEqual(parseImmersivePreferences(null), { preferences: DEFAULT_IMMERSIVE_PREFERENCES, invalid: false })
-    for (const raw of ['bad', 'null', '[]', '{"version":2}', '{"version":1,"voiceVolume":2}', '{"version":1,"ambientVolume":-1}', '{"version":1,"soundscape":"explosion"}']) {
+    for (const raw of ['bad', 'null', '[]', '{"version":3}', '{"version":1,"voiceVolume":2}', '{"version":1,"ambientVolume":-1}', '{"version":1,"soundscape":"explosion"}']) {
       assert.equal(parseImmersivePreferences(raw).invalid, true)
     }
     const result = parseImmersivePreferences('{"version":1,"expressive":false,"voiceVolume":0,"ambientVolume":0.3,"soundscape":"rain"}')
     assert.equal(result.invalid, false)
     assert.equal(result.preferences.voiceVolume, 0)
     assert.equal(result.preferences.expressive, false)
+    const legacy = parseImmersivePreferences('{"version":1,"ambientVolume":0.12}')
+    assert.equal(legacy.preferences.ambientVolume, 0.2, 'the old default ambience level upgrades for existing listeners')
+    assert.equal(parseImmersivePreferences('{"version":1,"ambientVolume":0.08}').preferences.ambientVolume, 0.08,
+      'explicitly customized ambience levels remain unchanged')
+    const migratedStorage = memoryStorage({
+      [LEGACY_IMMERSIVE_PREFERENCES_KEY]: '{"version":1,"ambientVolume":0.12,"soundscape":"auto"}'
+    })
+    const migrated = mount({}, voices, true, { storage: migratedStorage })
+    try {
+      assert.equal(migrated.render().immersive.ambientVolume, 0.2)
+      assert.equal(migratedStorage.data.has(LEGACY_IMMERSIVE_PREFERENCES_KEY), false)
+      assert.equal(JSON.parse(migratedStorage.data.get(IMMERSIVE_PREFERENCES_KEY)).version, 2)
+    } finally { migrated.dispose() }
     const old = mount({ narrationStyle: 'suspenseful' }, voices, true, { storage: memoryStorage(stored({ version: 1, style: 'warm' })) })
     try { assert.equal(old.render().style, 'warm') } finally { old.dispose() }
   })
   await check('local scene cues and expressive delivery are bounded, contextual and independently switchable', () => {
-    const { storySoundscape, narrativeDelivery, DEFAULT_IMMERSIVE_PREFERENCES: prefs } = immersiveLib
+    const { storySoundscape, narrativeDelivery, narrationPauseAfter, DEFAULT_IMMERSIVE_PREFERENCES: prefs } = immersiveLib
     assert.equal(storySoundscape('Rain taps the window.', 'auto'), 'rain')
     assert.equal(storySoundscape('La pioggia cade.', 'auto'), 'rain')
     assert.equal(storySoundscape('Der Wind weht.', 'auto'), 'wind')
@@ -524,10 +551,17 @@ async function main() {
     const opening = narrativeDelivery('A path opens.', 'adventurous', { progress: 0 }, prefs)
     const late = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8 }, prefs)
     const quiet = narrativeDelivery('She whispers softly.', 'adventurous', {}, prefs)
+    const quietItalian = narrativeDelivery('Lei sussurra piano.', 'warm', {}, prefs)
+    const emphatic = narrativeDelivery('We made it!', 'warm', {}, prefs)
     const ending = narrativeDelivery('A path opens.', 'adventurous', { progress: 0.8, ending: true }, prefs)
     assert.ok(late.rate > opening.rate)
     assert.ok(ending.rate < late.rate)
     assert.ok(quiet.volume < opening.volume)
+    assert.ok(quietItalian.volume < opening.volume, 'quiet delivery cues work in supported story languages')
+    assert.ok(emphatic.volume > opening.volume, 'emphatic lines receive a subtle level lift')
+    assert.equal(narrationPauseAfter('A sentence.'), 280)
+    assert.equal(narrationPauseAfter('A question?'), 420)
+    assert.equal(narrationPauseAfter('A pause…'), 520)
     assert.ok(narrativeDelivery('What lies ahead?', 'curious', {}, prefs).pitch > 1)
     assert.deepEqual(narrativeDelivery('She whispers?', 'warm', { ending: true }, { ...prefs, expressive: false }), { rate: NARRATION_PRESETS.warm.rate, pitch: 1, volume: prefs.voiceVolume })
     for (const style of NARRATION_STYLES) for (const progress of [-10, 0, 0.5, 1, 20, NaN, Infinity]) {
@@ -553,6 +587,8 @@ async function main() {
       hook.render().resume()
       assert.equal(hook.ambientCalls.at(-1)[0], 'resume')
       hook.spoken[0].onend()
+      assert.equal(hook.spoken.length, 1, 'sentence transitions include a natural pause')
+      await new Promise(resolve => setTimeout(resolve, 430))
       assert.ok(hook.spoken[1].pitch > 1)
       hook.setContext({ sceneKey: 'two', progress: 0.5 })
       assert.equal(hook.render().busy, false)
@@ -567,7 +603,8 @@ async function main() {
       hook.render().setImmersivePreference('voiceVolume', 0.05)
       hook.render().setImmersivePreference('ambientVolume', 0.3)
       await hook.render().speak('A soft scene.')
-      assert.equal(hook.ambientCalls.filter(x => x[0] === 'start').at(-1)[2], 0.3 * (0.05 / 0.9), 'quiet voice proportionally lowers the background')
+      assert.equal(hook.ambientCalls.filter(x => x[0] === 'start').at(-1)[2], 0.3 * 0.7,
+        'ambience remains audible under a quiet voice without becoming louder than speech')
       hook.render().setImmersivePreference('voiceVolume', 0)
       const starts = hook.ambientCalls.filter(x => x[0] === 'start').length
       await hook.render().speak('Muted rain.')
@@ -742,6 +779,9 @@ async function main() {
       assert.deepEqual(clock.pending, [35000], 'remaining chunk time is restored')
       assert.equal(hook.spoken.length, 1, 'resume does not restart the chunk')
       hook.spoken[0].onend()
+      assert.equal(hook.spoken.length, 1, 'the following sentence waits for its natural pause')
+      assert.deepEqual(clock.pending, [280], 'sentence pause replaces the completed chunk timeout')
+      clock.advance(280)
       assert.equal(hook.spoken.length, 2)
       assert.equal(hook.spoken[1].text, 'Second sentence.')
       hook.render().pause()

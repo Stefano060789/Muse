@@ -54,6 +54,7 @@ class Context {
     this.resumes = 0
     this.suspends = 0
     this.closes = 0
+    this.listeners = new Map()
     contexts.push(this)
   }
   createGain() { return new Node(this, 'gain') }
@@ -72,10 +73,13 @@ class Context {
   async resume() {
     this.resumes++
     if (this.options.resumeGate) await this.options.resumeGate.promise
-    if (this.options.resumeError) throw new Error('resume failed')
+    if (this.options.resumeError || (this.resumes > 1 && this.options.recoveryError)) throw new Error('resume failed')
     if (this.state === 'closed') throw new Error('closed context')
     this.state = 'running'
   }
+  addEventListener(type, listener) { this.listeners.set(type, listener) }
+  removeEventListener(type, listener) { if (this.listeners.get(type) === listener) this.listeners.delete(type) }
+  changeState(state) { this.state = state; this.listeners.get('statechange')?.() }
   async suspend() {
     this.suspends++
     if (this.options.suspendGate) await this.options.suspendGate.promise
@@ -198,6 +202,35 @@ async function main() {
       await engine.start('none', 0.2)
       cleaned(context)
     }
+  })
+  await check('unexpected audio suspension is automatically recovered and listeners are cleaned up', async () => {
+    const engine = new StoryAmbience()
+    let interruptions = 0
+    await engine.start('rain', 0.1, () => interruptions++)
+    const context = contexts.at(-1)
+    assert.equal(context.listeners.has('statechange'), true)
+    context.changeState('suspended')
+    await tick()
+    assert.equal(context.resumes, 2)
+    assert.equal(context.state, 'running')
+    assert.equal(interruptions, 0)
+    engine.stop()
+    assert.equal(context.listeners.has('statechange'), false)
+    cleaned(context)
+  })
+  await check('failed audio recovery reports an interruption for the retry control', async () => {
+    const engine = new StoryAmbience()
+    let interruptions = 0
+    await engine.start('wind', 0.1, () => interruptions++)
+    const context = contexts.at(-1)
+    context.options.recoveryError = true
+    context.changeState('suspended')
+    await tick()
+    await tick()
+    assert.equal(context.resumes, 2)
+    assert.equal(interruptions, 1)
+    engine.stop()
+    cleaned(context)
   })
   await check('start cancelled while resuming settles promptly and cannot revive or fade old context', async () => {
     const gate = deferred()

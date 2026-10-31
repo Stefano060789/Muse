@@ -12,6 +12,9 @@ type Session = {
   disposed: boolean
   revision: number
   paused: boolean
+  stateChange?: () => void
+  recovering: boolean
+  recoveryFailed: boolean
   queue: Promise<void>
   cancelled: Promise<void>
   cancel: () => void
@@ -25,7 +28,7 @@ export class StoryAmbience {
   private session?: Session
   private volume = 0
 
-  async start(kind: AmbientSound, volume: number): Promise<void> {
+  async start(kind: AmbientSound, volume: number, onInterruption?: () => void): Promise<void> {
     if (!['none', 'rain', 'wind', 'water', 'crowd', 'traffic', 'mystery'].includes(kind)) {
       throw new Error(`Unsupported ambience: ${kind}`)
     }
@@ -48,6 +51,8 @@ export class StoryAmbience {
       disposed: false,
       revision: 0,
       paused: false,
+      recovering: false,
+      recoveryFailed: false,
       queue: Promise.resolve(),
       cancelled: new Promise<void>(resolve => { cancel = resolve }),
       cancel: () => cancel(),
@@ -55,6 +60,32 @@ export class StoryAmbience {
     this.session = session
     try {
       this.synthesize(session, kind)
+      session.stateChange = () => {
+        if (session.disposed || session.paused || session.recovering || session.recoveryFailed ||
+            session.context.state === 'running' || session.context.state === 'closed') return
+        session.recovering = true
+        let recovery: Promise<void>
+        try { recovery = session.context.resume() } catch {
+          session.recovering = false
+          session.recoveryFailed = true
+          onInterruption?.()
+          return
+        }
+        void recovery.then(() => {
+          if (session.disposed) return
+          session.recovering = false
+          if (session.context.state !== 'running') {
+            session.recoveryFailed = true
+            onInterruption?.()
+          }
+        }, () => {
+          if (session.disposed) return
+          session.recovering = false
+          session.recoveryFailed = true
+          onInterruption?.()
+        })
+      }
+      session.context.addEventListener?.('statechange', session.stateChange)
       // Unlock Web Audio inside the Play gesture, not in the queued microtask.
       const resumed = session.context.resume()
       void resumed.catch(() => undefined) // Cancellation can remove the queued observer.
@@ -164,7 +195,7 @@ export class StoryAmbience {
 
     const source = own(context.createBufferSource())
     session.sources.push(source)
-    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 4), context.sampleRate)
+    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 16), context.sampleRate)
     const data = buffer.getChannelData(0)
     let brown = 0
     for (let index = 0; index < data.length; index++) {
@@ -181,6 +212,12 @@ export class StoryAmbience {
         const scale = 0.25 / rms
         for (let index = 0; index < data.length; index++) data[index] = Math.max(-0.75, Math.min(0.75, data[index] * scale))
       }
+    }
+    const edgeSamples = Math.ceil(context.sampleRate * 0.08)
+    for (let index = 0; index < edgeSamples; index++) {
+      const fade = index / edgeSamples
+      data[index] *= fade
+      data[data.length - index - 1] *= fade
     }
     source.buffer = buffer
     source.loop = true
@@ -231,6 +268,7 @@ export class StoryAmbience {
     session.disposed = true
     if (this.session === session) this.session = undefined
     session.cancel()
+    if (session.stateChange) session.context.removeEventListener?.('statechange', session.stateChange)
     for (const source of session.sources) {
       try { source.stop() } catch (error) { console.error('Ambience source cleanup failed', error) }
       try {

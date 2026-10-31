@@ -4,7 +4,8 @@ import type { AmbientSound } from './storyAmbience'
 export type NarrationContext = { progress?: number; ending?: boolean; sceneKey?: string }
 export type Soundscape = AmbientSound | 'auto'
 export type ImmersivePreferences = { expressive: boolean; soundscape: Soundscape; voiceVolume: number; ambientVolume: number }
-export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v1'
+export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v2'
+export const LEGACY_IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v1'
 export const DEFAULT_IMMERSIVE_PREFERENCES: ImmersivePreferences = {
   expressive: true, soundscape: 'auto', voiceVolume: 0.9, ambientVolume: 0.2
 }
@@ -17,7 +18,7 @@ export function parseImmersivePreferences(raw: string | null): { preferences: Im
   try { value = JSON.parse(raw) } catch { return { preferences, invalid: true } }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { preferences, invalid: true }
   const data = value as Record<string, unknown>
-  if (data.version !== 1) return { preferences, invalid: true }
+  if (data.version !== 1 && data.version !== 2) return { preferences, invalid: true }
   let invalid = false
   if (data.expressive !== undefined) {
     if (typeof data.expressive === 'boolean') preferences.expressive = data.expressive
@@ -30,11 +31,17 @@ export function parseImmersivePreferences(raw: string | null): { preferences: Im
   for (const [key, max] of [['voiceVolume', 1], ['ambientVolume', 0.3]] as const) {
     if (data[key] !== undefined) {
       const number = data[key]
-      if (typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= max) preferences[key] = number
+      if (typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= max) {
+        preferences[key] = key === 'ambientVolume' && data.version === 1 && number === 0.12 ? 0.2 : number
+      }
       else invalid = true
     }
   }
   return { preferences, invalid }
+}
+
+export function serializeImmersivePreferences(preferences: ImmersivePreferences): string {
+  return JSON.stringify({ version: 2, ...preferences })
 }
 
 export function storySoundscape(text: string, selection: Soundscape): AmbientSound {
@@ -64,14 +71,27 @@ export function narrativeDelivery(text: string, style: NarrationStyle, context: 
   if (!preferences.expressive) return { rate: preset.rate, pitch: preset.pitch, volume: preferences.voiceVolume }
   const progress = Number.isFinite(context.progress) ? clamp(context.progress!, 0, 1) : 0
   const question = /[?？]\s*$/.test(text)
-  const quiet = /\b(whisper(?:ed|s|ing)?|quiet(?:ly)?|softly|sussurra|leise)\b/i.test(text)
-  const movement = /\b(rush(?:ed|es|ing)?|run(?:ning)?|race[ds]?|hurry|corre|rennen)\b/i.test(text)
+  const lower = text.toLowerCase()
+  const quiet = /\b(whisper(?:ed|s|ing)?|quiet(?:ly)?|softly|sussurra|leise|susurra|suavemente|тихо|пошепки)\b/i.test(lower) ||
+    ['低声', '轻声', '悄声', '耳语', 'धीरे', 'फुसफुस', 'همس', 'بصوت خافت'].some(cue => lower.includes(cue))
+  const movement = /\b(rush(?:ed|es|ing)?|run(?:ning)?|race[ds]?|hurry|corre|rennen|corriendo|courir|біжить|бігти)\b/i.test(lower) ||
+    ['急忙', ' పరుగెత్త', 'दौड़'].some(cue => lower.includes(cue))
+  const emphatic = /[!！]{1,2}\s*$/.test(text)
   const ending = Boolean(context.ending)
   const build = style === 'adventurous' || style === 'playful' ? progress * 0.04
     : style === 'suspenseful' ? -progress * 0.035 : 0
   return {
-    rate: clamp(preset.rate + build + (movement ? 0.035 : 0) - (quiet ? 0.045 : 0) - (ending ? 0.055 : 0), 0.86, 1.12),
-    pitch: clamp(1 + (question ? 0.035 : 0) + (style === 'playful' ? 0.02 : 0) - (quiet || ending ? 0.02 : 0), 0.96, 1.06),
-    volume: preferences.voiceVolume * (quiet ? 0.82 : ending ? 0.94 : 1)
+    rate: clamp(preset.rate + build + (movement ? 0.025 : 0) - (quiet ? 0.055 : 0) - (ending ? 0.04 : 0) - (question ? 0.015 : 0), 0.86, 1.12),
+    pitch: clamp(1 + (question ? 0.025 : 0) + (style === 'playful' ? 0.015 : 0) - (quiet || ending ? 0.02 : 0), 0.96, 1.06),
+    volume: clamp(preferences.voiceVolume * (quiet ? 0.72 : emphatic ? 1.04 : ending ? 0.94 : 1), 0, 1)
   }
+}
+
+export function narrationPauseAfter(text: string): number {
+  const sentence = text.trim()
+  if (/…$|\.{3,}$/.test(sentence)) return 520
+  if (/[！？!?]$/.test(sentence)) return 420
+  if (/[。]$/.test(sentence)) return 360
+  if (/[,:;，、；：]$/.test(sentence)) return 180
+  return 280
 }
