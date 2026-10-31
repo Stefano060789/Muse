@@ -5,6 +5,8 @@ import { createPersonalStoryShareSvg, personalStoryShareText as buildPersonalSto
 import { PROVIDER_CONSENT_VERSION } from '../lib/providerConsent'
 import type { PersonalStory } from '../lib/story'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
+import { useShareConsent } from '../lib/useShareConsent'
+import { shareConsentCopy } from '../lib/shareConsentCopy'
 
 export default function PersonalStoryShareCard({
   story,
@@ -13,7 +15,8 @@ export default function PersonalStoryShareCard({
   story: Pick<PersonalStory, 'title' | 'mood' | 'language'>
   interfaceLanguage: StoryLanguageCode
 }) {
-  const [consent, setConsent] = useState(false)
+  const consent = useShareConsent()
+  const permissionCopy = shareConsentCopy(interfaceLanguage)
   const [teaser, setTeaser] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -25,6 +28,10 @@ export default function PersonalStoryShareCard({
     setBusy(true)
     setMessage('')
     try {
+      if (!await consent.verify()) {
+        setMessage(permissionCopy.error)
+        return
+      }
       const response = await accountFetch('/api/personal-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,11 +127,14 @@ export default function PersonalStoryShareCard({
     <h4 id="share-story-heading">{copy('shareStoryTitle')}</h4>
     <p>{copy('shareStoryDescription')}</p>
     {!teaser ? <>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', margin: '1rem 0', lineHeight: 1.6 }}>
-        <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />
-        <span>{copy('teaserConsent')}</span>
-      </label>
-      <button type="button" className="atelier-button" disabled={!consent || busy} onClick={() => void requestTeaser()}>
+      {!consent.accepted ? <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', margin: '1rem 0', lineHeight: 1.6 }}>
+        <input type="checkbox" checked={false} disabled={!consent.ready || consent.saving} onChange={event => {
+          void consent.save(event.target.checked).catch(() => setMessage(permissionCopy.error))
+        }} />
+        <span>{copy('teaserConsent')} {permissionCopy.allow}</span>
+      </label> : <p className="atelier-note">{permissionCopy.remembered}</p>}
+      {consent.failed ? <p role="alert">{permissionCopy.error}</p> : null}
+      <button type="button" className="atelier-button" disabled={!consent.accepted || !consent.ready || consent.saving || busy} onClick={() => void requestTeaser()}>
         {busy ? copy('creatingTeaser') : copy('createTeaser')}
       </button>
     </> : <>

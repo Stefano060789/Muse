@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
+import type { DemoPageCopy } from '../lib/demoPageLocalization'
+import type { StoryLanguageCode } from '../lib/storyLanguage'
 
-export default function SampleNarration({ src, label }: { src: string; label: string }) {
+type RecordedNarrationProps = {
+  src: string
+  label: string
+}
+
+type BrowserNarrationProps = {
+  label: string
+  language: StoryLanguageCode
+  text: string
+  copy: DemoPageCopy
+  browserOnly: true
+}
+
+const BrowserSampleNarration = dynamic<BrowserNarrationProps>(
+  () => import('./BrowserSampleNarration'),
+  { ssr: false }
+)
+
+export default function SampleNarration(props: RecordedNarrationProps | BrowserNarrationProps) {
+  if ('browserOnly' in props) return <BrowserSampleNarration {...props} />
+  return <RecordedSampleNarration src={props.src} label={props.label} />
+}
+
+function RecordedSampleNarration({ src, label }: { src: string; label: string }) {
   const [failed, setFailed] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   useEffect(() => {

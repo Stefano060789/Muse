@@ -1,8 +1,12 @@
 import Head from 'next/head'
 import LegalPage from '../components/LegalPage'
 import { getPublicContactConfig } from '../lib/legalContact'
+import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { publicContactStatus, publicLegalCopy } from '../lib/publicLegalCopy'
 
 export default function TermsPage() {
+  const language = useInterfaceLanguage()
+  const copy = publicLegalCopy(language).terms
   const contact = getPublicContactConfig(
     process.env.NEXT_PUBLIC_MUSE_OPERATOR_NAME,
     process.env.NEXT_PUBLIC_MUSE_SUPPORT_EMAIL
@@ -11,34 +15,22 @@ export default function TermsPage() {
   return (
     <>
       <Head>
-        <title>Muse — Terms</title>
-        <meta name="description" content="Draft product terms for using the Muse storytelling beta." />
+        <title>{`${copy.documentTitle}`}</title>
+        <meta name="description" content={copy.description} />
       </Head>
-      <LegalPage title="Terms">
-        <p><strong>Draft product terms for a prototype.</strong> This is not legal approval or a certified legal agreement. Muse is a public beta prototype and must not launch publicly until the operator and support contacts are configured and these terms are reviewed.</p>
-
-        <h2>Using Muse</h2>
-        <p>Muse helps create interactive stories. AI-generated material can be inaccurate, incomplete, or unsuitable; review it and use your own judgment. Muse is not professional, medical, therapeutic, or emergency advice.</p>
-        <p>Only submit material you have the right to use and permission to share. Do not submit sensitive personal information or confidential information about someone else. You are responsible for the text, media, and private links you create or share, including choosing who receives a link.</p>
-        <h2>Optional romance</h2>
-        <p>Sweet and Spicy romance are non-explicit themes for adults 18 or older and consenting adult characters. Intimacy fades to black. Do not use Muse for explicit sexual content, sexual content involving minors, coercion, or sexualized portrayals of real people without their permission. Do not upload explicit photos, videos or recordings. Review your story and attachments before sending.</p>
-        <p>Tagged shared romance stories require recipients to choose whether to open before receiving the cover, story or media. A recipient may decline. Age and consent are self-declared, not independently verified; choosing to open does not endorse the sender&apos;s content. AI instructions and this notice are not complete moderation and do not guarantee that user submissions or generated output are appropriate.</p>
-
-        <h2>Storage and deletion</h2>
-        <p>Creating and managing server stories requires a signed-in Muse account. Creators can access only stories assigned to their account. Recipients can open a private gift-story link without signing in. Unclaimed legacy gift stories are not automatically assigned to accounts; a creator may claim one by presenting its existing private owner link. Legacy personal stories and browser-only data are not automatically migrated to an account.</p>
-        <p>Server stories have no automatic expiry and remain until deleted; continued hosting is not guaranteed forever. Backups, if present, are retained independently; backup configuration, coverage, and recovery are not guaranteed. No full-backup or media-recovery guarantee is currently made. Deleting a shared story from its management page disables its links and printed QR codes. Use Delete story at the bottom of My Story to delete a personal journey; removing only a browser-library entry does not delete its server copy. Deletion does not refund used attempts.</p>
-        <p>Shared media is private and is not sent to AI. Content sent to the configured AI or speech provider is subject to that provider&apos;s processing terms as well as Muse&apos;s privacy information.</p>
-        <p>Device narration quality and print/PDF support vary by browser and phone. Optional Studio recordings cover prepared scenes only and require separate creator consent and operator configuration; availability is not guaranteed. A printable QR gift card shares the recipient link, not permanent storage: link replacement, deletion or expiry invalidates it. Text keepsakes do not preserve interactive play or media attachments. Printed and downloaded copies cannot be revoked.</p>
-
-        <h2>Operational controls</h2>
-        <p>Muse does not collect page-view or website-visit analytics. For service operations, it records fixed event codes, including story creation and safety or provider failures, with timestamps; these records are deduplicated per minute and retained for up to seven days. They exclude story text, page URLs, capability links and raw IP addresses. Request rate limits use short-lived IP-derived hashes (keyed in production; plain hashes in local development). Hosting-platform logs may have separate retention. Operational status and server logs do not provide configured proactive external alerts.</p>
-
-        <h2>Availability</h2>
-        <p>This prototype may change, be unavailable, or fail to preserve data. Keep your own copies of anything important. Do not rely on Muse for secure archival storage.</p>
-
-        <h2>Operator and contact</h2>
-        <p>Operator: {contact.operator.value || (contact.operator.status === 'invalid' ? 'Not configured (invalid setting)' : 'Not configured')}.</p>
-        <p>Support contact: {contact.supportEmail.value || (contact.supportEmail.status === 'invalid' ? 'Not configured (invalid setting)' : 'Not configured')}.</p>
+      <LegalPage title={copy.title}>
+        {Object.values(copy.sections).map(section => (
+          <section key={section.heading}>
+            <h2>{section.heading}</h2>
+            {section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
+            {section === copy.sections.contacts && (
+              <>
+                <p>{copy.operatorLabel}: {contact.operator.value || publicContactStatus(contact.operator.status, language)}.</p>
+                <p>{copy.supportLabel}: {contact.supportEmail.value || publicContactStatus(contact.supportEmail.status, language)}.</p>
+              </>
+            )}
+          </section>
+        ))}
       </LegalPage>
     </>
   )

@@ -6,6 +6,7 @@ import AppInstallSupport from '../components/AppInstallSupport'
 import PageIllustration from '../components/PageIllustration'
 import SiteNavigation from '../components/SiteNavigation'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
+import { publicNavigationCopy } from '../lib/publicNavigationCopy'
 import '../styles/globals.css'
 
 const StoryProgressNotifications = dynamic(() => import('../components/StoryProgressNotifications'), { ssr: false })
@@ -78,7 +79,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
         <Component {...pageProps} />
       </div>
       {['/shared', '/couples', '/story'].includes(router.pathname) ? <details style={{ maxWidth: 850, margin: '1rem auto', padding: '0 1.5rem' }}>
-        <summary>Help, privacy and about Muse</summary>
+        <summary>{publicNavigationCopy(interfaceLanguage).information}</summary>
         <SiteFooter />
       </details> : <SiteFooter />}
     </ClientErrorBoundary>

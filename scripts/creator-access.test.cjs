@@ -47,6 +47,7 @@ async function main() {
         if (name === '@supabase/supabase-js') return { createClient: () => ({ auth: { getUser } }) }
         if (name === './sharedStory') return { SharedStoryError }
         if (name === './storyRepository') return { storyStorageMode: () => process.env.STORY_STORAGE || 'supabase' }
+        if (name === './shareConsent') return { hasShareConsent: metadata => metadata?.muse_share_teaser_consent?.version === '2026-10-18' }
         throw new Error(`Unexpected account auth dependency: ${name}`)
       }
     })
@@ -65,6 +66,12 @@ async function main() {
     assert.equal(invalidAuthResponse.statusCode, 401)
     assert.deepEqual(JSON.parse(JSON.stringify(await authExports.requireAccount(authRequest('Bearer valid-token'), authResponse()))),
       { id: 'fixture-account', email: 'fixture@example.test' })
+    getUser = async () => ({
+      data: { user: { id: 'fixture-account', email: 'fixture@example.test',
+        user_metadata: { muse_share_teaser_consent: { version: '2026-10-18', acceptedAt: new Date().toISOString() } } } },
+      error: null
+    })
+    assert.equal((await authExports.requireAccount(authRequest('Bearer valid-token'), authResponse())).shareTeaserConsent, true)
     getUser = async () => { throw new Error('auth service unavailable') }
     await assert.rejects(authExports.requireAccount(authRequest('Bearer valid-token'), authResponse()), error => error.status === 503)
     delete process.env.VERCEL

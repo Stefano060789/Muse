@@ -53,6 +53,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (!(req.body?.mode === 'journey' && ['resume', 'delete'].includes(req.body?.action))) requireProviderConsent(req.body)
     if (req.body?.action === 'share-teaser') {
+      if (!account.shareTeaserConsent) {
+        throw new SharedStoryError('Accept the optional AI sharing-summary permission in Settings before generating a summary.', 403)
+      }
       const input = parsePersonalStoryShareInput(req.body)
       storyProviderConfig()
       const db = storyDatabase()

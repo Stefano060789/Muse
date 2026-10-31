@@ -12,11 +12,16 @@ import {
   interfaceText, loadInterfaceLanguage, saveInterfaceLanguage, useInterfaceLanguage
 } from '../lib/interfaceLanguage'
 import { interfaceFlowText } from '../lib/interfaceFlow'
+import { useShareConsent } from '../lib/useShareConsent'
+import { shareConsentCopy } from '../lib/shareConsentCopy'
+import { personalStoryShareText } from '../lib/personalStoryShareCopy'
 
 type Account = { email?: string; displayName?: string }
 
 export default function AccountPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const shareConsent = useShareConsent()
+  const permissionCopy = shareConsentCopy(interfaceLanguage)
   const savedText = interfaceFlowText('saved', interfaceLanguage)
   const [account, setAccount] = useState<Account | null>(null)
   const [email, setEmail] = useState('')
@@ -218,6 +223,16 @@ export default function AccountPage() {
             {interfaceText('notificationsEnabled', interfaceLanguage)}
           </label>
         </section>
+        {account ? <section className="atelier-card" aria-labelledby="share-consent-heading">
+          <h2 id="share-consent-heading">{permissionCopy.title}</h2>
+          <p>{personalStoryShareText('teaserConsent', interfaceLanguage)}</p>
+          <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
+            <input type="checkbox" checked={shareConsent.accepted} disabled={!shareConsent.ready || shareConsent.saving}
+              onChange={event => { void shareConsent.save(event.target.checked).catch(() => setSettingsError(permissionCopy.error)) }} />
+            {permissionCopy.allow}
+          </label>
+          {shareConsent.failed ? <p role="alert">{permissionCopy.error}</p> : null}
+        </section> : null}
         <section aria-labelledby="account-settings-heading">
         <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>
         {!supabase && localDevelopment ? <section className="atelier-card">

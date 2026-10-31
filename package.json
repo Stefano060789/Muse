@@ -5,6 +5,8 @@
   "scripts": {
     "share:gateway": "node scripts/recipient-gateway.cjs",
     "test:gateway": "node scripts/recipient-gateway.test.cjs",
+    "test:demo": "node scripts/demo-localization.test.cjs",
+    "test:public-pages": "node scripts/billing-preview.test.cjs && node scripts/demo-localization.test.cjs && node scripts/public-legal-localization.test.cjs && node scripts/privacy-consent.test.cjs && node scripts/navigation.test.cjs",
     "test:onboarding": "node scripts/onboarding.test.cjs",
     "test:design": "node scripts/navigation.test.cjs && node scripts/my-stories-ui.test.cjs && node scripts/onboarding.test.cjs && node scripts/personal-creation-ui.test.cjs && node scripts/gift-ui.test.cjs && node scripts/billing-preview.test.cjs",
     "test:billing": "node scripts/billing-preview.test.cjs",
@@ -33,7 +35,7 @@
     "test:progress": "node scripts/gift-progress.test.cjs",
     "test:notifications": "node scripts/story-progress-notifications.test.cjs",
     "test:settings": "node scripts/settings-preferences.test.cjs",
-    "test:personal-story-share": "node scripts/personal-story-share.test.cjs",
+    "test:personal-story-share": "node scripts/personal-story-share.test.cjs && node scripts/share-consent.test.cjs",
     "test:gifting": "node scripts/shared-gifting.test.cjs",
     "test:gift-card": "node scripts/gift-card.test.cjs",
     "test:illustrations": "node scripts/illustrations.test.cjs",

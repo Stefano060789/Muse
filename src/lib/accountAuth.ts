@@ -2,8 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { storyStorageMode } from './storyRepository'
+import { hasShareConsent } from './shareConsent'
 
-export type AccountUser = { id: string; email: string | undefined; displayName?: string }
+export type AccountUser = { id: string; email: string | undefined; displayName?: string; shareTeaserConsent?: boolean }
 
 export async function requireAccount(req: NextApiRequest, res: NextApiResponse): Promise<AccountUser | null> {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && storyStorageMode() === 'sqlite') {
@@ -32,7 +33,10 @@ export async function requireAccount(req: NextApiRequest, res: NextApiResponse):
     const displayName = metadata && typeof metadata.display_name === 'string'
       ? metadata.display_name.trim().slice(0, 40)
       : ''
-    return { id: data.user.id, email: data.user.email, ...(displayName ? { displayName } : {}) }
+    return {
+      id: data.user.id, email: data.user.email, ...(displayName ? { displayName } : {}),
+      ...(hasShareConsent(metadata) ? { shareTeaserConsent: true } : {})
+    }
   } catch (error) {
     if (error instanceof SharedStoryError) throw error
     throw new SharedStoryError('Account authentication is temporarily unavailable.', 503)

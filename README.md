@@ -10,8 +10,9 @@ Google requires server-only credentials, an explicit character budget and durabl
 storage: Supabase on Vercel, or Node.js 24 with private disk locally.
 It is disabled until configured; no paid setup or
 provider calls happen automatically. Live gift turns and final reveals are not
-included in prepared scene audio. The handcrafted demo uses public, prerecorded
-Google WaveNet MP3s, with no generation request or device speech during playback.
+included in prepared scene audio. The English handcrafted demo uses public,
+prerecorded Google WaveNet MP3s, with no generation request during playback.
+Translated samples use browser-only speech in the selected interface language.
 
 Muse is a personalized storytelling prototype with three areas:
 
@@ -120,8 +121,10 @@ a separately selected interface language and default story language, and
 in-app shared-story notification controls. English is the default interface
 language; the other supported languages can be selected. Interface language
 changes navigation, Home, Settings, and key headings/actions in Myself, My
-stories, Archive and story creation. Some form details, help, status messages
-and story-reader text may remain in English. Story language independently
+stories, Archive and story creation. The public footer, Plans & pricing,
+sample, support, privacy and terms pages also follow the selected interface
+language, including their document titles and notices. Some other form details
+and status messages may remain in English. Story language independently
 controls generated story content. These preferences are saved in the browser.
 When enabled and signed in, Muse checks for first opens, progress milestones
 and completion while a visible Muse page is open. Notifications do not sync
@@ -141,10 +144,21 @@ Completed personal stories can also create a spoiler-free social share card with
 the story title, mood and a short AI-written teaser. Teaser generation requires
 explicit consent and uses one AI interaction; only the title, broad mood and
 selected story language are sent to the provider, never scenes, answers, choices
-or saved memories. Share the text through a device app, copy it, or download a
+or saved memories. The optional sharing-summary permission is saved once to the
+signed-in account (version and acceptance date), follows that account across
+devices, and can be revoked in Settings. Registration does not grant it.
+The server checks the current account permission before reserving an interaction;
+older consent versions require acceptance again. Other AI and speech permissions
+remain separate. Share the text through a device app, copy it, or download a
 PNG card from **My stories** or the Archive.
 Personal touches also remain optional inside story creation. Plans, sample,
 help and legal pages are available in the footer; creator tools stay unlisted.
+The compact footer shows configured contacts only, or a localized link to
+support when contact details are pending. Draft legal and launch-readiness
+disclosures remain on the information pages; this cleanup does not configure
+contacts or imply legal approval.
+`npm run test:public-pages` validates pricing, the localized sample, legal
+disclosures and public navigation across all supported languages.
 Personal creation keeps optional personal touches in a collapsed inline editor
 in step two; the romance theme is selected with mood in step one. Step three
 includes optional cloud-narration permission, separate from story AI processing.
@@ -168,10 +182,14 @@ progress is checked. Dictation uses the story language; tap Stop to finish, and
 focusing the response field cancels late transcripts so typing is not overwritten.
 **Try a 2-minute sample** opens an original, fictional
 two-scene gift at `/demo`: no runtime AI generation, paid TTS, story storage, or account.
-Sample narration uses three public, prerecorded Google WaveNet MP3s (two scenes
-and the reveal). Native controls require a Play tap; errors never switch to device
-speech. Internet is required to load recordings. See the Google setup guide for
-regenerating these assets when sample text changes.
+The story, clues, accepted answers, reveal and controls follow all seven interface
+languages. English narration uses three public, prerecorded Google WaveNet MP3s
+(two scenes and the reveal). Translated samples use device/browser narration
+and never play the English recordings or call Muse's paid TTS endpoint.
+Playback requires an explicit tap; matching device voices must be available.
+Internet is required to load recordings. See the Google setup guide for
+regenerating English assets when sample text changes. `npm run test:demo` checks
+the localized sample experience.
 
 Muse includes a web manifest, original home-screen icons and a production-only,
 network-only service worker. Install using the browser prompt/menu; on iPhone,
@@ -453,7 +471,8 @@ migration is needed.
 ## Plans, trial and billing
 
 The home page describes Muse as turning memories, interests and relationships
-into stories people can keep building together. `/billing` presents proposed
+into stories people can keep building together. `/billing` is the public
+**Plans & pricing** page and presents proposed
 Free, one no-card 30-day Plus trial, EUR 5.99 One-off Long Gift,
 EUR 8.99/month Plus and later EUR 89.99/year Plus plans. The trial starts at
 account creation, provides 10 story creations and 120 AI interactions, does not
@@ -464,11 +483,14 @@ month, shared across personal stories and gifts. The One-off Long Gift
 proposes one 20-minute, 9-scene story and up to 60 live interactions in one
 playthrough. This proposed limit is not yet enforced: the
 current prototype allows up to 12 actions per playthrough and creator-configured
-story totals. Planned Plus value
-includes optional puzzles with hints/skip, continuing personal stories with
-chapters, and same-device turn-taking. Those future features are not presented
-as currently available. Premium cloud narration is excluded. The home page
-links to this preview without adding onboarding.
+story totals. Current Plus benefits include personal chapters, optional memories,
+gift media, printable keepsakes and cooperative group play. Separate personal
+story puzzles remain planned. Long Gift and Annual cards are marked as planned
+and not on sale. Premium cloud narration is excluded. Prices, taxes and final
+payment terms remain subject to checkout launch; the page does not turn on
+unconfigured Stripe payments. Localized price formatting keeps the EUR amounts
+unchanged, and plan usage, dates and checkout notices follow the interface language.
+Allowance details are collapsed to keep the page compact.
 
 All proposed packages include local immersive ambience during Listen. It is
 synthesized in the browser, is not AI-generated audio, and uses no AI

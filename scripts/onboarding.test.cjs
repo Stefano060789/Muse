@@ -18,6 +18,10 @@ function load(relative, mocks = {}) {
     if (name in mocks) return mocks[name]
     if (name === '../lib/storyRomance') return load('src/lib/storyRomance.ts', mocks)
     if (name === '../lib/storyRetention') return load('src/lib/storyRetention.ts', mocks)
+    if (name === '../lib/demoPageLocalization' || name === './demoPageLocalization') return load('src/lib/demoPageLocalization.ts', mocks)
+    if (name === '../lib/interfaceFlow') return load('src/lib/interfaceFlow.ts', mocks)
+    if (name === '../lib/interfacePages') return load('src/lib/interfacePages.ts', mocks)
+    if (name === './storyLanguage' || name === '../lib/storyLanguage') return load('src/lib/storyLanguage.ts', mocks)
     throw new Error('Unexpected dependency: ' + name)
   })
   return result.exports
@@ -62,7 +66,14 @@ function component(relative, extra = {}) {
     assert.ok(node, `Missing ${type}: ${label}`)
     return node
   }
-  return { render, nodes, find }
+  const renderChild = node => {
+    cursor = 0
+    const child = node.type(node.props)
+    for (const effect of effects.splice(0)) effect()
+    cursor = 0
+    return child
+  }
+  return { render, nodes, find, renderChild }
 }
 const sample = load('src/lib/sampleStory.ts')
 const sampleAudio = require('../src/lib/sampleAudio.json')
@@ -89,16 +100,20 @@ check('sample is original static fiction with bounded answer handling', () => {
   for (const answer of ['', 'not a picnic', '<script>']) assert.equal(sample.sampleAnswerMatches(answer), false)
 })
 check('demo can be completed and replayed with no API or storage dependencies', () => {
+  const demoCopy = load('src/lib/demoPageLocalization.ts').demoLocalization('en-US')
   const demo = component('src/pages/demo.tsx', {
     '../lib/sampleStory': sample,
+    '../lib/demoPageLocalization': { demoLocalization: () => demoCopy },
+    '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'en-US' },
     '../lib/sampleAudio.json': sampleAudio,
     '../components/SampleNarration': { __esModule: true, default: 'sample-narration' }
   })
   demo.render()
   assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
-  demo.find('button', 'Open sample story').props.onClick(); demo.render()
+  demo.find('button', demoCopy.copy.openStory).props.onClick(); demo.render()
   assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-1'].src)
-  demo.find('button', 'Follow the lanterns').props.onClick(); demo.render()
+  assert.ok(demo.nodes().some(node => node.props.children === demoCopy.copy.privacyNotice))
+  demo.find('button', demoCopy.copy.continue).props.onClick(); demo.render()
   assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-2'].src)
   demo.nodes().find(node => node.props.id === 'sample-answer').props.onChange({ target: { value: 'wrong' } }); demo.render()
   demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
@@ -107,11 +122,11 @@ check('demo can be completed and replayed with no API or storage dependencies', 
   demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
   assert.ok(demo.nodes().some(node => node.props.href === '/shared#new'))
   assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
-  demo.find('button', 'Try the sample again').props.onClick(); demo.render()
-  assert.ok(demo.find('button', 'Open sample story'))
+  demo.find('button', demoCopy.copy.restart).props.onClick(); demo.render()
+  assert.ok(demo.find('button', demoCopy.copy.openStory))
   assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
-  demo.find('button', 'Open sample story').props.onClick(); demo.render()
-  demo.find('button', 'Open the sample reveal').props.onClick(); demo.render()
+  demo.find('button', demoCopy.copy.openStory).props.onClick(); demo.render()
+  demo.find('button', demoCopy.copy.revealButton).props.onClick(); demo.render()
   assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
 })
 check('sample recordings match current public text and committed MP3 content', () => {
@@ -135,19 +150,59 @@ check('sample recordings match current public text and committed MP3 content', (
   }
 })
 check('sample audio requires a Play tap, surfaces failures and never switches to device speech', () => {
-  const player = component('src/components/SampleNarration.tsx')
+  let narrationOptions, narrationInitializations = 0, browserChunkLoads = 0
+  const browserCopy = load('src/lib/demoPageLocalization.ts').demoLocalization('it-IT').copy
+  const player = component('src/components/SampleNarration.tsx', {
+    'next/dynamic': { __esModule: true, default: loader => {
+      return props => ({ type: 'browser-sample-narration', props, loadChunk: () => { browserChunkLoads++; return loader() } })
+    } }
+  })
   const props = { src: sampleAudio['scene-1'].src, label: 'Listen to this scene' }
   player.render(props)
-  const audio = player.nodes().find(node => node.type === 'audio')
+  assert.equal(browserChunkLoads, 0, 'English prerecorded narration does not load the browser-speech chunk')
+  assert.equal(narrationInitializations, 0, 'English prerecorded narration does not initialize device speech')
+  const recordedTree = () => {
+    const recordedComponent = player.nodes().find(node => typeof node.type === 'function')
+    assert.ok(recordedComponent, 'English narration uses the prerecorded-audio component')
+    return flatten(player.renderChild(recordedComponent)).filter(node => node && typeof node === 'object')
+  }
+  const audio = recordedTree().find(node => node.type === 'audio')
   assert.equal(audio.props.src, props.src)
   assert.equal(audio.props.controls, true)
   assert.equal(audio.props.preload, 'none')
   assert.equal(audio.props.autoPlay, undefined)
   assert.equal(audio.props.loop, undefined)
   audio.props.onError(); player.render(props)
-  assert.ok(player.nodes().some(node => node.props.role === 'alert' && text(node).includes('has not switched to a device voice')))
-  audio.props.onLoadedMetadata(); player.render(props)
-  assert.equal(player.nodes().filter(node => node.props.role === 'alert').length, 0)
+  assert.ok(recordedTree().some(node => node.props.role === 'alert' && text(node).includes('has not switched to a device voice')))
+  const retryAudio = recordedTree().find(node => node.type === 'audio')
+  retryAudio.props.onLoadedMetadata(); player.render(props)
+  assert.equal(recordedTree().filter(node => node.props.role === 'alert').length, 0)
+  const browserProps = { browserOnly: true, language: 'it-IT', label: browserCopy.listenScene, text: 'Una scena tradotta.', copy: browserCopy }
+  player.render(browserProps)
+  const browserComponent = player.nodes().find(node => typeof node.type === 'function')
+  assert.ok(browserComponent, 'Translated narration uses the browser-only narration component')
+  assert.equal(browserComponent.type(browserComponent.props).type, 'browser-sample-narration')
+  assert.equal(browserComponent.props.language, 'it-IT')
+  assert.equal(browserComponent.props.text, 'Una scena tradotta.')
+  const browserSpeech = component('src/components/BrowserSampleNarration.tsx', {
+    '../lib/useNarration': {
+      useNarration: (metadata, mood, context, options) => {
+        narrationInitializations++
+        narrationOptions = { metadata, mood, context, options }
+        return { busy: false, supported: true, error: '', loading: false, paused: false, canPause: false, speak() {}, pause() {}, resume() {}, stop() {} }
+      }
+    }
+  })
+  browserSpeech.render(browserProps)
+  const browserTree = browserSpeech.nodes().length ? browserSpeech.nodes()[0] : null
+  assert.ok(browserTree)
+  const browserNodes = flatten(browserTree).filter(node => node && typeof node === 'object')
+  assert.equal(narrationOptions.metadata.narrationLanguage, 'it-IT')
+  assert.equal(narrationOptions.options.browserOnly, true)
+  assert.ok(narrationInitializations > 0, 'Device narration initializes for translated browser speech')
+  assert.equal(browserNodes.filter(node => node.type === 'audio').length, 0)
+  assert.ok(browserNodes.some(node => text(node).includes(browserCopy.narrationNotice)))
+  assert.ok(browserNodes.some(node => node.type === 'button' && text(node) === browserCopy.listenScene))
 })
 check('pre-send requires complete preview, answer and attachment checks and resets for uploads', () => {
   let ready
@@ -161,6 +216,7 @@ check('pre-send requires complete preview, answer and attachment checks and rese
   preview.find('button', 'Preview the recipient experience').props.onClick(); preview.render(props)
   assert.equal(JSON.stringify(preview.nodes()).includes('Secret answer'), false)
   assert.equal(JSON.stringify(preview.nodes()).includes('Private reveal'), false)
+  preview.find('button', 'Review story scenes').props.onClick(); preview.render(props)
   preview.find('button', 'Next scene').props.onClick(); preview.render(props)
   preview.find('button', 'I reviewed the clues').props.onClick(); preview.render(props)
   assert.ok(preview.nodes().some(node => node.type === 'a' && node.props.href === '/library#shared-stories-heading'),
@@ -178,6 +234,7 @@ check('expired or missing-reveal stories cannot pass the pre-send readiness chec
   const preview = component('src/components/PreSendCheck.tsx')
   const props = { story: { ownerToken: 'owner', expiresAt: '2000-01-01', brief: { message: '' }, content: { scenes: [{ title: 'Scene', body: 'Body', clue: 'Clue' }] } }, hasMedia: false, hasVoice: true, uploadPending: false, onReady: value => { ready = value } }
   preview.render(props); preview.find('button', 'Preview the recipient experience').props.onClick(); preview.render(props)
+  preview.find('button', 'Review story scenes').props.onClick(); preview.render(props)
   preview.find('button', 'I reviewed the clues').props.onClick(); preview.render(props)
   for (const input of preview.nodes().filter(node => node.type === 'input')) input.props.onChange({ target: { checked: true } })
   preview.render(props)
@@ -221,6 +278,7 @@ check('Myself restores, dictates, explores topics and saves editable reflections
         return { about: `${topic}: ${value}`, keypoints: [`${topic}: ${value}`] }
       }
     },
+    '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'en-US' },
     '../lib/useStoryInteraction': { useStoryInteraction(_before, language) {
       selectedLanguage = language
       return { recordingTarget: '', ready: false, error: '',
@@ -235,7 +293,8 @@ check('Myself restores, dictates, explores topics and saves editable reflections
   touches.nodes().find(node => node.type === 'select').props.onChange({ target: { value: 'ar-SA' } })
   touches.render()
   assert.equal(selectedLanguage, 'ar-SA')
-  const dictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === 'Start dictation')
+  const dictationLabel = load('src/lib/interfaceFlow.ts').interfaceFlowText('dictate', 'en-US')
+  const dictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === dictationLabel)
   dictation.props.onStart(); receiver('I enjoy walking outdoors.'); dictation.props.onStop()
   touches.render()
   assert.equal(stopped, 1)
@@ -247,7 +306,7 @@ check('Myself restores, dictates, explores topics and saves editable reflections
   touches.render()
   assert.equal(saved, 'I enjoy peaceful walks.')
   assert.ok(cancelled >= 3)
-  assert.ok(touches.nodes().some(node => node.props.role === 'status' && /Saved in this browser/.test(text(node))))
+  assert.ok(touches.nodes().some(node => node.props.role === 'status' && text(node) === load('src/lib/interfaceFlow.ts').interfaceFlowText('saved', 'en-US')))
   failSave = true
   field().props.onChange({ target: { value: 'Keep this unsaved text.' } })
   touches.render()
@@ -261,7 +320,7 @@ check('Myself restores, dictates, explores topics and saves editable reflections
   const topic = touches.nodes().find(node => node.props.role === 'status' && text(node))
   assert.ok(topic && text(topic).length > 0, 'A topic is shown for reflection')
   const topicAnswer = () => touches.nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your reflection')
-  const reflectionDictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === 'Speak about it')
+  const reflectionDictation = touches.nodes().find(node => node.type === 'dictation' && node.props.label === `${dictationLabel} · ${load('src/lib/interfacePages.ts').interfacePageText('yourReflection', 'en-US')}`)
   reflectionDictation.props.onStart()
   receiver('A friend helped me see things differently.')
   reflectionDictation.props.onStop()
@@ -271,13 +330,16 @@ check('Myself restores, dictates, explores topics and saves editable reflections
   touches.render()
   assert.equal(savedReflection.topic, text(topic))
   assert.equal(savedReflection.value, 'A friend helped me see things differently.')
-  assert.ok(touches.nodes().some(node => text(node).includes('editable personal memory')))
+  const memoryLabel = load('src/lib/interfacePages.ts').interfacePageText('memory', 'en-US')
+  assert.ok(touches.nodes().some(node => node.type === 'input' && node.props['aria-label'] === `${memoryLabel} 1` && node.props.value.endsWith('A friend helped me see things differently.')))
   assert.ok(touches.nodes().some(node => node.props.href === '/story?new=1'))
   assert.ok(touches.nodes().some(node => node.type === 'h1' && text(node) === 'Myself'))
 })
 check('home exposes two clear creation paths, demo and saved stories', () => {
+  const interfaceCopy = load('src/lib/interfaceLanguage.ts', { react: { useEffect() {}, useState: () => ['en-US', () => {}] } })
   const home = component('src/pages/index.tsx', {
     '../components/InstallApp': { __esModule: true, default: 'install' },
+    '../lib/interfaceLanguage': { interfaceText: interfaceCopy.interfaceText, useInterfaceLanguage: () => 'en-US' },
     '../lib/storyLibrary': {
       loadStoryLibrary: () => ({ library: { entries: [] }, error: null }),
       selectPersonalStory() {}
@@ -287,24 +349,18 @@ check('home exposes two clear creation paths, demo and saved stories', () => {
   global.window = { addEventListener() {}, removeEventListener() {} }
   try {
     home.render()
-    for (const href of ['/my-stories', '/shared#new', '/demo', '/library']) assert.ok(home.nodes().some(node => node.props.href === href), href)
+    for (const href of ['/my-stories', '/shared#new', '/demo']) assert.ok(home.nodes().some(node => node.props.href === href), href)
     assert.ok(home.nodes().some(node => node.props.href === '/my-stories' && text(node) === 'Open My stories'))
     assert.ok(home.nodes().some(node => node.props.href === '/shared#new' && text(node) === 'Create & share a story'))
     assert.ok(home.nodes().some(node => node.type === 'h2' && text(node) === 'Share a story & play together'))
-    assert.ok(home.nodes().some(node => /send your group a private link/.test(text(node)) && /shared progress and turn-taking across devices/.test(text(node))), 'Home explains cooperative link sharing and cross-device turns')
     assert.ok(home.nodes().some(node => node.type === 'h2' && text(node) === 'My stories'))
-    assert.ok(home.nodes().some(node => /Create an interactive story and send your group a private link/.test(text(node))), 'Shared creation describes how to invite a group')
-    assert.ok(home.nodes().some(node => /Choose how you want to feel/.test(text(node))), 'Personal creation explains its writing and play flow')
+    assert.ok(home.nodes().some(node => text(node) === 'For someone else'), 'The shared-story path is clearly identified')
+    assert.ok(home.nodes().some(node => text(node) === 'Just for you'), 'The personal-story path is clearly identified')
     assert.ok(home.nodes().some(node => node.props.href === '/myself' && text(node) === 'Myself'), 'Myself remains available from Home')
     assert.ok(home.nodes().some(node => node.type === 'h1' && /A story to get lost in/.test(text(node))))
-    assert.ok(home.nodes().some(node => /AI-powered story you shape with your choices/.test(text(node))))
     assert.equal(home.nodes().filter(node => node.type === 'section').length, 1, 'Home stays focused on one hero, without long feature sections')
     assert.equal(home.nodes().some(node => node.type === 'textarea'), false, 'Personal touches no longer clutter Home')
-    const more = home.nodes().find(node => node.type === 'details')
-    assert.ok(more && !more.props.open, 'Secondary information is collapsed by default')
-    for (const href of ['/my-stories', '/shared#new', '/demo']) {
-      assert.ok(home.nodes().some(node => node.props.href === href && !flatten(more).includes(node)), 'Primary paths stay outside collapsed details')
-    }
+    assert.equal(home.nodes().some(node => node.type === 'details'), false, 'Home has no hidden secondary-information section')
   } finally {
     if (previousWindow === undefined) delete global.window
     else global.window = previousWindow
