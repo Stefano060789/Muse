@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
+import type { CollectionCopy } from '../lib/interfacePages'
 
-export default function GiftProgress({ load, sceneCount, adventure, compact = false, snapshot }: {
+export default function GiftProgress({ load, sceneCount, adventure, copy, compact = false, snapshot }: {
   load: () => Promise<SharedStoryProgress>; sceneCount: number; adventure: boolean; compact?: boolean; snapshot?: SharedStoryProgress
+  copy: CollectionCopy
 }) {
   const [progress, setProgress] = useState<SharedStoryProgress | null>(snapshot || null)
   const [error, setError] = useState('')
@@ -26,18 +28,18 @@ export default function GiftProgress({ load, sceneCount, adventure, compact = fa
     }
   }
   const total = progress?.sceneCount === undefined ? adventure ? null : sceneCount : progress.sceneCount
-  const reached = !progress?.opened || progress.furthestScene === null ? 0 : progress.furthestScene + 1
-  return <section aria-label="Recipient progress" className={compact ? undefined : 'atelier-card'} style={compact ? { minWidth: 0, maxWidth: '100%' } : undefined}>
-    {!compact ? <h2>Story progress</h2> : null}
+  const reached = !progress?.opened || progress.furthestScene === null ? null : progress.furthestScene + 1
+  const sceneLabel = reached === null ? copy.notStarted
+    : total === null ? copy.scene(reached)
+      : copy.sceneRange(Math.min(reached, total), total)
+  return <section aria-label={copy.recipientProgress} className={compact ? undefined : 'atelier-card'} style={compact ? { minWidth: 0, maxWidth: '100%' } : undefined}>
+    {!compact ? <h2>{copy.progressTitle}</h2> : null}
     <button type="button" className="atelier-button" disabled={busy} onClick={() => void refresh()}>
-      {busy ? 'Loading progress...' : progress ? 'Refresh story progress' : 'View story progress'}
+      {busy ? copy.loadingProgress : progress ? copy.refreshProgress : copy.viewProgress}
     </button>
     {error ? <p role="alert">{error}</p> : null}
     {progress ? <>
-      <p role="status">
-        {total === null ? `${reached} ${reached === 1 ? 'scene' : 'scenes'} · ` : `${Math.min(reached, total)}/${total} · `}
-        {progress.solved + progress.skipped > 0 ? 'Finished' : 'Not finished'}
-      </p>
+      <p role="status">{sceneLabel}{' · '}{progress.solved + progress.skipped > 0 ? copy.finished : copy.notFinished}</p>
     </> : null}
   </section>
 }

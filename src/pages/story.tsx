@@ -569,10 +569,10 @@ export default function StoryPage() {
           {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {draftError ? <p role="alert">{draftError}</p> : null}
-          {draftNotice && (!story || responseDraft) ? <p role="status">{draftNotice}</p> : null}
+          {draftNotice && story && responseDraft ? <p role="status">{draftNotice}</p> : null}
           {interaction.error ? <p role="alert">{interaction.error}</p> : null}
-          <p><Link href={archiveReading ? '/library' : '/my-stories'}>{archiveReading ? flow('backArchive') : flow('backMyStories')}</Link></p>
-          {!story ? <p>{flow('accountRequired')} <Link href="/account">{interfaceText('settingsTitle', interfaceLanguage)}</Link></p> : null}
+          {story || archiveReading ? <p><Link href={archiveReading ? '/library' : '/my-stories'}>{archiveReading ? flow('backArchive') : flow('backMyStories')}</Link></p> : null}
+          {story === null && preparation ? <p>{flow('accountRequired')} <Link href="/account">{interfaceText('settingsTitle', interfaceLanguage)}</Link></p> : null}
           {preparation || story?.journey ? <div style={{ margin: '1rem 0' }}>
             {reconciliationBlocked ? <p role="status">{flow('sessionRestoreFailed')}</p>
               : !reconciled || story?.journey?.pending ? <p role="status">{flow('checkingProgress')}</p> : null}
@@ -580,7 +580,6 @@ export default function StoryPage() {
           </div> : null}
           {!story ? (
             <section ref={creationSection} tabIndex={-1} aria-labelledby="creation-title">
-              <p className="atelier-eyebrow">{pageText('personalStoryEyebrow', interfaceLanguage)}</p>
               <h1 id="creation-title" className="atelier-title">{pageText('personalStoryTitle', interfaceLanguage)}</h1>
               {creationStep === 0 ? <p className="atelier-subtitle">{pageText('personalStoryMoodSubtitle', interfaceLanguage)}</p> : null}
               <ol className="atelier-progress" aria-label={flow('creationSteps')}>

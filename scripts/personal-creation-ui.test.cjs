@@ -149,9 +149,20 @@ async function main() {
   const visible = () => nodes().filter(node => node.type === 'fieldset' && !node.props.hidden)
   await flush()
   assert.equal(nodes().find(node => node.type === 'main').props.lang, 'en-US')
+  assert.ok(!nodes().some(node => node.props.role === 'status' && label(node) === 'Draft saved in this browser.'),
+    'Automatic browser draft saves stay quiet in the creation flow')
+  assert.ok(!nodes().some(node => node.type === 'a' && node.props.href === '/my-stories'),
+    'Creation has no redundant return link above the wizard')
+  assert.ok(!nodes().some(node => node.props.href === '/account'),
+    'An unsigned user can explore the new-story flow without a distracting sync prompt')
+  assert.ok(!nodes().some(node => node.type === 'p' && label(node) === 'A story for you'),
+    'The redundant creation eyebrow is removed')
   interfaceLocale = 'it-IT'
   await flush()
   assert.equal(nodes().find(node => node.type === 'main').props.lang, 'it-IT')
+  assert.ok(nodes().some(node => node.type === 'label' &&
+    label(node).includes('Che storia hai in mente? Cosa vorresti cambiare o migliorare?')),
+    'The optional story prompt asks for an idea and what the user wants to improve in Italian')
   assert.equal(nodes().find(node => node.type === 'ol').props['aria-label'], 'Fasi della storia')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Lingua della storia').props.value, 'en-US',
     'Story language accessibility label follows the interface locale without changing story language')
@@ -164,6 +175,9 @@ async function main() {
   assert.equal(requests.length, 0)
   await click('Continue')
   assert.equal(visible().length, 1)
+  assert.ok(nodes().some(node => node.type === 'label' &&
+    label(node).includes('What story do you have in mind? What would you like to change or improve?')),
+    'The optional story prompt asks for an idea and what the user wants to improve in English')
   assert.ok(!nodes().some(node => node.props.href === '/myself'), 'Personal touches stay inside creation')
   assert.ok(nodes().some(node => node.type === 'fieldset' && flatten(node).some(child => child?.type === '../components/RomanceOptions')),
     'Romance is in the mood step')

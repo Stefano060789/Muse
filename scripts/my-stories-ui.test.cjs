@@ -15,11 +15,11 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
   const state = [], effects = [], requests = [], navigations = [], selections = [], listeners = new Map()
   let cursor = 0, tree
   const entries = [
-    { kind: 'personal', id: 'active', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Active story', journey: { status: 'active' } } },
+    { kind: 'personal', id: 'active', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Active story', currentStep: 0, scenes: [{}], journey: { status: 'active' } } },
     { kind: 'personal', id: 'archived', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Archived story', archived: true, journey: { status: 'active' } } },
-    { kind: 'personal', id: 'done', updatedAt: '2026-10-25T01:00:00Z', story: { title: 'Completed story', journey: { status: 'concluded' } } },
-    { kind: 'personal', id: 'child', updatedAt: '2026-10-24T12:00:00Z', story: { title: 'Next chapter', chapter: { number: 2, rootId: 'done', parentId: 'done', parentTitle: 'Completed story' }, journey: { status: 'active' } } },
-    { kind: 'personal', id: 'exhausted', updatedAt: '2026-10-24T01:00:00Z', story: { title: 'Saved scenes', journey: { status: 'exhausted', revision: 6, maxTurns: 6 } } },
+    { kind: 'personal', id: 'done', updatedAt: '2026-10-25T01:00:00Z', story: { title: 'Completed story', currentStep: 0, scenes: [{}], journey: { status: 'concluded' } } },
+    { kind: 'personal', id: 'child', updatedAt: '2026-10-24T12:00:00Z', story: { title: 'Next chapter', currentStep: 1, scenes: [{}, {}], chapter: { number: 2, rootId: 'done', parentId: 'done', parentTitle: 'Completed story' }, journey: { status: 'active' } } },
+    { kind: 'personal', id: 'exhausted', updatedAt: '2026-10-24T01:00:00Z', story: { title: 'Saved scenes', currentStep: 1, scenes: [{}, {}], journey: { status: 'exhausted', revision: 6, maxTurns: 6 } } },
     { kind: 'shared', id: 'gift', updatedAt: '2026-10-26T02:00:00Z', story: { title: 'Private gift' } }
   ]
   const react = {
@@ -47,7 +47,8 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id.endsWith('/interfacePages')) return {
       collectionCopy: () => ({
         chapter: number => `Chapter ${number}`,
-        following: title => `Following ${title}`
+        following: title => `Following ${title}`,
+        scene: number => `Scene ${number}`
       }),
       interfacePageText: key => ({
         myStoriesTitle: 'My stories', myStoriesEyebrow: 'Your next adventure',
@@ -107,11 +108,17 @@ async function main() {
   for (const language of ['en-US', 'it-IT', 'es-ES', 'zh-CN', 'hi-IN', 'uk-UA', 'ar-SA']) {
     const copy = localized.exports.collectionCopy(language)
     assert.ok(copy.chapter(2).includes('2'), `${language} chapter number`)
+    assert.ok(copy.scene(1), `${language} scene number`)
     assert.ok(copy.following('A story'), `${language} following label`)
+    assert.ok(copy.progressTitle && copy.recipientProgress && copy.loadingProgress && copy.viewProgress &&
+      copy.refreshProgress && copy.notStarted && copy.finished && copy.notFinished, `${language} shared-story progress labels`)
     assert.ok(copy.storage.length > 50, `${language} archive privacy disclosure`)
     if (language !== 'en-US') {
       assert.doesNotMatch(copy.chapter(2), /Chapter/, `${language} chapter label is localized`)
       assert.doesNotMatch(copy.following('A story'), /Following/, `${language} following label is localized`)
+      assert.notEqual(copy.progressTitle, 'Story progress', `${language} progress heading is localized`)
+      assert.notEqual(copy.viewProgress, 'View story progress', `${language} progress action is localized`)
+      assert.notEqual(copy.finished, 'Finished', `${language} completion status is localized`)
     }
   }
   const hub = await mount()
@@ -121,9 +128,10 @@ async function main() {
   assert.ok(!hub.nodes().some(node => label(node) === 'Private gift'))
   assert.ok(!hub.nodes().some(node => node.type === 'h3' && label(node) === 'Archived story'))
   assert.equal(hub.nodes().filter(node => node.type === 'StoryArchiveButton').length, 4)
-  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · In progress'))
-  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 2 · In progress'))
-  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · Completed'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 1 · Scene 1'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Chapter 2 · Scene 2 · Following Completed story'))
+  assert.ok(hub.nodes().some(node => label(node) === 'In progress'))
+  assert.ok(hub.nodes().some(node => label(node) === 'Completed'))
   assert.deepEqual(hub.nodes().filter(node => node.type === 'PersonalStoryShareCard')
     .map(node => node.props.story.title), ['Completed story', 'Saved scenes'],
   'Only completed personal stories expose the share-card action')

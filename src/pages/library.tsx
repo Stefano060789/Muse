@@ -207,7 +207,7 @@ export default function LibraryPage() {
                     showWhatsapp={false}
                     previewContent={<GiftStoryPreview brief={entry.story.brief} content={entry.story.content} />} /> : null}
                   <button className="atelier-secondary" onClick={() => remove(entry)}>{text('removeFromBrowser', interfaceLanguage)}</button>
-                  <GiftProgress compact snapshot={progressByStory[entry.story.ownerToken.split('.')[0]]}
+                  <GiftProgress compact copy={collectionText} snapshot={progressByStory[entry.story.ownerToken.split('.')[0]]}
                     load={() => loadProgress(entry.story.ownerToken)} sceneCount={entry.story.content.scenes.length} adventure={Boolean(entry.story.brief.adventure)} />
                 </div>
               </article>

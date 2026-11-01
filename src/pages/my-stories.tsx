@@ -94,13 +94,19 @@ export default function MyStoriesPage() {
               ? ['concluded', 'exhausted'].includes(entry.story.journey.status)
               : entry.story.responses.length >= entry.story.scenes.length ||
                 (entry.story.generation === 'ai' && entry.story.currentStep === entry.story.scenes.length - 1)
+            const sceneNumber = Math.min(
+              Math.max(1, (entry.story.currentStep ?? 0) + 1),
+              Math.max(entry.story.scenes?.length ?? 0, 1)
+            )
+            const tracking = [
+              chapterNumber ? collectionText.chapter(chapterNumber) : null,
+              chapterNumber || !completed ? collectionText.scene(sceneNumber) : null
+            ].filter((label): label is string => label !== null)
             return <article className="atelier-card muse-collection-card" key={entry.id}>
               <h3>{entry.story.title}</h3>
-              {chapterNumber ? <p>{entry.story.chapter?.parentTitle ? `${collectionText.chapter(chapterNumber)} · ${collectionText.following(entry.story.chapter.parentTitle)}` : collectionText.chapter(chapterNumber)}</p> : null}
-              <p>{journey?.status === 'concluded' ? `${collectionText.chapter(chapterNumber ?? 1)} · ${text('storyCompleted', interfaceLanguage)}`
-                : journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
-                  : journey ? `${collectionText.chapter(chapterNumber ?? 1)} · ${text('inProgress', interfaceLanguage)}`
-                    : completed ? text('storyCompleted', interfaceLanguage) : text('inProgress', interfaceLanguage)}</p>
+              {tracking.length ? <p>{tracking.join(' · ')}{entry.story.chapter?.parentTitle ? ` · ${collectionText.following(entry.story.chapter.parentTitle)}` : ''}</p> : null}
+              <p>{journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
+                : completed ? text('storyCompleted', interfaceLanguage) : text('inProgress', interfaceLanguage)}</p>
               {journey?.status === 'concluded' ? <div className="muse-collection-actions">
                 <button type="button" onClick={() => open(entry, true, 'read')}>{text('readChapter', interfaceLanguage)} {chapterNumber}</button>
                 <button type="button" className="atelier-button" onClick={() => open(entry, true, 'continue')}>{text('continueToChapter', interfaceLanguage)} {(chapterNumber ?? 1) + 1}</button>

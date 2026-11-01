@@ -34,7 +34,7 @@ import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { loadProfileDisplayName } from '../lib/profilePreferences'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
-import { giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
+import { collectionCopy, giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
 import { interfaceFlowText } from '../lib/interfaceFlow'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
@@ -194,6 +194,7 @@ async function putFile(target: UploadTarget, file: File, onProgress: (percent: n
 
 export default function SharedStoryPage() {
   const interfaceLanguage = useInterfaceLanguage()
+  const collectionText = collectionCopy(interfaceLanguage)
   const flow = (key: Parameters<typeof interfaceFlowText>[0]) => interfaceFlowText(key, interfaceLanguage)
   const interfaceCopy = recipientCopy(interfaceLanguage)
   const [brief, setBrief] = useState<SharedStoryBrief>(blankBrief)
@@ -1567,7 +1568,7 @@ export default function SharedStoryPage() {
                 {voiceUploading ? <p role="status">Uploading your voice message privately...</p> : voiceFile ? <button type="button" disabled={busy || voiceRecording} onClick={() => void uploadVoice(creator, voiceFile)} style={primaryStyle}>{ownerVoice ? 'Upload replacement recording' : 'Attach recording'}</button> : null}
               </details>
             </details>
-            <GiftProgress key={creator.ownerToken} sceneCount={creator.content.scenes.length} adventure={Boolean(creator.brief.adventure)}
+            <GiftProgress key={creator.ownerToken} copy={collectionText} sceneCount={creator.content.scenes.length} adventure={Boolean(creator.brief.adventure)}
               load={async () => {
                 const result = await request<{ progress: SharedStoryProgress }>({ action: 'progress', token: creator.ownerToken })
                 return result.progress

@@ -145,11 +145,19 @@ export function archiveSyncNote(language: StoryLanguageCode): string {
 
 export type InterfacePageCopyKey = PageCopyKey
 
-type CollectionCopy = {
+export type CollectionCopy = {
   chapter: (number: number) => string
   following: (title: string) => string
   scene: (number: number) => string
   sceneRange: (current: number, total: number) => string
+  progressTitle: string
+  recipientProgress: string
+  loadingProgress: string
+  viewProgress: string
+  refreshProgress: string
+  notStarted: string
+  finished: string
+  notFinished: string
   storage: string
 }
 
@@ -159,6 +167,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Following ${title}`,
     scene: number => `Scene ${number}`,
     sceneRange: (current, total) => `Scene ${current} of ${total}`,
+    progressTitle: 'Story progress', recipientProgress: 'Recipient progress', loadingProgress: 'Loading progress...',
+    viewProgress: 'View story progress', refreshProgress: 'Refresh story progress', notStarted: 'Not started',
+    finished: 'Finished', notFinished: 'Not finished',
     storage: 'Saved entries include private access links; anyone using this browser can view them. Gift briefs stay saved independently of recipient completion until removed or browser storage is cleared. Server stories do not expire; removing a browser copy does not delete them or disable recipient links. Progress loads only on request, and recipient links work without an account. Share only recipient links; sign in to manage gifts and view progress.'
   },
   'it-IT': {
@@ -166,6 +177,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Dopo ${title}`,
     scene: number => `Scena ${number}`,
     sceneRange: (current, total) => `Scena ${current} di ${total}`,
+    progressTitle: 'Progresso della storia', recipientProgress: 'Progresso del destinatario', loadingProgress: 'Caricamento progressi…',
+    viewProgress: 'Visualizza i progressi', refreshProgress: 'Aggiorna i progressi', notStarted: 'Non iniziata',
+    finished: 'Completata', notFinished: 'Non completata',
     storage: 'Le voci salvate includono link di accesso privati, visibili a chiunque usi questo browser. I dettagli dei regali restano salvati indipendentemente dal completamento dei destinatari finché non li rimuovi o cancelli i dati del browser. Le storie sul server non scadono; rimuovere una copia non le elimina né disattiva i link. I progressi si caricano solo su richiesta e i link dei destinatari funzionano senza account. Condividi solo i link dei destinatari; accedi per gestire i regali e vedere i progressi.'
   },
   'es-ES': {
@@ -173,6 +187,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Después de ${title}`,
     scene: number => `Escena ${number}`,
     sceneRange: (current, total) => `Escena ${current} de ${total}`,
+    progressTitle: 'Progreso de la historia', recipientProgress: 'Progreso del destinatario', loadingProgress: 'Cargando progreso…',
+    viewProgress: 'Ver progreso de la historia', refreshProgress: 'Actualizar progreso', notStarted: 'Sin empezar',
+    finished: 'Completada', notFinished: 'Sin completar',
     storage: 'Las entradas guardadas incluyen enlaces de acceso privados; cualquiera que use este navegador puede verlos. Los detalles de los regalos se conservan aunque el destinatario complete la historia, hasta que los elimines o borres los datos del navegador. Las historias del servidor no caducan; eliminar una copia local no las borra ni desactiva los enlaces. El progreso solo se carga cuando lo solicitas y los enlaces funcionan sin cuenta. Comparte solo enlaces para destinatarios; inicia sesión para gestionar regalos y ver el progreso.'
   },
   'zh-CN': {
@@ -180,6 +197,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `接续：${title}`,
     scene: number => `第${number}幕`,
     sceneRange: (current, total) => `第${current}/${total}幕`,
+    progressTitle: '故事进度', recipientProgress: '收件人进度', loadingProgress: '正在加载进度…',
+    viewProgress: '查看故事进度', refreshProgress: '刷新故事进度', notStarted: '尚未开始',
+    finished: '已完成', notFinished: '未完成',
     storage: '已保存条目含私人访问链接，使用此浏览器的任何人都可能查看。无论收件人是否完成故事，礼物内容都会保留在此，直到你移除或清除浏览器数据。服务器故事不会过期；移除此处副本不会删除故事或停用收件人链接。仅在请求时加载进度，收件人链接无需账户即可使用。仅分享收件人链接；登录后可管理礼物并查看进度。'
   },
   'hi-IN': {
@@ -187,6 +207,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `${title} के बाद`,
     scene: number => `दृश्य ${number}`,
     sceneRange: (current, total) => `दृश्य ${current} / ${total}`,
+    progressTitle: 'कहानी की प्रगति', recipientProgress: 'प्राप्तकर्ता की प्रगति', loadingProgress: 'प्रगति लोड हो रही है…',
+    viewProgress: 'कहानी की प्रगति देखें', refreshProgress: 'प्रगति रीफ़्रेश करें', notStarted: 'शुरू नहीं हुई',
+    finished: 'पूरी हुई', notFinished: 'पूरी नहीं हुई',
     storage: 'सहेजी प्रविष्टियों में निजी पहुँच लिंक होते हैं; इस ब्राउज़र का उपयोग करने वाला कोई भी व्यक्ति इन्हें देख सकता है। प्राप्तकर्ता के कहानी पूरी करने के बाद भी उपहार का विवरण यहाँ रहता है, जब तक आप इसे हटाएँ या ब्राउज़र डेटा साफ़ करें। सर्वर की कहानियाँ समाप्त नहीं होतीं; ब्राउज़र की प्रति हटाने से कहानी नहीं मिटती और प्राप्तकर्ता लिंक बंद नहीं होते। प्रगति केवल अनुरोध पर लोड होती है और लिंक बिना खाते के काम करते हैं। केवल प्राप्तकर्ता लिंक साझा करें; उपहार प्रबंधित करने और प्रगति देखने के लिए साइन इन करें।'
   },
   'uk-UA': {
@@ -194,6 +217,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Продовження: ${title}`,
     scene: number => `Сцена ${number}`,
     sceneRange: (current, total) => `Сцена ${current} із ${total}`,
+    progressTitle: 'Прогрес історії', recipientProgress: 'Прогрес отримувача', loadingProgress: 'Завантаження прогресу…',
+    viewProgress: 'Переглянути прогрес історії', refreshProgress: 'Оновити прогрес', notStarted: 'Ще не розпочато',
+    finished: 'Завершено', notFinished: 'Не завершено',
     storage: 'Збережені записи містять приватні посилання доступу; їх може переглянути кожен, хто користується цим браузером. Дані подарунків залишаються тут незалежно від завершення історії отримувачем, доки ви їх не видалите або не очистите дані браузера. Історії на сервері не мають строку дії; видалення копії не видаляє історію й не вимикає посилання для отримувачів. Прогрес завантажується лише на запит, а посилання працюють без облікового запису. Діліться лише посиланнями для отримувачів; увійдіть, щоб керувати подарунками й переглядати прогрес.'
   },
   'ar-SA': {
@@ -201,6 +227,9 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `متابعة لـ ${title}`,
     scene: number => `المشهد ${number}`,
     sceneRange: (current, total) => `المشهد ${current} من ${total}`,
+    progressTitle: 'تقدّم القصة', recipientProgress: 'تقدّم المستلم', loadingProgress: 'جارٍ تحميل التقدّم…',
+    viewProgress: 'عرض تقدّم القصة', refreshProgress: 'تحديث التقدّم', notStarted: 'لم تبدأ',
+    finished: 'مكتملة', notFinished: 'غير مكتملة',
     storage: 'تتضمن العناصر المحفوظة روابط وصول خاصة يمكن لأي مستخدم لهذا المتصفح رؤيتها. تبقى تفاصيل الهدايا هنا حتى بعد إكمال المستلم للقصة، إلى أن تحذفها أو تمسح بيانات المتصفح. قصص الخادم لا تنتهي صلاحيتها؛ حذف نسخة المتصفح لا يحذف القصة ولا يعطّل روابط المستلمين. لا يُحمّل التقدم إلا عند الطلب، وتعمل الروابط دون حساب. شارك روابط المستلمين فقط؛ سجّل الدخول لإدارة الهدايا وعرض التقدم.'
   }
 }
