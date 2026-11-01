@@ -80,7 +80,7 @@ async function main() {
   const nextAddress = () => `10.0.0.${address++}`
   async function api(body, { ip = '127.0.0.1' } = {}) {
     const res = mockRes()
-    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-10-18', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: ip }, body: { consentVersion: '2026-11-01', ...body } }, res)
     assert.equal(res.headers['cache-control'], 'no-store')
     return { status: res.statusCode, body: res.body, bytes: res.bytes(), headers: res.headers }
   }

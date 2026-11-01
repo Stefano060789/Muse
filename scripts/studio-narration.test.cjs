@@ -90,7 +90,7 @@ async function main() {
     try { return run(connection) } finally { connection.close() }
   }
   const status = story => api({ action: 'studio-status', token: story.ownerToken })
-  const generate = (story, sceneIndex = 0, consentVersion = '2026-10-18') =>
+  const generate = (story, sceneIndex = 0, consentVersion = '2026-11-01') =>
     api({ action: 'studio-generate', token: story.ownerToken, sceneIndex, consentVersion })
   const audio = (story, sceneIndex = 0, extra = {}) =>
     api({ action: 'studio-audio', token: story.token, sessionToken, sceneIndex, ...extra })
@@ -110,7 +110,7 @@ async function main() {
   process.env.ELEVEN_API_KEY = 'fake-no-paid-calls'
   assert.equal((await api({ action: 'studio-generate', token: first.ownerToken, sceneIndex: 0 })).status, 400)
   assert.equal((await generate(first, 0, null)).status, 400)
-  assert.equal((await api({ action: 'studio-generate', token: first.token, sceneIndex: 0, consentVersion: '2026-10-18' })).status, 404)
+  assert.equal((await api({ action: 'studio-generate', token: first.token, sceneIndex: 0, consentVersion: '2026-11-01' })).status, 404)
   assert.equal((await api({ action: 'studio-status', token: first.token })).status, 404)
   assert.equal(providerCalls, 0)
   for (const index of [-1, '0', 3, 1.1, null]) assert.equal((await generate(first, index)).status, 400)

@@ -65,7 +65,7 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
     if (id.endsWith('/journeyLimits')) return { JOURNEY_ENDING_RECOVERY_ATTEMPTS: 2 }
     if (id.endsWith('/chapterRecoveryCopy')) return { chapterRecoveryCopy: () => ({
-      recover: 'Recover the ending', exhausted: 'Ending not completed · saved scenes kept'
+      recover: 'Retry closing scene', exhausted: 'Ending not completed · saved scenes kept'
     }) }
     if (id.endsWith('/storyLibrary')) return {
       loadStoryLibrary: () => ({ library: { entries: [...entries] }, error: '' }),
@@ -142,7 +142,7 @@ async function main() {
   await hub.click('Continue story')
   assert.equal(hub.selections.at(-1), 'active')
   assert.deepEqual(hub.navigations, ['/story?continue=1', '/story?read=1', '/story'])
-  await hub.click('Recover the ending')
+  await hub.click('Retry closing scene')
   assert.equal(hub.selections.at(-1), 'exhausted')
   assert.equal(hub.navigations.at(-1), '/story', 'Exhausted stories open recovery instead of read-only archive')
   const account = await mount({ signedIn: true })

@@ -350,6 +350,17 @@ async function main() {
     const location = new URL(String(url))
     assert.equal(location.hostname, 'muse-test.supabase.co')
     if (location.pathname === '/auth/v1/user') {
+      if (new Headers(options.headers).get('Authorization') === 'Bearer personal-consent-fixture') {
+        return json({
+          id: 'fixture-account',
+          email: 'fixture@example.test',
+          user_metadata: {
+            muse_registration_permissions: {
+              version: '2026-11-01', acceptedAt: new Date().toISOString(), services: true, romance: false
+            }
+          }
+        })
+      }
       return json({ id: new Headers(options.headers).get('Authorization') === 'Bearer other-account-token' ? 'other-account' : 'fixture-account', email: 'fixture@example.test' })
     }
     const body = options?.body ? JSON.parse(options.body) : null
@@ -430,7 +441,7 @@ async function main() {
       status: (value) => { status = value; return res },
       json: (value) => { result = value; return res }
     }
-    await selectedHandler({ method, body: { consentVersion: '2026-10-18', ...body }, headers: { host: 'localhost:3102', authorization: 'Bearer fixture-account-token', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
+    await selectedHandler({ method, body: { consentVersion: '2026-11-01', ...body }, headers: { host: 'localhost:3102', authorization: 'Bearer fixture-account-token', ...headers }, socket: { remoteAddress: '127.0.0.1' } }, res)
     assert.equal(responseHeaders['Cache-Control'], 'no-store')
     return { status, body: result }
   }
@@ -500,7 +511,7 @@ async function main() {
     assert.equal(changed.body.content.title, 'A Story Across the Stars')
     assert.equal(stored.content.title, 'A Story Across the Stars')
     assert.equal((await api({ action: 'manage', token: created.body.ownerToken })).body.content.title, 'A Story Across the Stars')
-    const opened = await api({ action: 'open', token: created.body.playToken }, 'POST', { authorization: '' })
+    const opened = await api({ action: 'open', token: created.body.playToken }, 'POST', { authorization: undefined })
     assert.equal(opened.body.player.title, 'A Story Across the Stars')
     await api({ action: 'title', token: created.body.ownerToken, title: content.title })
   })
@@ -640,7 +651,9 @@ async function main() {
   })
   await check('My Story API uses the same durable generation budget and explicit failures', async () => {
     const input = { action: 'create', mood: 'curious', need: '', profileKeypoints: [] }
-    const run = (body = input, method = 'POST', headers = {}) => api(body, method, headers, personalHandler)
+    const run = (body = input, method = 'POST', headers = {}) => api(body, method, {
+      authorization: 'Bearer personal-consent-fixture', ...headers
+    }, personalHandler)
     assert.equal((await run()).body.generation, 'ai')
     allowRequest = false
     assert.equal((await run()).status, 429)

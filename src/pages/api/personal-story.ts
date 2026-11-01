@@ -7,7 +7,7 @@ import { storyDatabase, reserveStoryRequest } from '../../lib/storyRequestLimits
 import { requireAccount } from '../../lib/accountAuth'
 import { adventureGlobalCap } from '../../lib/sharedAdventure'
 import { apiSafety, reportOperation } from '../../lib/operations'
-import { requireProviderConsent } from '../../lib/providerConsent'
+import { requireAccountProviderConsent, requireProviderConsent } from '../../lib/providerConsent'
 import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
 import { reserveBillingUsage } from '../../lib/billing'
 import { generatePersonalStoryShareTeaser, parsePersonalStoryShareInput } from '../../lib/personalStoryShare'
@@ -51,7 +51,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }))
       return res.status(200).json({ stories: stories.filter(Boolean) })
     }
-    if (!(req.body?.mode === 'journey' && ['resume', 'delete', 'archive', 'restore'].includes(req.body?.action))) requireProviderConsent(req.body, account.permissions)
+    if (!(req.body?.mode === 'journey' && ['resume', 'delete', 'archive', 'restore'].includes(req.body?.action))) {
+      if (account.id !== 'local-development') requireAccountProviderConsent(account.permissions)
+      requireProviderConsent(req.body, account.permissions)
+    }
     if (req.body?.action === 'share-teaser') {
       if (!account.shareTeaserConsent) {
         throw new SharedStoryError('Accept the optional AI sharing-summary permission in Settings before generating a summary.', 403)

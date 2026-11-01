@@ -13,7 +13,7 @@ const english: ModeCopy = {
   readDescription: 'Show the full text. No audio.',
   listenScene: 'Listen to this scene',
   listenDescription: 'Start the voice. Follow the words as they appear.',
-  experiencePrompt: 'How would you like to experience this scene?',
+  experiencePrompt: 'This scene is ready. Choose Read or Listen.',
   switchExperience: 'You can switch at any time.'
 }
 
@@ -25,6 +25,7 @@ export default function StoryModeControl({ mode, onChange, copy = english, langu
   direction?: 'ltr' | 'rtl'
 }) {
   return <div role="group" aria-label={copy.experiencePrompt} lang={language} dir={direction} className="story-mode-control">
+    <p>{copy.experiencePrompt}</p>
     <button type="button" aria-label={copy.readScene} aria-pressed={mode === 'read'} onClick={() => onChange('read')}>
       <strong>{copy.readScene}</strong>
     </button>

@@ -76,6 +76,7 @@ export default function StoryPage() {
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const [romance, setRomance] = useState<StoryRomance | undefined>()
   const permissions = useAccountPermissions()
+  const accountConsentRequired = process.env.NODE_ENV === 'production'
   const [localRomanceConfirmed, setRomanceConfirmed] = useState(false)
   const romanceConfirmed = permissions.managed ? permissions.romance : localRomanceConfirmed
   const [reconciled, setReconciled] = useState(false)
@@ -86,7 +87,8 @@ export default function StoryPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [useProfile, setUseProfile] = useState(true)
   const [localAiConsent, setAiConsent] = useState(false)
-  const aiConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localAiConsent)
+  const aiConsent = permissions.ready && !permissions.error && (permissions.managed
+    ? permissions.services : !accountConsentRequired && localAiConsent)
   const [creationStep, setCreationStep] = useState(0)
   const [draftsReady, setDraftsReady] = useState(false)
   const [draftNotice, setDraftNotice] = useState('')
@@ -99,7 +101,7 @@ export default function StoryPage() {
   const setStoryMode = (mode: StoryMode) => setExperience({ key: experienceKey, mode })
   const [chapterFormOpen, setChapterFormOpen] = useState(false)
   const [localChapterConsent, setChapterConsent] = useState(false)
-  const chapterConsent = permissions.ready && !permissions.error && (permissions.managed ? permissions.services : localChapterConsent)
+  const chapterConsent = aiConsent || (!accountConsentRequired && localChapterConsent)
   const [chapterDuration, setChapterDuration] = useState(10)
   const [localChapterRomanceConfirmed, setChapterRomanceConfirmed] = useState(false)
   const chapterRomanceConfirmed = permissions.managed ? permissions.romance : localChapterRomanceConfirmed
@@ -324,7 +326,9 @@ export default function StoryPage() {
   const begin = async () => {
     if (requestLock.current || preparation) return
     if (!hasExplicitConsent(aiConsent)) {
-      setStoryError('Review the AI disclosure and check the consent box before creating your story.')
+      setStoryError(permissions.accountId
+        ? 'Enable Muse AI processing in Settings before creating your story.'
+        : 'Create an account or sign in and enable Muse AI processing in Settings before creating your story.')
       return
     }
     try { requireRomanceConfirmation(romance, romanceConfirmed) } catch (error) {
@@ -361,6 +365,7 @@ export default function StoryPage() {
 
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status)
     : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
+  const responseRequiresAi = Boolean(story?.journey || (story?.generation === 'ai' && story.currentStep < story.scenes.length - 1))
   const recoveringEnding = story?.journey?.status === 'exhausted'
   const recoveryCopy = chapterRecoveryCopy(interfaceLanguage)
   const readyForClosing = Boolean(story?.journey && story.journey.status !== 'concluded' &&
@@ -373,7 +378,9 @@ export default function StoryPage() {
       return
     }
     if (!hasExplicitConsent(aiConsent)) {
-      setStoryError('Review Story details and AI permission before asking Muse to write the closing scene.')
+      setStoryError(permissions.accountId
+        ? 'Enable Muse AI processing in Settings before creating the closing scene.'
+        : 'Sign in and enable Muse AI processing in Settings before creating the closing scene.')
       return
     }
     requestLock.current = true
@@ -395,7 +402,9 @@ export default function StoryPage() {
   const continueChapter = async () => {
     if (!story?.journey || story.journey.status !== 'concluded' || archiveReading || requestLock.current || preparation) return
     if (!hasExplicitConsent(chapterConsent)) {
-      setStoryError('Confirm AI processing and the new chapter allowance before continuing.')
+      setStoryError(permissions.accountId
+        ? 'Enable Muse AI processing in Settings before starting another chapter.'
+        : 'Sign in and enable Muse AI processing in Settings before starting another chapter.')
       return
     }
     try { requireRomanceConfirmation(story.romance, chapterRomanceConfirmed) } catch (error) {
@@ -449,12 +458,13 @@ export default function StoryPage() {
       setStoryError('Your saved progress is being checked automatically before sending. Your answer is kept.')
       return
     }
-    const sendsToAi = Boolean(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1))
-    if (sendsToAi && !hasExplicitConsent(aiConsent)) {
-      setStoryError('Review the AI disclosure and check the consent box before sending your response.')
+    if (responseRequiresAi && !hasExplicitConsent(aiConsent)) {
+      setStoryError(permissions.accountId
+        ? 'Enable Muse AI processing in Settings before sending your response.'
+        : 'Sign in and enable Muse AI processing in Settings before sending your response.')
       return
     }
-    const consentVersion = sendsToAi ? MUSE_AI_CONSENT_VERSION : undefined
+    const consentVersion = responseRequiresAi ? MUSE_AI_CONSENT_VERSION : undefined
     requestLock.current = true
     setStoryError('')
     setIsGenerating(true)
@@ -636,7 +646,7 @@ export default function StoryPage() {
               <p>{choiceMode === 'suggested' ? flow('suggestedReview') : flow('freeReview')} {useProfile && profileReady ? flow('memoryIncluded') : flow('memoryExcluded')}</p>
               {need ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{need}</p> : null}
               {romance ? <p>{romanceCopy(interfaceLanguage).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>{flow('changeTheme')}</button></p> : null}
-              <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
+              <ExplicitConsent checked={aiConsent} onChange={setAiConsent} requireAccount={accountConsentRequired}>
                 {flow('aiConsent')} {flow('attemptNote')}
               </ExplicitConsent>
               {narrator.provider !== 'browser' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
@@ -647,7 +657,7 @@ export default function StoryPage() {
                 <p>{recoveryCopy.help}</p>
                 <p>Your creator code is never saved. Private story access stays in this browser. Browser narration is free; narration and dictation may use online speech services.</p>
               </details>
-              <button className="atelier-button" onClick={begin} disabled={isGenerating || Boolean(preparation)} style={{ marginTop: '1rem' }}>{isGenerating ? flow('creatingStory') : flow('createStory')}</button>
+              <button className="atelier-button" onClick={begin} disabled={isGenerating || Boolean(preparation) || !aiConsent} style={{ marginTop: '1rem' }}>{isGenerating ? flow('creatingStory') : flow('createStory')}</button>
               </fieldset>
               <div className="atelier-actions">
                 {creationStep > 0 ? <button className="atelier-secondary" disabled={isGenerating || Boolean(preparation)} onClick={() => moveCreationStep(creationStep - 1)}>{flow('back')}</button> : null}
@@ -657,8 +667,14 @@ export default function StoryPage() {
           ) : (
             <section className="atelier-reading">
               <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
-              {story.journey ? <p>{chapterLabel(story.chapter?.number ?? 1)}
-                {story.chapter?.parentId ? <> <button type="button" onClick={openPreviousChapter}>{flow('readPreviousChapter')}</button></> : null}</p> : story.chapter ? <p>{chapterLabel(story.chapter.number)} <button type="button" onClick={openPreviousChapter}>{flow('readPreviousChapter')}</button></p> : null}
+              <p aria-live="polite">
+                {story.journey ? `${chapterLabel(story.chapter?.number ?? 1)} · ` : story.chapter ? `${chapterLabel(story.chapter.number)} · ` : ''}
+                {formatFlow('sceneProgress', {
+                  current: story.currentStep + 1,
+                  total: story.journey ? story.journey.maxTurns + 1 : story.scenes.length
+                })}
+                {story.chapter?.parentId ? <> · <button type="button" onClick={openPreviousChapter}>{flow('readPreviousChapter')}</button></> : null}
+              </p>
               <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
               {storyMode === 'listen' ? <details>
                 <summary>{flow('audioSettings')}</summary>
@@ -667,12 +683,10 @@ export default function StoryPage() {
               <details className="story-options"><summary>{flow('storyDetails')}</summary>
               <p>{story.description}</p>
               {story.romance ? <p>{romanceCopy(interfaceLanguage).title(story.romance)}</p> : null}
-              <p>{story.journey
-                ? formatFlow('journeyProgress', {
+              {story.journey ? <p>{formatFlow('journeyProgress', {
                   used: story.journey.revision, total: story.journey.maxTurns,
                   status: flow(journeyStatusLabels[story.journey.status])
-                })
-                : formatFlow('sceneProgress', { current: story.currentStep + 1, total: story.scenes.length })}</p>
+                })}</p> : null}
               </details>
               {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
@@ -699,13 +713,13 @@ export default function StoryPage() {
                   <ExplicitConsent checked={aiConsent} onChange={checked => {
                     setAiConsent(checked)
                     if (checked) setStoryError('')
-                  }}>
+                  }} requireAccount={accountConsentRequired}>
                     {flow('aiConsent')} {flow('attemptNote')}
                   </ExplicitConsent>
                 ) : null}
                 {readyForClosing && !recoveringEnding && !archiveReading ? <section aria-label={flow('chapterClosingScene')}>
                   <h3>{flow('writeEnding')}</h3>
-                  <button type="button" className="atelier-button" disabled={isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
+                  <button type="button" className="atelier-button" disabled={!aiConsent || isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
                     {isGenerating ? flow('writing') : flow('writeEnding')}
                   </button>
                 </section> : !finished && !archiveReading ? <>
@@ -713,7 +727,7 @@ export default function StoryPage() {
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>{flow('eachChoiceUsesAttempt')}</p>
                   <div role="group" aria-label={flow('suggestedActions')} style={{ display: 'grid', gap: '0.7rem' }}>
-                    {story.journey.choices?.map(choice => <button key={choice} disabled={isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
+                    {story.journey.choices?.map(choice => <button key={choice} disabled={!aiConsent || isGenerating || !reconciled || story.journey?.pending} onClick={() => void choose(choice)} style={{ textAlign: 'left', padding: '0.9rem 1rem', border: '1px solid #d9cfc5', borderRadius: 12, background: '#f7f3ed', color: '#2d2926', font: 'inherit', cursor: 'pointer' }}>{choice}</button>)}
                   </div>
                   {!story.journey.choices?.length ? <p>{flow('actionsLoadAutomatically')}</p> : null}
                 </> : <>
@@ -721,7 +735,7 @@ export default function StoryPage() {
                 <textarea aria-label={flow('responseLabel')} value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder={flow('responsePlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                 </label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
-                  <button onClick={submitResponse} disabled={!responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() ? 'pointer' : 'not-allowed' }}>{isGenerating ? flow('writing') : flow('continueResponse')}</button>
+                  <button onClick={submitResponse} disabled={(responseRequiresAi && !aiConsent) || !responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() && (!responseRequiresAi || aiConsent) ? 'pointer' : 'not-allowed' }}>{isGenerating ? flow('writing') : flow('continueResponse')}</button>
                   <DictationButton label={interfaceCopy.dictateAnswer} stopLabel={interfaceCopy.stopDictation} stoppingLabel={flow('finishing')} recording={isRecording || interaction.stoppingTarget === 'response'} stopping={interaction.stoppingTarget === 'response'} onStart={startDictation} onStop={() => stopRecording('response')} disabled={isGenerating || finished || Boolean(interaction.stoppingTarget) || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', cursor: 'pointer', background: isRecording ? '#a14329' : undefined, color: isRecording ? '#fffaf6' : undefined }} />
                 </div>
                 {isRecording ? <p role="status">{interaction.ready ? flow('listen') : flow('startingMic')}</p> : null}
@@ -742,13 +756,16 @@ export default function StoryPage() {
                 <p><Link href="/my-stories">{flow('backMyStoriesLink')}</Link></p>
               </section> : null}
               {finished && !archiveReading ? <section aria-label="Your saved story" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: 14, background: '#e8eee3' }}>
-                <h2>{story.journey?.status === 'exhausted' ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('savedScenes')}`
+                <h2>{story.journey?.status === 'exhausted' ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('journeyExhausted')}`
                   : story.journey ? `${chapterLabel(story.chapter?.number ?? 1)} · ${flow('storyComplete')}` : pageText('storyCompleted', interfaceLanguage)}</h2>
                 <p>{story.journey?.status === 'exhausted' ? recoveryCopy.exhausted : flow('completedStoryNote')}</p>
                 {recoveringEnding && !archiveReading ? <section aria-label={recoveryCopy.recover}>
                   <p>{readyForClosing ? recoveryCopy.help : recoveryCopy.limit}</p>
                   {readyForClosing ? <>
-                    <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>{recoveryCopy.consent}</ExplicitConsent>
+                    <ExplicitConsent checked={aiConsent} onChange={checked => {
+                      setAiConsent(checked)
+                      if (checked) setStoryError('')
+                    }} requireAccount={accountConsentRequired}>{recoveryCopy.consent}</ExplicitConsent>
                     <button type="button" disabled={!aiConsent || isGenerating || !reconciled || Boolean(story.journey?.pending)}
                       onClick={() => void writeClosingScene()}>{isGenerating ? flow('writing') : recoveryCopy.recover}</button>
                   </> : null}
@@ -764,7 +781,7 @@ export default function StoryPage() {
                     <label>{flow('duration')}<select aria-label={flow('duration')} value={chapterDuration} disabled={isGenerating} onChange={event => { setChapterDuration(Number(event.target.value)); setChapterConsent(false) }}>
                       {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{formatFlow('chapterDurationOption', { minutes, responses: minutes * 3 / 5 })}</option>)}
                     </select></label>
-                    <ExplicitConsent checked={chapterConsent} onChange={setChapterConsent}>
+                    <ExplicitConsent checked={chapterConsent} onChange={setChapterConsent} requireAccount={accountConsentRequired}>
                       {flow('chapterConsentText')}
                     </ExplicitConsent>
                     {story.romance && !permissions.managed ? <label><input type="checkbox" checked={chapterRomanceConfirmed} disabled={isGenerating} onChange={event => setChapterRomanceConfirmed(event.target.checked)} />{romanceCopy(interfaceLanguage).creatorConfirmation}</label> : null}

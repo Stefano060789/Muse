@@ -3,6 +3,11 @@ import { MUSE_AI_CONSENT_VERSION } from './legalContact'
 import type { AccountPermissions } from './accountPermissions'
 
 export const PROVIDER_CONSENT_VERSION = MUSE_AI_CONSENT_VERSION
+export function requireAccountProviderConsent(permissions?: AccountPermissions) {
+  if (!permissions?.managed || !permissions.services) {
+    throw new SharedStoryError('Enable Muse AI and audio processing in Settings before creating or continuing AI stories.', 403)
+  }
+}
 export function requireCloudAudioConsent(body: unknown, permissions?: AccountPermissions) {
   if (permissions) {
     if (!(permissions.managed ? permissions.services : permissions.cloudAudio)) {

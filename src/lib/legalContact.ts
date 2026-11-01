@@ -8,7 +8,7 @@ export type PublicContactConfig = {
   supportEmail: ContactSetting
 }
 
-export const MUSE_AI_CONSENT_VERSION = '2026-10-18'
+export const MUSE_AI_CONSENT_VERSION = '2026-11-01'
 
 function operatorSetting(value: string | undefined): ContactSetting {
   const normalized = value?.trim() || ''

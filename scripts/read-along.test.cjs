@@ -63,7 +63,9 @@ new Function('module', 'exports', 'require', ts.transpileModule(fs.readFileSync(
 })
 const changes = []
 const controls = modeModule.exports.default({ mode: null, onChange: value => changes.push(value) })
-assert.equal(controls.props['aria-label'], 'How would you like to experience this scene?')
+assert.equal(controls.props['aria-label'], 'This scene is ready. Choose Read or Listen.')
+assert.ok(flatten(controls).some(node => node?.type === 'p' && visibleText(node) === controls.props['aria-label']),
+  'The scene-ready prompt is visible, not only exposed to screen readers')
 const buttons = flatten(controls).filter(node => node?.type === 'button')
 assert.deepEqual(buttons.map(node => node.props['aria-label']), ['Read this scene', 'Listen to this scene'])
 assert.equal(visibleText(buttons[0]), 'Read this scene')

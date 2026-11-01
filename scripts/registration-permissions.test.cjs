@@ -93,7 +93,12 @@ async function main() {
     async signUp(options) { signup = options; return { data: { session: null, user: { email: options.email } }, error: null } }
   } }
   const savedAudioChoices = []
-  let pagePermissions = { managed: false, ready: true, saveCloudAudio: async accepted => { savedAudioChoices.push(accepted) } }
+  const savedServiceChoices = []
+  let pagePermissions = {
+    managed: false, services: false, romance: false, ready: true, saving: false,
+    save: async (services, romance) => { savedServiceChoices.push([services, romance]) },
+    saveCloudAudio: async accepted => { savedAudioChoices.push(accepted) }
+  }
   const account = load('src/pages/account.tsx', {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'next/head': { default: 'Head' }, 'next/link': { default: 'Link' },
@@ -119,7 +124,7 @@ async function main() {
   nodes.find(node => node.type === 'input' && node.props.type === 'email').props.onChange({ target: { value: 'reader@example.com' } })
   nodes.find(node => node.type === 'input' && node.props.type === 'password').props.onChange({ target: { value: 'fixture-password' } })
   const checks = nodes.filter(node => node.type === 'input' && node.props.type === 'checkbox')
-  const services = checks.find(node => flatten(nodes.find(parent => parent.type === 'label' && flatten(parent).includes(node))).includes('I agree to Muse AI and audio processing.'))
+  const services = checks.find(node => flatten(nodes.find(parent => parent.type === 'label' && flatten(parent).includes(node))).includes('I agree to Muse AI and audio processing for my stories.'))
   assert.equal(services.props.checked, false)
   services.props.onChange({ target: { checked: true } })
   nodes = await render()
@@ -131,12 +136,22 @@ async function main() {
   session = { user: { id: 'existing-settings-reader', email: 'reader@example.com', user_metadata: {} } }
   listeners.forEach(callback => callback('SIGNED_IN', session))
   nodes = await render()
+  const processingSection = nodes.find(node => node.props['aria-labelledby'] === 'registration-permissions-heading')
+  assert.ok(processingSection, 'Existing accounts without registration metadata can enable story processing in Settings')
+  const processingCheckbox = flatten(processingSection).find(node => node?.type === 'input' && node.props.type === 'checkbox')
+  assert.equal(processingCheckbox.props.checked, false)
+  processingCheckbox.props.onChange({ target: { checked: true } }); await tick()
+  assert.deepEqual(savedServiceChoices, [[true, false]], 'Existing accounts can grant AI processing without re-registering')
   const audioSection = nodes.find(node => node.props['aria-labelledby'] === 'cloud-audio-permission-heading')
   assert.ok(audioSection, 'Existing signed-in accounts can save audio permission in Settings')
   const audioCheckbox = flatten(audioSection).find(node => node?.type === 'input' && node.props.type === 'checkbox')
   assert.equal(audioCheckbox.props.checked, false)
   audioCheckbox.props.onChange({ target: { checked: true } }); await tick()
   assert.deepEqual(savedAudioChoices, [true])
+  pagePermissions = { ...pagePermissions, managed: true, services: true }
+  nodes = await render()
+  assert.ok(nodes.some(node => node.props['aria-labelledby'] === 'share-consent-heading'),
+    'Optional sharing consent remains manageable after enabling story processing')
   let current = { user: { id: 'reader-a', user_metadata: granted } }
   const authListeners = new Set()
   let finishInitial
@@ -186,7 +201,7 @@ async function main() {
   assert.equal(remount.render().services, false)
   remount.dispose()
   const jsxMocks = { 'react/jsx-runtime': { jsx, jsxs: jsx }, 'next/link': { default: 'Link' },
-    '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'it-IT' } }
+    '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'it-IT', interfaceText: key => key } }
   let componentPermissions = { managed: true, ready: true, services: true, accountId: 'managed-reader' }
   const consentChanges = []
   const consent = runner('src/components/ExplicitConsent.tsx', 'default', {
@@ -201,6 +216,18 @@ async function main() {
   assert.ok(flatten(consent.render()).some(node => node?.props?.type === 'checkbox'), 'Legacy consent is unchanged')
   assert.deepEqual(consentChanges, [false], 'Switching accounts resets feature consent instead of transferring it')
   consent.dispose()
+  const accountRequired = runner('src/components/ExplicitConsent.tsx', 'default', {
+    ...jsxMocks, '../lib/useAccountPermissions': { useAccountPermissions: () => componentPermissions }
+  }, { checked: false, onChange() {}, requireAccount: true, children: 'Account-level AI permission' })
+  assert.ok(flatten(accountRequired.render()).some(node => node?.props?.href === '/account'))
+  assert.ok(!flatten(accountRequired.render()).some(node => node?.props?.type === 'checkbox'),
+    'Signed-in legacy accounts are directed to Settings instead of receiving per-story consent')
+  componentPermissions = { managed: false, ready: true }
+  assert.ok(flatten(accountRequired.render()).some(node => node?.props?.href === '/account'))
+  assert.ok(!flatten(accountRequired.render()).some(node => node?.props?.type === 'checkbox'),
+    'Guests are directed to registration instead of receiving per-story consent')
+  accountRequired.dispose()
+  componentPermissions = { managed: false, ready: true, accountId: 'legacy-reader' }
   const audioProps = { scope: 'cloudAudio', checked: false, onChange() {}, children: 'Cloud audio' }
   const audioComponent = runner('src/components/ExplicitConsent.tsx', 'default', {
     ...jsxMocks, '../lib/useAccountPermissions': { useAccountPermissions: () => componentPermissions }
@@ -257,6 +284,11 @@ async function main() {
   await endpoint({ method: 'POST', headers: {}, body: { action: 'create', consentVersion: provider.PROVIDER_CONSENT_VERSION } }, deniedResponse)
   assert.equal(deniedResponse.code, 403)
   assert.equal(bills, 0, 'Revoked services are denied before billing')
+  serverPermissions = permissions.accountPermissions({})
+  const legacyAccountResponse = response()
+  await endpoint({ method: 'POST', headers: {}, body: { action: 'create', consentVersion: provider.PROVIDER_CONSENT_VERSION } }, legacyAccountResponse)
+  assert.equal(legacyAccountResponse.code, 403, 'A story-level checkbox cannot bypass missing account consent')
+  assert.equal(bills, 0, 'Unmanaged accounts are denied before billing')
   serverPermissions = active
   const grantedResponse = response()
   await endpoint({ method: 'POST', headers: {}, body: { action: 'create', romance: 'sweet' } }, grantedResponse)

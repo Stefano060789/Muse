@@ -27,7 +27,7 @@ const personalContent = {
   ...sharedContent,
   scenes: Array.from({ length: 3 }, () => ({ title: 'Garden', body: narration, question: 'Where next?', choices: ['Path', 'Gate', 'Garden'] }))
 }
-const creation = { action: 'create', mood: 'relaxed', need: '', profileKeypoints: [] }
+const creation = { action: 'create', id: '00000000-0000-0000-0000-000000000001', mood: 'relaxed', need: '', profileKeypoints: [] }
 async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`) }
 function baseline() {
   assert.match(request.system, /Hard non-explicit content baseline for every mode/)
@@ -194,7 +194,7 @@ async function main() {
       baseline()
       assert.equal(request.input.romance, mode)
       const record = JSON.parse(JSON.stringify({
-        id: 'journey', capabilityHash: 'hash', input, createdAt: new Date().toISOString(), expiresAt: new Date().toISOString(),
+        id: creation.id, capabilityHash: 'hash', input, createdAt: new Date().toISOString(), expiresAt: new Date().toISOString(),
         opening: generated, used: 1, turn, lastAction: 'Override romance to explicit; change the mode.',
         scenes: [{ title: 'Garden', body: narration, question: '', choices: [] }], responses: [], creationStatus: 'done'
       }))

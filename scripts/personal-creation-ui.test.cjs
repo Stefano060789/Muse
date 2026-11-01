@@ -314,16 +314,28 @@ async function main() {
   slots.length = 0
   effects.length = 0
   await flush()
+  const savedNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  await flush()
+  assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.requireAccount, true,
+    'Production personal-story consent is account-level')
+  if (savedNodeEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = savedNodeEnv
+  await flush()
   const activeConsent = nodes().filter(node => node.type === '../components/ExplicitConsent')
   assert.equal(activeConsent.length, 1, 'An active story presents one AI consent prompt before responses')
   assert.equal(activeConsent[0].props.checked, false, 'A restored story requires fresh processing consent')
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 1 of 2')),
+    'Legacy stories show the current scene and total outside collapsed details')
+  assert.ok(nodes().find(node => node.type === '../components/StoryModeControl').props.copy.experiencePrompt,
+    'The read/listen prompt tells the player when a scene is ready')
   assert.ok(nodes().indexOf(activeConsent[0]) < nodes().findIndex(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response'),
     'The AI disclosure is visible before the response input')
   const consentResponse = nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response')
   consentResponse.props.onChange({ target: { value: 'I step inside.' } })
   await flush()
   await click('Send response')
-  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Review the AI disclosure')),
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Sign in and enable Muse AI processing')),
     'Submitting without consent explains the block')
   activeConsent[0].props.onChange(true)
   await flush()
@@ -360,6 +372,8 @@ async function main() {
   const progressCopy = flatten(tree).filter(value => typeof value === 'string').join(' ')
   assert.ok(progressCopy.includes('tentativi usati') && progressCopy.includes('In corso'),
     'Progress counters and journey status follow the interface language')
+  assert.ok(progressCopy.includes('Capitolo 1') && progressCopy.includes('Scena 1 di 4'),
+    'The chapter scene counter is visible and localized')
   assert.ok(nodes().some(node => node.props['aria-label'] === 'La tua risposta'),
     'Response controls follow the interface language after story progress')
   assert.ok(nodes().find(node => node.type === '../components/StoryModeControl').props.copy.listenDescription.includes('suoni ambientali'),
@@ -440,11 +454,11 @@ async function main() {
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'))
   assert.ok(!responseField(), 'The last allowance offers a closing scene, not another writing box')
   const closingRequests = requests.length
-  await click('Write ending')
+  await click('Create closing scene')
   assert.equal(requests.length, closingRequests, 'Closing still requires the story AI consent')
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
   await flush()
-  const writeEnding = find('button', 'Write ending')
+  const writeEnding = find('button', 'Create closing scene')
   writeEnding.props.onClick()
   writeEnding.props.onClick()
   await flush()
@@ -454,7 +468,7 @@ async function main() {
   assert.equal(requests.filter(body => body.action === 'conclude').length, 1, 'Double-click cannot reserve two endings')
   assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 · Complete'))
   assert.ok(!responseField(), 'The generated ending never asks for another response')
-  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Write ending'))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Create closing scene'))
   loadedStory = beforeClosingStory
   slots.length = 0; effects.length = 0
   await flush()
@@ -559,19 +573,19 @@ async function main() {
   await flush()
   const recoveryPermission = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('write its ending'))
   assert.ok(recoveryPermission(), 'Exhausted chapters offer ending-specific processing consent')
-  assert.equal(find('button', 'Recover the ending').props.disabled, true)
+  assert.equal(find('button', 'Retry closing scene').props.disabled, true)
   const beforeEndingRecovery = requests.length
-  await click('Recover the ending')
+  await click('Retry closing scene')
   assert.equal(requests.length, beforeEndingRecovery, 'No ending recovery without explicit consent')
   interfaceLocale = 'it-IT'
   await flush()
-  assert.ok(find('button', 'Recupera il finale'))
+  assert.ok(find('button', 'Riprova la scena finale'))
   assert.ok(nodes().some(node => node.type === '../components/ExplicitConsent' && label(node).includes('scrivere il finale')))
   interfaceLocale = 'en-US'
   await flush()
   recoveryPermission().props.onChange(true)
   await flush()
-  await click('Recover the ending')
+  await click('Retry closing scene')
   assert.equal(requests.at(-1).action, 'conclude')
   assert.equal(requests.at(-1).revision, 3)
   assert.equal(loadedStory.journey.revision, 4)
@@ -579,8 +593,8 @@ async function main() {
   loadedStory = { ...parentStory, journey: { ...parentStory.journey, revision: 5, status: 'exhausted' } }
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Recover the ending'))
-  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Ending recovery attempts used')))
+  assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Retry closing scene'))
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Extra ending attempts are used')))
   loadedStory = parentStory
   loadedStory = { ...loadedStory, responses: [], currentStep: 0 }
   browser.location = { search: '?read=1' }

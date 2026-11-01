@@ -1,5 +1,5 @@
 export const ACCOUNT_PERMISSIONS_KEY = 'muse_registration_permissions'
-export const ACCOUNT_PERMISSIONS_VERSION = '2026-10-31'
+export const ACCOUNT_PERMISSIONS_VERSION = '2026-11-01'
 export const CLOUD_AUDIO_PERMISSION_KEY = 'muse_cloud_audio_permission'
 export type AccountPermissions = { managed: boolean; services: boolean; romance: boolean; cloudAudio?: boolean }
 

@@ -236,15 +236,16 @@ export default function AccountPage() {
             {interfaceText('notificationsEnabled', interfaceLanguage)}
           </label>
         </section>
-        {account && permissions.managed ? <section className="atelier-card" aria-labelledby="registration-permissions-heading">
+        {account ? <section className="atelier-card" aria-labelledby="registration-permissions-heading">
           <h2 id="registration-permissions-heading">{registrationText.title}</h2>
           <label><input type="checkbox" checked={permissions.services} disabled={!permissions.ready || permissions.saving}
             onChange={event => { void permissions.save(event.target.checked, permissions.romance).catch(error => setSettingsError(error instanceof Error ? error.message : registrationText.required)) }} /> {registrationText.services}</label>
-          <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p></details>
+          <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
           <label><input type="checkbox" checked={permissions.romance} disabled={!permissions.ready || permissions.saving}
             onChange={event => { void permissions.save(permissions.services, event.target.checked).catch(error => setSettingsError(error instanceof Error ? error.message : registrationText.required)) }} /> {registrationText.romance}</label>
           {permissions.error ? <p role="alert">{permissions.error}</p> : null}
-        </section> : account ? <section className="atelier-card" aria-labelledby="share-consent-heading">
+        </section> : null}
+        {account ? <section className="atelier-card" aria-labelledby="share-consent-heading">
           <h2 id="share-consent-heading">{permissionCopy.title}</h2>
           <p>{personalStoryShareText('teaserConsent', interfaceLanguage)}</p>
           <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>

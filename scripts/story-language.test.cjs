@@ -61,6 +61,7 @@ async function main() {
   const library = require(path.join(output, 'lib', 'storyLibrary.js'))
   const { storyRepository } = require(path.join(output, 'lib', 'storyRepository.js'))
   const handler = require(path.join(output, 'pages', 'api', 'personal-story.js')).default
+  const consentVersion = require(path.join(output, 'lib', 'legalContact.js')).MUSE_AI_CONSENT_VERSION
   const codes = language.STORY_LANGUAGES.map(item => item.code)
   const promptIncludes = code => {
     assert.match(request.messages[0].content, new RegExp(`authoritative story language.*${code}`))
@@ -110,7 +111,7 @@ async function main() {
     for (const invalid of [null, '', 'en', 'en-us', 'fr-FR', 'zh-TW', 1, {}, ['en-US']]) {
       assert.throws(() => shared.parseSharedStoryBrief({ ...brief, language: invalid }))
       assert.throws(() => personal.parsePersonalStoryRequest({ action: 'create', mood: 'curious', need: '', profileKeypoints: [], language: invalid }))
-      assert.throws(() => journey.parseJourneyInput({ duration: 5, mood: 'curious', need: '', profileKeypoints: [], language: invalid }))
+      assert.throws(() => journey.parseJourneyInput({ id: '10000000-0000-4000-8000-000000000001', duration: 5, mood: 'curious', need: '', profileKeypoints: [], language: invalid }))
     }
   })
   await check('deterministic right, wrong and skip feedback localizes only explicit language without translating arbitrary errors', () => {
@@ -214,7 +215,7 @@ async function main() {
   await check('explicit-language suggested choices and concluding turns keep their exact schemas', async () => {
     const code = 'es-ES'
     const choices = ['Seguir la luz', 'Hablar con la guía', 'Examinar la puerta']
-    const input = journey.parseJourneyInput({ duration: 5, mood: 'curious', need: '', profileKeypoints: [], language: code, choiceMode: 'suggested' })
+    const input = journey.parseJourneyInput({ id: '10000000-0000-4000-8000-000000000001', duration: 5, mood: 'curious', need: '', profileKeypoints: [], language: code, choiceMode: 'suggested' })
     response = { ...opening(code), turn: { ...turn, choices } }
     const prepared = await journey.generateJourneyOpening(input)
     assert.deepEqual(prepared.turn.choices, choices)
@@ -251,7 +252,7 @@ async function main() {
   let address = 0
   async function api(body) {
     const res = { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this } }
-    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion: '2026-10-18', ...body } }, res)
+    await handler({ method: 'POST', headers: { host: 'localhost:3000' }, socket: { remoteAddress: `language-fixture-${++address}` }, body: { consentVersion, ...body } }, res)
     return res
   }
   await check('invalid explicit journey language is rejected before provider use or reservation', async () => {
