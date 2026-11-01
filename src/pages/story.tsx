@@ -5,6 +5,7 @@ import { answerPersonalStory, loadPersonalStory, savePersonalStory, type Persona
 import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
+import { audioControlsCopy } from '../lib/audioControlsCopy'
 import ReadAlongText from '../components/ReadAlongText'
 import StoryModeControl, { type StoryMode } from '../components/StoryModeControl'
 import StoryPassage from '../components/StoryPassage'
@@ -534,11 +535,11 @@ export default function StoryPage() {
   const pendingListen = useRef('')
   useEffect(() => { setStoryMode(null); pendingListen.current = '' }, [story?.id, story?.currentStep, archiveReading, rereading])
   useEffect(() => {
-    if (!pendingListen.current || !narrator.cloudConsent || storyMode !== 'listen') return
+    if (!pendingListen.current || (narrator.provider !== 'browser' && !narrator.cloudConsent) || storyMode !== 'listen') return
     const text = pendingListen.current
     pendingListen.current = ''
     void narrator.speak(text, undefined, { autoPlay: true })
-  }, [narrator.cloudConsent, storyMode])
+  }, [narrator.cloudConsent, narrator.provider, storyMode])
   const scenePosition = narrator.activeText === narrationText ? narrator.textPosition : -1
   const changeStoryMode = (mode: StoryMode) => {
     narrator.stop(); stopRecording(); setStoryMode(mode)
@@ -681,6 +682,10 @@ export default function StoryPage() {
               {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
                 <p>{interfaceCopy.listenDescription}</p>
+                <button type="button" onClick={() => {
+                  pendingListen.current = narrationText
+                  narrator.setDeviceOnly(true)
+                }}>{audioControlsCopy(interfaceLanguage).deviceChoice}</button>
                 <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                   Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>

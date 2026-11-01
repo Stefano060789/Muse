@@ -82,6 +82,7 @@ async function main() {
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/interfacePages')) return plain('src/lib/interfacePages.ts')
     if (id.endsWith('/interfaceFlow')) return plain('src/lib/interfaceFlow.ts')
+    if (id.endsWith('/audioControlsCopy')) return plain('src/lib/audioControlsCopy.ts')
     if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => ({ managed: false, services: false, romance: false, ready: true }) }
     if (id.endsWith('/journeyLimits')) return plain('src/lib/journeyLimits.ts')
     if (id.endsWith('/chapterRecoveryCopy')) return plain('src/lib/chapterRecoveryCopy.ts')
@@ -94,7 +95,8 @@ async function main() {
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
     if (id.endsWith('/useNarration')) return { useNarration: () => ({
       stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() },
-      provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value }
+      provider: cloudProvider, cloudConsent, setCloudConsent(value) { cloudConsent = value },
+      setDeviceOnly(value) { cloudProvider = value ? 'browser' : 'google'; cloudConsent = false }
     }), NarrationButton: 'narration' }
     if (id.endsWith('/useStoryInteraction')) return { useStoryInteraction: (_before, language) => { selectedDictationLanguage = language; return ({
       recordingTarget: interactionRecordingTarget, ready: true, error: '',
@@ -586,7 +588,7 @@ async function main() {
   modeControl.props.onChange('listen')
   await flush()
   assert.equal(narrationCalls.length, beforeArchiveListen + 1, 'Listen starts narration directly with no second scene button')
-  assert.equal(narrationCalls.at(-1)[0], 'The Door. A light glows.')
+  assert.ok(narrationCalls.at(-1)[0].startsWith('The Door. A light glows.'))
   assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
   assert.ok(nodes().some(node => node.type === '../components/NarrationControls'), 'Listen mode exposes audio settings')
   assert.equal(requests.length, beforeArchiveReading + 1, 'Changing experience never generates story text or audio')
@@ -604,11 +606,28 @@ async function main() {
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
   await flush()
   assert.equal(narrationCalls.length, beforeCloudListen, 'Selecting Listen cannot silently consent to paid narration')
+  const deviceVoice = nodes().find(node => node.type === 'button' && label(node) === 'Use device voice · free')
+  assert.ok(deviceVoice, 'Cloud-consent gate offers a free device voice without requiring account settings')
+  deviceVoice.props.onClick()
+  await flush()
+  assert.equal(cloudProvider, 'browser')
+  assert.equal(narrationCalls.length, beforeCloudListen + 1, 'Choosing device voice starts the pending scene narration')
+  assert.ok(narrationCalls.at(-1)[0].startsWith('The Door. A light glows.'))
+  assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
+  nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await flush()
+  cloudProvider = 'google'
+  cloudConsent = false
+  await flush()
+  const beforeCloudPermissionListen = narrationCalls.length
+  nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await flush()
+  assert.equal(narrationCalls.length, beforeCloudPermissionListen, 'Cloud narration still waits for explicit permission')
   const cloudPermission = nodes().find(node => node.type === '../components/ExplicitConsent')
   assert.ok(cloudPermission && cloudPermission.props.checked === false)
   cloudPermission.props.onChange(true)
   await flush()
-  assert.equal(narrationCalls.length, beforeCloudListen + 1, 'Giving the required cloud permission completes the pending Listen action without another Play click')
+  assert.equal(narrationCalls.length, beforeCloudPermissionListen + 1, 'Giving the required cloud permission completes the pending Listen action without another Play click')
   assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
   await flush()
