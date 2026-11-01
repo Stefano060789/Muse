@@ -316,17 +316,28 @@ async function main() {
   await flush()
   const activeConsent = nodes().filter(node => node.type === '../components/ExplicitConsent')
   assert.equal(activeConsent.length, 1, 'An active story presents one AI consent prompt before responses')
+  assert.equal(activeConsent[0].props.checked, false, 'A restored story requires fresh processing consent')
+  assert.ok(nodes().indexOf(activeConsent[0]) < nodes().findIndex(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response'),
+    'The AI disclosure is visible before the response input')
+  const consentResponse = nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response')
+  consentResponse.props.onChange({ target: { value: 'I step inside.' } })
+  await flush()
+  await click('Send response')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Review the AI disclosure')),
+    'Submitting without consent explains the block')
   activeConsent[0].props.onChange(true)
   await flush()
+  assert.ok(!nodes().some(node => node.props.role === 'alert' && label(node).includes('Review the AI disclosure')),
+    'Accepting the visible disclosure clears the blocking error immediately')
   nodes().find(node => node.type === 'textarea' && node.props['aria-label'] === 'Your response')
-    .props.onChange({ target: { value: 'I step inside.' } })
+    .props.onChange({ target: { value: 'I step inside after consent.' } })
   await flush()
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true,
     'Editing response text does not make the story-wide consent prompt recur')
-  assert.deepEqual(JSON.parse(storage.get('muse-personal-answer:saved-story')), { revision: 0, text: 'I step inside.' })
+  assert.deepEqual(JSON.parse(storage.get('muse-personal-answer:saved-story')), { revision: 0, text: 'I step inside after consent.' })
   slots.length = 0; effects.length = 0
   await flush()
-  assert.equal(nodes().find(node => node.props['aria-label'] === 'Your response').props.value, 'I step inside.',
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'Your response').props.value, 'I step inside after consent.',
     'Unsent answers survive remount without being erased during hydration')
   const dictationButton = nodes().find(node => node.type === '../components/DictationButton')
   assert.ok(dictationButton)

@@ -673,11 +673,6 @@ export default function StoryPage() {
                   status: flow(journeyStatusLabels[story.journey.status])
                 })
                 : formatFlow('sceneProgress', { current: story.currentStep + 1, total: story.scenes.length })}</p>
-              {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished && !archiveReading ? (
-                <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>
-                  {flow('aiConsent')} {flow('attemptNote')}
-                </ExplicitConsent>
-              ) : null}
               </details>
               {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
@@ -700,6 +695,14 @@ export default function StoryPage() {
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 </> : null}
                 {story.journey?.state ? <details><summary>{flow('journeyMemory')}</summary>{(['inventory', 'discoveries', 'relationships'] as const).map(key => <p key={key}>{flow(key)}: {story.journey!.state![key].join(', ') || flow('noneYet')}</p>)}<p>{story.journey.state.progress}</p></details> : null}
+                {(story.journey || (story.generation === 'ai' && story.currentStep < story.scenes.length - 1)) && !finished && !archiveReading ? (
+                  <ExplicitConsent checked={aiConsent} onChange={checked => {
+                    setAiConsent(checked)
+                    if (checked) setStoryError('')
+                  }}>
+                    {flow('aiConsent')} {flow('attemptNote')}
+                  </ExplicitConsent>
+                ) : null}
                 {readyForClosing && !recoveringEnding && !archiveReading ? <section aria-label={flow('chapterClosingScene')}>
                   <h3>{flow('writeEnding')}</h3>
                   <button type="button" className="atelier-button" disabled={isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
