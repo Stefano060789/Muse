@@ -9,7 +9,7 @@ import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadat
 import { assertStoryNarrationLanguage, personalSceneTitle, recipientCopy, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { romanceInstruction, type StoryRomance } from './storyRomance'
 import {
-  boundedStoryList, boundedStoryText, exactObject, invalidFreeform, parseFreeformState,
+  boundedStoryList, boundedStoryText, objectWithRequiredKeys, invalidFreeform, parseFreeformState,
   parseStoryChoiceMode, parseSuggestedChoices, validatePlayerChoiceSelection, freeformSystemPrompt,
   type FreeformState, type StoryChoiceMode
 } from './freeformStory'
@@ -161,7 +161,7 @@ export function parseJourneyClosingAction(body: Record<string, unknown>, record:
 export function parseJourneyTurn(value: unknown, concluding: boolean, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyTurn {
   const isSuggested = mode === 'suggested' && !concluding
   const keys = isSuggested ? ['narration', 'state', 'concluded', 'choices'] : ['narration', 'state', 'concluded']
-  const input = exactObject(value, keys)
+  const input = objectWithRequiredKeys(value, keys)
   const narration = boundedStoryText(input.narration, 1800)
   const words = storyWordCount(narration, language)
   if (words < 30 || words > 180 || input.concluded !== concluding) throw invalidFreeform()
@@ -169,7 +169,7 @@ export function parseJourneyTurn(value: unknown, concluding: boolean, mode: Stor
   return { narration, state: parseFreeformState(input.state), concluded: concluding, ...(choices ? { choices } : {}) }
 }
 export function parseJourneyOpening(value: unknown, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyOpening {
-  const input = exactObject(value, ['title', 'description', 'plan', 'turn', 'narrationStyle', 'narrationLanguage'])
+  const input = objectWithRequiredKeys(value, ['title', 'description', 'plan', 'turn', 'narrationStyle', 'narrationLanguage'])
   const plan = boundedStoryList(input.plan, 5, 180)
   if (plan.length < 3) throw invalidFreeform()
   try {
@@ -269,7 +269,7 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
     }, 1600)
   try {
     if (language) {
-      const envelope = exactObject(generated, ['narrationLanguage', 'turn'])
+      const envelope = objectWithRequiredKeys(generated, ['narrationLanguage', 'turn'])
       assertStoryNarrationLanguage(envelope.narrationLanguage, language)
       return parseJourneyTurn(envelope.turn, isFinal, mode, language)
     }

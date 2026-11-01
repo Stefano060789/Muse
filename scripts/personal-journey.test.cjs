@@ -56,7 +56,10 @@ async function main() {
     if (providerMode === 'network') throw new Error('private-provider-error-with-secret')
     if (providerMode === 'status') return new Response('private-api-key', { status: 401 })
     let value
-    if (providerMode === 'invalid') value = { ...opening.turn, private: 'secret' }
+    if (providerMode === 'invalid') value = { narration: 'short', state, concluded: false }
+    else if (providerMode === 'extra') value = input.responsesRemaining === undefined
+      ? { ...opening, providerNote: 'ignored', turn: { ...opening.turn, providerNote: 'ignored', state: { ...state, providerNote: 'ignored' } } }
+      : { narration, state: { ...state, providerNote: 'ignored' }, concluded: false, providerNote: 'ignored' }
     else if (providerMode === 'legacy') value = { title: 'Legacy story', description: 'Old format still works.', narrationStyle: 'warm', narrationLanguage: 'en-US', scenes: Array.from({ length: 3 }, () => ({ title: 'Legacy', body: narration, question: 'Where next?', choices: ['A', 'B', 'C'] })) }
     else if (providerMode === 'legacy-continue') value = { narrationStyle: 'warm', narrationLanguage: 'en-US', scene: { title: 'Legacy continued', body: narration, question: 'Where next?', choices: ['A', 'B', 'C'] } }
     else value = input.responsesRemaining === undefined ? opening : {
@@ -154,6 +157,18 @@ async function main() {
       assert.equal(calls, atCap)
     })
   }
+  await check('harmless extra provider fields do not invalidate otherwise complete story output', async () => {
+    const creation = newCreation()
+    providerMode = 'extra'
+    const result = await api(creation)
+    providerMode = 'ok'
+    assert.equal(result.status, 200)
+    assert.equal(result.body.story.title, opening.title)
+    const continued = await api(responseBody(result.body))
+    assert.equal(continued.status, 200)
+    assert.equal(continued.body.snapshot.revision, 1)
+    assert.equal((await api({ mode: 'journey', action: 'delete', id: creation.id, capability: creation.capability })).body.deleted, true)
+  })
   await check('account library restores personal journeys across browsers and isolates each account', async () => {
     const listed = await api({ mode: 'journey', action: 'library' })
     assert.equal(listed.status, 200)
@@ -237,6 +252,8 @@ async function main() {
       const failed = await api(action)
       providerMode = 'ok'
       assert.ok(failed.status >= 400)
+      assert.equal((failed.body.error.match(/No automatic retry was made/g) || []).length, 1,
+        'Failure copy explains the consumed attempt without repeating itself')
       assert.equal(failed.body.snapshot.revision, concurrency.snapshot.revision + 1)
       assert.equal(failed.body.snapshot.pending, false)
       assert.equal(failed.body.story.scenes.length, concurrency.story.scenes.length)
@@ -300,22 +317,29 @@ async function main() {
     assert.equal((await api(creation, { address: client })).body.status, 'failed')
     assert.equal(calls, before)
   })
-  await check('input/output bounds enforce exact state, plans, metadata and final conclusion flag', () => {
+  await check('input/output bounds enforce required state, plans, metadata and final conclusion flag', () => {
     for (const invalid of [
-      { ...opening.turn, extra: 'x' }, { ...opening.turn, state: { ...state, extra: 'x' } },
       { ...opening.turn, state: { ...state, inventory: Array(9).fill('x') } },
       { ...opening.turn, state: { ...state, progress: 'x'.repeat(301) } },
       { ...opening.turn, state: { ...state, discoveries: ['X', 'x'] } },
       { ...opening.turn, narration: Array(181).fill('word').join(' ') },
-      { ...opening.turn, narration: 'short' }, { ...opening.turn, narration: `\u0000${narration}` },
+      { ...opening.turn, narration: 'short' }, { ...opening.turn, state: { inventory: [], discoveries: [], relationships: [] } },
+      { ...opening.turn, narration: `\u0000${narration}` },
       { ...opening.turn, concluded: true }
     ]) assert.throws(() => journey.parseJourneyTurn(invalid, false))
     assert.throws(() => journey.parseJourneyTurn(opening.turn, true))
+    assert.doesNotThrow(() => journey.parseJourneyTurn({
+      ...opening.turn, providerNote: 'ignored', state: { ...state, providerNote: 'ignored' }
+    }, false), 'Unknown provider metadata does not invalidate required story fields')
     for (const invalid of [
       { ...opening, plan: Array(6).fill('point') }, { ...opening, plan: ['one', 'two'] },
       { ...opening, narrationLanguage: 'invalid-lang-tag' }, { ...opening, narrationStyle: 'evil' },
-      { ...opening, title: 'x'.repeat(161) }, { ...opening, secret: 'hidden answer' }
+      { ...opening, title: 'x'.repeat(161) },
+      { ...opening, turn: { ...opening.turn, state: { inventory: [], discoveries: [], relationships: [] } } }
     ]) assert.throws(() => journey.parseJourneyOpening(invalid))
+    assert.doesNotThrow(() => journey.parseJourneyOpening({ ...opening, providerNote: 'ignored',
+      turn: { ...opening.turn, providerNote: 'ignored', state: { ...state, providerNote: 'ignored' } }
+    }), 'Unknown provider metadata does not invalidate a complete opening')
     for (const patch of [{ text: '' }, { text: 'x'.repeat(801) }, { text: '\u0000x' }, { revision: 15 }, { requestId: 'x' }]) assert.throws(() => journey.parseJourneyAction({ ...responseBody(concurrency), ...patch }))
   })
   await check('Shared Adventure and personal journeys share the identical atomic UTC daily attempt bucket', async () => {

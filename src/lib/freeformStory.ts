@@ -3,13 +3,13 @@ import { SharedStoryError } from './sharedStory'
 export type StoryChoiceMode = 'free' | 'suggested'
 export type FreeformState = { inventory: string[]; discoveries: string[]; relationships: string[]; progress: string }
 
-export function exactObject(value: unknown, keys: string[]): Record<string, unknown> {
+export function objectWithRequiredKeys(value: unknown, keys: string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
-    Object.keys(value).sort().join() !== [...keys].sort().join()) throw invalidFreeform()
+    keys.some(key => !Object.prototype.hasOwnProperty.call(value, key))) throw invalidFreeform()
   return value as Record<string, unknown>
 }
 export function invalidFreeform() {
-  return new SharedStoryError('The AI response failed story validation. This attempt was consumed; no automatic retry is made.', 502)
+  return new SharedStoryError('The AI response failed story validation.', 502)
 }
 export function boundedStoryText(value: unknown, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max ||
@@ -23,7 +23,7 @@ export function boundedStoryList(value: unknown, max = 8, length = 120): string[
   return result
 }
 export function parseFreeformState(value: unknown): FreeformState {
-  const state = exactObject(value, ['inventory', 'discoveries', 'relationships', 'progress'])
+  const state = objectWithRequiredKeys(value, ['inventory', 'discoveries', 'relationships', 'progress'])
   return {
     inventory: boundedStoryList(state.inventory), discoveries: boundedStoryList(state.discoveries),
     relationships: boundedStoryList(state.relationships), progress: boundedStoryText(state.progress, 300)
