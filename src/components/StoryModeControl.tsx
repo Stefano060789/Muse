@@ -25,12 +25,29 @@ export default function StoryModeControl({ mode, onChange, copy = english, langu
   direction?: 'ltr' | 'rtl'
 }) {
   return <div role="group" aria-label={copy.experiencePrompt} lang={language} dir={direction} className="story-mode-control">
-    <p>{copy.experiencePrompt}</p>
+    <p className="story-mode-prompt">{copy.experiencePrompt}</p>
     <button type="button" aria-label={copy.readScene} aria-pressed={mode === 'read'} onClick={() => onChange('read')}>
-      <strong>{copy.readScene}</strong>
+      <span className="story-mode-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 6.5c-2.2-1.6-5.3-1.8-8-.8v12c2.7-1 5.8-.8 8 .8m0-12c2.2-1.6 5.3-1.8 8-.8v12c-2.7-1-5.8-.8-8 .8m0-12v12" />
+        </svg>
+      </span>
+      <span className="story-mode-copy">
+        <strong>{copy.readScene}</strong>
+        <span>{copy.readDescription}</span>
+      </span>
     </button>
     <button type="button" aria-label={copy.listenScene} aria-pressed={mode === 'listen'} onClick={() => onChange('listen')}>
-      <strong>{copy.listenScene}</strong>
+      <span className="story-mode-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M4 10v4h4l5 4V6l-5 4H4Z" />
+          <path d="M16 9a5 5 0 0 1 0 6m2.5-8.5a8.5 8.5 0 0 1 0 11" />
+        </svg>
+      </span>
+      <span className="story-mode-copy">
+        <strong>{copy.listenScene}</strong>
+        <span>{copy.listenDescription}</span>
+      </span>
     </button>
   </div>
 }
