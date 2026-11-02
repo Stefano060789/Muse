@@ -164,19 +164,36 @@ from Home; completed stories offer **Read again**. Personal touches live on Myse
 not Home, and personal library cards keep attempt details
 behind an optional disclosure.
 Personal stories in My stories and Archive offer a local social-card studio,
-including unfinished chapters. Choose a visited scene, edit a passage (up to 200
-characters), add a reflection (up to 120), and review the exact image before
-exporting. The default card includes only the title and saved progress, with no
-scene text selected. **Preview before sharing** opens a dedicated review of the
-full card and the exact caption (including the Muse link). Download, app-share
-and copy actions are available from this review; **Back to editing** keeps all
-selections and lets you adjust the card before reviewing again.
+including unfinished chapters. Opening sharing automatically selects an excerpt
+from the latest nonempty visited scene, a mood-matched style, saved progress and
+the vertical story format. It opens a review, not a social post: nothing is
+published or sent anywhere automatically. **Customize this highlight** lets you
+choose a different visited scene (or progress only), edit the passage (up to 200
+characters), add your own reflection (up to 120), or change the style/size.
+Muse does not invent a personal reflection or include answers or memories.
+**Preview before sharing** returns to the card and exact caption (including the
+Muse link). Custom choices survive closing/reopening; **Prepare a fresh
+highlight** explicitly replaces them with the current suggested highlight.
 Exhausted chapters are never labelled complete. Starlight,
 Paper & ink and First light styles export as PNG in feed (1080×1350),
 story (1080×1920) or square (1080×1080) sizes. Preview entrance and shimmer
-animations respect reduced-motion preferences; exported images are static.
-Download the image to upload to a social app; the app-share and copy actions
-share the selected words and progress as a caption. Passage selection, editing,
+animations respect reduced-motion preferences; exported PNG images are static.
+Opening the review automatically prepares a short, silent, 30 fps canvas video
+with drifting light, edge sparkles and flowing lines, at the selected card size.
+Recording targets about six seconds after encoder startup; actual length varies
+by browser and the preview shows the recorded duration when available.
+**Create animated preview** retries a cancelled/failed recording.
+MP4 is preferred when the browser supports recording it; otherwise the clip uses
+WebM, which not all social apps accept. There is no remote transcoding, AI call,
+microphone or screen-capture permission. Creation has progress and cancellation;
+closing, editing or unmounting cancels recording and releases media tracks and
+blob URLs. Keep the tab visible; hiding it fails explicitly rather than saving
+an incomplete clip. Play the actual recorded preview before download/file-share
+becomes available. It never autoplays, including with reduced-motion preferences.
+Unsupported recording or file sharing is explained and PNG export stays
+available. Use Download and upload the file in your social app if native
+file-sharing is unavailable. The separate text-share/copy actions send only
+the reviewed caption and homepage link, not the video. Passage selection, editing,
 preview and export require no AI call or AI consent and do not send private
 story contents to a server. Optional AI captions remain separate.
 Teaser generation requires

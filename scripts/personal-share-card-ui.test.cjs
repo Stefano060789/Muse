@@ -19,16 +19,44 @@ function flatten(node) {
 }
 async function main() {
   const slots = []
+  const refs = []
+  let refCursor = 0
+  const effects = []
+  let effectCursor = 0, pendingEffects = []
+  let clipSupport = false, videoShareSupport = true, recording, clipCalls = 0
   let cursor = 0, accepted = false, calls = [], clipboard = '', sent
   const jsx = (type, props) => ({ type, props })
   const component = load('src/components/PersonalStoryShareCard.tsx', {
-    react: { useState(initial) {
+    react: { useRef(initial) {
+      const i = refCursor++
+      return refs[i] ||= { current: initial }
+    }, useEffect(callback, dependencies) {
+      const i = effectCursor++
+      const previous = effects[i]
+      if (!previous || dependencies.some((value, index) => value !== previous.dependencies[index])) {
+        pendingEffects.push(() => {
+          previous?.cleanup?.()
+          effects[i] = { dependencies, cleanup: callback() }
+        })
+      }
+    }, useState(initial) {
       const i = cursor++
       if (!(i in slots)) slots[i] = initial
       return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }]
     } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     '../lib/providerConsent': { PROVIDER_CONSENT_VERSION: 'fixture' },
+    '../lib/storyShareMotion': {
+      shareVideoType: () => clipSupport ? 'video/mp4' : null,
+      createShareClip(options) {
+        clipCalls++
+        return new Promise((resolve, reject) => {
+          recording = { options, resolve }
+          options.onProgress(50)
+          options.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))
+        })
+      }
+    },
     '../lib/accountClient': { async accountFetch(_url, options) {
       calls.push(JSON.parse(options.body))
       return { ok: true, json: async () => ({ teaser: 'A new beginning invites a little courage.' }) }
@@ -45,15 +73,27 @@ async function main() {
     journey: { status: 'active' }, chapter: { number: 2 }
   }
   let nodes
-  const render = () => { cursor = 0; nodes = flatten(component({ story, interfaceLanguage: 'en-US' })); return nodes }
+  const render = () => {
+    cursor = 0; refCursor = 0; effectCursor = 0
+    nodes = flatten(component({ story, interfaceLanguage: 'en-US' }))
+    const pending = pendingEffects; pendingEffects = []; pending.forEach(effect => effect())
+    return nodes
+  }
   const button = name => nodes.find(node => node?.type === 'button' && node.props.children === name)
   const preview = () => decodeURIComponent(nodes.find(node => node?.type === 'img').props.src.split(',').slice(1).join(','))
+  const oldWindow = global.window
+  global.window = { location: { origin: 'https://muse.example' } }
   render()
   assert.equal(nodes.filter(node => node?.type === 'button').length, 1)
   button('Share your story').props.onClick(); render()
   assert.match(preview(), /My story so far/)
   assert.match(preview(), /Chapter 2/)
-  assert.doesNotMatch(preview(), /I chose|FUTURE/)
+  assert.match(preview(), /I chose/, 'An authentic visited-scene highlight is prepared automatically')
+  assert.doesNotMatch(preview(), /FUTURE/)
+  assert.match(preview(), /height="1920"/, 'Automatic highlights start in social-story format')
+  assert.equal(calls.length, 0)
+  assert.ok(button('Customize this highlight'), 'The first click opens a ready-to-review highlight')
+  button('Customize this highlight').props.onClick(); render()
   assert.equal(nodes.filter(node => node?.type === 'option').length, 2, 'Only visited scenes are selectable')
   nodes.find(node => node?.type === 'select').props.onChange({ target: { value: '0' } }); render()
   assert.match(preview(), /I chose to open/)
@@ -70,7 +110,6 @@ async function main() {
   assert.equal(button('Share with another app'), undefined)
   assert.equal(button('Copy share text'), undefined)
   const oldNavigator = Object.getOwnPropertyDescriptor(global, 'navigator')
-  const oldWindow = global.window
   const oldDocument = global.document
   const oldImage = global.Image
   try {
@@ -95,6 +134,7 @@ async function main() {
     }
     Object.defineProperty(global, 'navigator', { configurable: true, value: {
       clipboard: { async writeText(text) { clipboard = text } },
+      canShare: () => videoShareSupport,
       async share(data) { sent = data }
     } })
     const editingSvg = preview()
@@ -115,7 +155,7 @@ async function main() {
     await button('Share with another app').props.onClick()
     assert.equal(sent.text, clipboard)
     for (const [label, height] of [['Feed · 4:5', 1350], ['Story · 9:16', 1920], ['Square · 1:1', 1080]]) {
-      button('Back to editing').props.onClick(); render()
+      button('Customize this highlight').props.onClick(); render()
       assert.equal(button('Share with another app'), undefined, 'Editing requires a fresh review')
       assert.match(preview(), /Small steps count/, 'Returning to edit preserves the reflection')
       button(label).props.onClick(); render()
@@ -131,8 +171,33 @@ async function main() {
     await new Promise(resolve => setImmediate(resolve)); render()
     assert.ok(nodes.some(node => node?.props?.role === 'alert'), 'Rendering failures must be visible')
     assert.equal(button('Download share card').props.disabled, false, 'Failed exports release the busy state')
-    button('Back to editing').props.onClick()
+    clipSupport = false
+    button('Create animated preview').props.onClick()
+    await new Promise(resolve => setImmediate(resolve)); render()
+    assert.ok(nodes.some(node => node?.props?.role === 'alert' && /cannot create a video/.test(node.props.children)))
+    assert.equal(clipCalls, 0)
+    clipSupport = true
+    button('Create animated preview').props.onClick(); render()
+    assert.equal(button('Create animated preview').props.disabled, true)
+    const firstRecording = recording
+    button('Cancel').props.onClick()
+    await new Promise(resolve => setImmediate(resolve)); render()
+    assert.ok(firstRecording.options.signal.aborted)
+    assert.equal(nodes.find(node => node?.type === 'video'), undefined)
+    button('Create animated preview').props.onClick()
+    recording.resolve(new Blob(['encoded video'], { type: 'video/mp4' }))
+    await new Promise(resolve => setImmediate(resolve)); render()
+    assert.equal(button('Share animated clip').props.disabled, true, 'Actual clip playback is required before sharing')
+    nodes.find(node => node?.type === 'video').props.onPlay(); render()
+    await button('Share animated clip').props.onClick()
+    assert.equal(sent.files[0].name, 'muse-story-highlight.mp4')
+    assert.equal(sent.files[0].type, 'video/mp4')
+    videoShareSupport = false
+    await button('Share animated clip').props.onClick(); render()
+    assert.ok(nodes.some(node => node?.props?.role === 'alert' && /cannot share video files/.test(node.props.children)))
+    button('Customize this highlight').props.onClick()
     accepted = true; render()
+    assert.equal(nodes.find(node => node?.type === 'video'), undefined, 'Editing invalidates an old rendered clip')
     button('Create share teaser').props.onClick()
     await new Promise(resolve => setImmediate(resolve)); render()
     assert.equal(calls.length, 1)
@@ -148,8 +213,14 @@ async function main() {
     button('Preview before sharing').props.onClick(); render()
     button('Share your story').props.onClick(); render()
     button('Share your story').props.onClick(); render()
-    assert.ok(button('Preview before sharing'), 'Reopening the studio returns to editing, not stale approval')
-    assert.equal(button('Share with another app'), undefined)
+    assert.ok(button('Customize this highlight'), 'Reopening keeps the reviewed highlight')
+    assert.match(preview(), /A new beginning/, 'Reopening does not overwrite custom edits')
+    render()
+    assert.equal(button('Create animated preview').props.disabled, true, 'Reopening automatically prepares an animated preview')
+    const unmountedRecording = recording
+    effects.forEach(effect => effect.cleanup?.())
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(unmountedRecording.options.signal.aborted, 'Unmounting cancels outstanding encoding')
   } finally {
     global.window = oldWindow
     global.document = oldDocument

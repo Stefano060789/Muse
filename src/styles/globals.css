@@ -384,6 +384,10 @@ main [role="status"] { line-height: 1.6; }
 .share-studio-review { margin-top: 1.5rem; }
 .share-studio-review .share-studio-preview { width: min(100%, 540px); margin: 1.25rem auto; }
 .share-studio-caption { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fffaf0; }
+.share-studio-auto { padding: 1rem; border-inline-start: 3px solid #ac8450; background: #fffaf0; border-radius: 0 14px 14px 0; line-height: 1.65; }
+.share-studio-motion { padding-block: 1rem; border-block: 1px solid var(--line); }
+.share-studio-motion progress { display: block; width: min(100%, 540px); margin-block: 0.75rem; accent-color: var(--plum); }
+.share-studio-video { display: block; width: min(100%, 540px); max-height: 75vh; object-fit: contain; margin-inline: auto; border-radius: 18px; background: #202c42; }
 @keyframes share-reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes share-shimmer { 0%, 15% { transform: translateX(-45%); } 75%, 100% { transform: translateX(45%); } }
 @media (max-width: 640px) {

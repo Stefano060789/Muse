@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { accountFetch } from '../lib/accountClient'
 import { personalStoryShareText, personalStoryMoodText } from '../lib/personalStoryShareCopy'
-import { createStoryMomentSvg, SHARE_CARD_SIZES, type ShareCardFormat, type ShareCardTheme } from '../lib/personalStoryShareVisual'
+import { createStoryMomentSvg, suggestStoryMoment, SHARE_CARD_SIZES, type ShareCardFormat, type ShareCardTheme } from '../lib/personalStoryShareVisual'
+import { createShareClip, shareVideoType } from '../lib/storyShareMotion'
+import { shareMotionCopy } from '../lib/shareMotionCopy'
 import { PROVIDER_CONSENT_VERSION } from '../lib/providerConsent'
 import type { PersonalStory } from '../lib/story'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
@@ -27,14 +29,29 @@ export default function PersonalStoryShareCard({
   const [message, setMessage] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [theme, setTheme] = useState<ShareCardTheme>('starlight')
-  const [format, setFormat] = useState<ShareCardFormat>('portrait')
+  const [format, setFormat] = useState<ShareCardFormat>('story')
   const [passage, setPassage] = useState('')
   const [reflection, setReflection] = useState('')
   const [selectedScene, setSelectedScene] = useState('')
   const [exporting, setExporting] = useState(false)
   const [failed, setFailed] = useState(false)
   const [reviewing, setReviewing] = useState(false)
+  const [clip, setClip] = useState<{ blob: Blob; url: string } | null>(null)
+  const [clipBusy, setClipBusy] = useState(false)
+  const [clipProgress, setClipProgress] = useState(0)
+  const [clipViewed, setClipViewed] = useState(false)
+  const [clipDuration, setClipDuration] = useState<number | null>(null)
+  const [highlightRevision, setHighlightRevision] = useState(0)
+  const clipOperation = useRef<AbortController | null>(null)
+  const clipUrl = useRef<string | null>(null)
+  const prepared = useRef(false)
+  useEffect(() => () => {
+    clipOperation.current?.abort()
+    clipOperation.current = null
+    if (clipUrl.current) URL.revokeObjectURL(clipUrl.current)
+  }, [])
   const studio = shareStudioCopy(interfaceLanguage)
+  const motion = shareMotionCopy(interfaceLanguage)
   const language = story.language ?? interfaceLanguage
   const mood = personalStoryMoodText(story.mood, language)
   const copy = (key: Parameters<typeof personalStoryShareText>[0]) => personalStoryShareText(key, interfaceLanguage)
@@ -48,6 +65,9 @@ export default function PersonalStoryShareCard({
     title: story.title, passage, reflection, milestone, progress, theme, format,
     rtl: storyLanguage(language).dir === 'rtl'
   })
+  useEffect(() => {
+    clearClip()
+  }, [cardSvg])
 
   const requestTeaser = async () => {
     setBusy(true)
@@ -85,6 +105,94 @@ export default function PersonalStoryShareCard({
 
   const shareUrl = () => `${window.location.origin}/?utm_source=personal-story-share`
   const shareText = () => [milestone, story.title, passage, reflection, progress, `${copy('shareTextFooter')} ${shareUrl()}`].filter(Boolean).join('\n\n')
+
+  const clearClip = () => {
+    clipOperation.current?.abort()
+    clipOperation.current = null
+    if (clipUrl.current) URL.revokeObjectURL(clipUrl.current)
+    clipUrl.current = null
+    setClip(null)
+    setClipViewed(false)
+    setClipDuration(null)
+    setClipBusy(false)
+  }
+
+  const prepareHighlight = () => {
+    clearClip()
+    const suggested = suggestStoryMoment(savedScenes, story.mood)
+    setSelectedScene(suggested.scene)
+    setPassage(suggested.passage)
+    setTheme(suggested.theme)
+    setFormat('story')
+    setReflection('')
+    setMessage('')
+    setFailed(false)
+    setReviewing(true)
+    setHighlightRevision(value => value + 1)
+    prepared.current = true
+  }
+
+  const createClip = async () => {
+    if (clipOperation.current) return
+    setMessage('')
+    setFailed(false)
+    if (!shareVideoType()) { setFailed(true); setMessage(motion.unsupported); return }
+    const operation = new AbortController()
+    clipOperation.current = operation
+    setClipBusy(true)
+    setClipProgress(0)
+    try {
+      const blob = await createShareClip({ svg: cardSvg, format, theme, signal: operation.signal, onProgress: setClipProgress })
+      if (operation.signal.aborted) return
+      const url = URL.createObjectURL(blob)
+      if (clipUrl.current) URL.revokeObjectURL(clipUrl.current)
+      clipUrl.current = url
+      setClip({ blob, url })
+      setClipViewed(false)
+    } catch {
+      if (!operation.signal.aborted) { setFailed(true); setMessage(motion.error) }
+    } finally {
+      if (clipOperation.current === operation) { clipOperation.current = null; setClipBusy(false) }
+    }
+  }
+
+  useEffect(() => {
+    if (expanded && reviewing && shareVideoType()) void createClip()
+  }, [expanded, reviewing, cardSvg, highlightRevision])
+
+  const clipFile = (blob: Blob) => new File([blob], `muse-story-highlight.${blob.type.startsWith('video/mp4') ? 'mp4' : 'webm'}`, { type: blob.type })
+  const downloadClip = () => {
+    if (!clip || !clipViewed) return
+    try {
+      const link = document.createElement('a')
+      link.href = clip.url
+      link.download = clipFile(clip.blob).name
+      document.body.append(link)
+      link.click()
+      link.remove()
+      setFailed(false)
+      setMessage(motion.downloaded)
+    } catch { setFailed(true); setMessage(copy('shareError')) }
+  }
+
+  const shareClip = async () => {
+    if (!clip || !clipViewed) return
+    setFailed(false)
+    setMessage('')
+    try {
+      const file = clipFile(clip.blob)
+      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        setFailed(true)
+        setMessage(motion.fileUnsupported)
+        return
+      }
+      await navigator.share({ title: story.title, text: shareText(), files: [file] })
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === 'AbortError') return
+      setFailed(true)
+      setMessage(copy('shareError'))
+    }
+  }
 
   const copyText = async () => {
     setFailed(false)
@@ -153,7 +261,11 @@ export default function PersonalStoryShareCard({
   }
 
   return <section aria-label={copy('shareStoryTitle')} className="story-share">
-    <button type="button" className="atelier-button" aria-expanded={expanded} onClick={() => { setExpanded(value => !value); setReviewing(false) }}>
+    <button type="button" className="atelier-button" aria-expanded={expanded} onClick={() => {
+      if (!expanded && !prepared.current) prepareHighlight()
+      if (expanded) clearClip()
+      setExpanded(value => !value)
+    }}>
       {copy('shareStoryTitle')}
     </button>
     {expanded ? <div className="share-studio">
@@ -161,6 +273,7 @@ export default function PersonalStoryShareCard({
         <p className="atelier-eyebrow">Muse</p>
         <h3>{studio.intro}</h3>
         <p>{studio.privacy}</p>
+        <p className="share-studio-auto"><strong>{motion.automatic}</strong> {motion.notice}</p>
       </header>
       {!reviewing ? <>
       <div className="share-studio-layout">
@@ -201,7 +314,7 @@ export default function PersonalStoryShareCard({
             <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`} alt={studio.preview}
               width={SHARE_CARD_SIZES[format].width} height={SHARE_CARD_SIZES[format].height} />
           </div>
-          <figcaption>{studio.previewNote}</figcaption>
+          <figcaption>{motion.note}</figcaption>
         </figure>
       </div>
       <div className="atelier-actions">
@@ -231,14 +344,38 @@ export default function PersonalStoryShareCard({
       </> : <section aria-label={studio.preview} className="share-studio-review">
         <h4>{studio.preview}</h4>
         <button type="button" className="atelier-secondary" autoFocus disabled={exporting}
-          onClick={() => { setMessage(''); setReviewing(false) }}>{studio.backToEdit}</button>
+          onClick={() => { clearClip(); setMessage(''); setReviewing(false) }}>{motion.customize}</button>
+        <button type="button" className="atelier-secondary" disabled={exporting || clipBusy} onClick={prepareHighlight}>{motion.regenerate}</button>
         <figure className="share-studio-preview">
           <div className={`share-studio-frame share-studio-frame--${theme}`}>
             <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`} alt={studio.preview}
               width={SHARE_CARD_SIZES[format].width} height={SHARE_CARD_SIZES[format].height} />
           </div>
-          <figcaption>{studio.previewNote}</figcaption>
+          <figcaption>{motion.note}</figcaption>
         </figure>
+        <div className="share-studio-motion">
+          {!clip ? <button type="button" className="atelier-button" disabled={clipBusy || exporting} onClick={() => void createClip()}>{motion.animate}</button> : <>
+            <p>{motion.ready}</p>
+            <video className="share-studio-video" src={clip.url} controls playsInline loop preload="metadata"
+              style={{ width: `min(100%, 540px, ${75 * SHARE_CARD_SIZES[format].width / SHARE_CARD_SIZES[format].height}vh)` }}
+              aria-label={motion.video} onPlay={() => setClipViewed(true)}
+              onLoadedMetadata={event => {
+                const duration = event.currentTarget.duration
+                setClipDuration(Number.isFinite(duration) ? duration : null)
+              }}
+              onError={() => { setFailed(true); setMessage(motion.error); clearClip() }} />
+            <p>{clip.blob.type.startsWith('video/mp4') ? 'MP4' : 'WebM'}{clipDuration !== null ? ` · ${clipDuration.toFixed(1)} s` : ''} · {SHARE_CARD_SIZES[format].width} × {SHARE_CARD_SIZES[format].height}</p>
+            <div className="atelier-actions">
+              <button type="button" className="atelier-button" disabled={!clipViewed} onClick={downloadClip}>{motion.download}</button>
+              <button type="button" className="atelier-secondary" disabled={!clipViewed} onClick={() => void shareClip()}>{motion.share}</button>
+            </div>
+          </>}
+          {clipBusy ? <div role="status">
+            <p>{motion.creating} · {clipProgress}%</p>
+            <progress value={clipProgress} max={100} aria-label={motion.creating} />
+            <button type="button" onClick={() => { clearClip(); setFailed(false); setMessage(motion.cancelled) }}>{motion.cancel}</button>
+          </div> : null}
+        </div>
         <h4>{studio.captionPreview}</h4>
         <p className="share-studio-caption" dir={storyLanguage(language).dir}>{shareText()}</p>
         <div className="atelier-actions">

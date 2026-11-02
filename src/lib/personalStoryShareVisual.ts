@@ -81,6 +81,23 @@ export const SHARE_CARD_SIZES = {
 } as const
 export type ShareCardFormat = keyof typeof SHARE_CARD_SIZES
 export type ShareCardTheme = 'starlight' | 'paper' | 'dawn'
+
+export function suggestStoryMoment(scenes: readonly { body: string }[], mood: string): {
+  scene: string; passage: string; theme: ShareCardTheme
+} {
+  let index = scenes.length - 1
+  while (index >= 0 && !scenes[index].body.trim()) index--
+  const text = index < 0 ? '' : scenes[index].body.replace(/\s+/g, ' ').trim()
+  const characters = Array.from(text)
+  const excerpt = characters.slice(0, 199).join('')
+  const sentenceEnd = Math.max(excerpt.lastIndexOf('. '), excerpt.lastIndexOf('! '), excerpt.lastIndexOf('? '), excerpt.lastIndexOf('。'))
+  const passage = characters.length <= 200 ? text : sentenceEnd >= 60
+    ? excerpt.slice(0, sentenceEnd + 1) : `${excerpt.trimEnd()}…`
+  return {
+    scene: index < 0 ? '' : String(index), passage,
+    theme: mood === 'hopeful' ? 'dawn' : mood === 'relaxed' ? 'paper' : 'starlight'
+  }
+}
 const palettes = {
   starlight: { bg: '#202c42', end: '#493650', ink: '#fff5e5', muted: '#e3d2c4', accent: '#e5c38c' },
   paper: { bg: '#fffaf0', end: '#e9e1d5', ink: '#202c42', muted: '#625366', accent: '#866136' },
@@ -99,21 +116,26 @@ export function createStoryMomentSvg(input: {
     `<text x="${x}" y="${y}" fill="${fill}" font-family="Georgia,serif" font-size="${size}" text-anchor="start" direction="${input.rtl ? 'rtl' : 'ltr'}">${wrapText(text, wideScript.test(text) ? Math.floor(limit / 2) : limit, count)
       .map((line, index) => `<tspan x="${x}" dy="${index ? size * 1.22 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`
   const offset = (height - 1080) * 0.34
-  const titleY = 250 + offset
-  const passageY = 465 + offset
-  const reflectionY = 800 + offset
+  const vertical = input.format === 'story'
+  const titleY = vertical ? 400 : 250 + offset
+  const passageY = vertical ? 790 : 465 + offset
+  const reflectionY = vertical ? 1490 : 800 + offset
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height}" viewBox="0 0 1080 ${height}" role="img">
 <defs><linearGradient id="moment-bg" x2="1" y2="1"><stop stop-color="${color.bg}"/><stop offset="1" stop-color="${color.end}"/></linearGradient></defs>
 <rect width="1080" height="${height}" fill="url(#moment-bg)"/>
 <circle cx="960" cy="130" r="290" fill="${color.accent}" opacity=".07"/>
 <circle cx="90" cy="${height - 140}" r="260" fill="${color.accent}" opacity=".08"/>
+<g fill="${color.accent}" opacity=".5">${Array.from({ length: 18 }, (_, i) =>
+    `<circle cx="${i % 2 ? 68 : 1012}" cy="${180 + i * (height - 320) / 18}" r="${i % 3 === 0 ? 2 : 1}"/>`).join('')}</g>
+<path d="M75 ${height - 55}Q350 ${height - 90} 540 ${height - 55}T1005 ${height - 55}" fill="none" stroke="${color.accent}" stroke-opacity=".3"/>
 <rect x="42" y="42" width="996" height="${height - 84}" rx="28" fill="none" stroke="${color.accent}" stroke-opacity=".45"/>
 <path d="M500 122h80m-40-40v80m-22-62 44 44m-44 0 44-44" stroke="${color.accent}" stroke-width="2"/>
-${lines(input.milestone, 25, 187 + offset, 54, 1, color.accent)}
-${lines(input.title.slice(0, 160), 56, titleY, 26, 3, color.ink)}
-<path d="M96 ${410 + offset}h888" stroke="${color.accent}" stroke-opacity=".35"/>
-${lines(input.passage.slice(0, 200), 30, passageY, 46, 9, color.ink)}
-${lines(input.reflection.slice(0, 120), 27, reflectionY, 46, 3, color.muted)}
+${lines(input.milestone, vertical ? 32 : 25, vertical ? 300 : 187 + offset, 54, 1, color.accent)}
+${lines(input.title.slice(0, 160), vertical ? 76 : 56, titleY, vertical ? 21 : 26, 3, color.ink)}
+<path d="M96 ${vertical ? 685 : 410 + offset}h888" stroke="${color.accent}" stroke-opacity=".35"/>
+${input.passage ? `<text x="${x}" y="${passageY - 15}" fill="${color.accent}" opacity=".18" font-family="Georgia,serif" font-size="140" direction="${input.rtl ? 'rtl' : 'ltr'}">“</text>` : ''}
+${lines(input.passage.slice(0, 200), vertical ? 44 : 30, passageY, vertical ? 36 : 46, vertical ? 12 : 9, color.ink)}
+${lines(input.reflection.slice(0, 120), vertical ? 34 : 27, reflectionY, vertical ? 38 : 46, vertical ? 4 : 3, color.muted)}
 ${lines(input.progress, 24, height - 157, 60, 2, color.accent)}
 <text x="540" y="${height - 80}" text-anchor="middle" fill="${color.accent}" font-family="Georgia,serif" font-size="32" letter-spacing="5">MUSE</text>
 </svg>`

@@ -19,7 +19,7 @@ async function check(name, run) {
 async function main() {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
-    'src/lib/personalStoryShare.ts', 'src/lib/personalStoryShareCopy.ts', 'src/lib/personalStoryShareVisual.ts', 'src/lib/shareStudioCopy.ts',
+    'src/lib/personalStoryShare.ts', 'src/lib/personalStoryShareCopy.ts', 'src/lib/personalStoryShareVisual.ts', 'src/lib/shareStudioCopy.ts', 'src/lib/shareMotionCopy.ts',
     '--outDir', output, '--strict', '--module', 'commonjs', '--target', 'es2020',
     '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'
   ], { cwd: root, stdio: 'inherit' })
@@ -30,6 +30,7 @@ async function main() {
   const copy = require(path.join(moduleOutput, 'personalStoryShareCopy.js'))
   const visual = require(path.join(moduleOutput, 'personalStoryShareVisual.js'))
   const { shareStudioCopy } = require(path.join(moduleOutput, 'shareStudioCopy.js'))
+  const { shareMotionCopy } = require(path.join(moduleOutput, 'shareMotionCopy.js'))
   const locales = ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'it-IT', 'uk-UA', 'ar-SA']
 
   await check('share teaser input is limited to a valid title, mood, and supported language', () => {
@@ -109,12 +110,14 @@ async function main() {
     for (const language of locales) {
       const studio = shareStudioCopy(language)
       assert.ok(Object.values(studio).every(value => value.trim()))
+      assert.ok(Object.values(shareMotionCopy(language)).every(value => value.trim()))
       for (const format of ['portrait', 'story', 'square']) {
         for (const theme of ['starlight', 'paper', 'dawn']) {
           const svg = visual.createStoryMomentSvg({
             title: '<script>unsafe</script>', passage: 'A & B chose a new path.', reflection: 'My <moment>',
             milestone: studio.complete, progress: studio.chapter.replace('{number}', '2'), format, theme, rtl: language === 'ar-SA'
           })
+
           assert.match(svg, new RegExp(`width="1080" height="${visual.SHARE_CARD_SIZES[format].height}"`))
           assert.doesNotMatch(svg, /<script>|<image|<foreignObject|<animate|href=/)
           assert.match(svg, /&lt;script&gt;/)
@@ -143,6 +146,15 @@ async function main() {
     assert.match(reflection[3], /…/)
     assert.ok(465 + 8 * 30 * 1.22 < 800 - 27)
     assert.ok(800 + 2 * 27 * 1.22 < 1080 - 157 - 24)
+  })
+
+  await check('automatic highlights use the latest nonempty visited scene without inventing personal reflections', () => {
+    assert.deepEqual(visual.suggestStoryMoment([{ body: 'Old scene.' }, { body: 'A new beginning.' }, { body: '  ' }], 'hopeful'),
+      { scene: '1', passage: 'A new beginning.', theme: 'dawn' })
+    assert.deepEqual(visual.suggestStoryMoment([], 'relaxed'), { scene: '', passage: '', theme: 'paper' })
+    const long = visual.suggestStoryMoment([{ body: 'This is a meaningful first sentence that stays intact and is long enough to remember. ' + 'extra '.repeat(60) }], 'adventure')
+    assert.equal(long.passage, 'This is a meaningful first sentence that stays intact and is long enough to remember.')
+    assert.ok(visual.suggestStoryMoment([{ body: '星'.repeat(250) }], 'curious').passage.length <= 200)
   })
 
   console.log(`Passed ${passed} personal story share checks.`)
