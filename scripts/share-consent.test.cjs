@@ -94,7 +94,7 @@ async function main() {
     '../../lib/accountAuth': { requireAccount: async () => ({ id: 'first', shareTeaserConsent: allowed }) },
     '../../lib/sharedStory': { SharedStoryError },
     '../../lib/operations': { apiSafety: async () => true, reportOperation() {} },
-    '../../lib/providerConsent': { requireProviderConsent() {} },
+    '../../lib/providerConsent': { requireProviderConsent() {}, requireAccountProviderConsent() {} },
     '../../lib/storyProvider': { storyProviderConfig() {} },
     '../../lib/storyRequestLimits': { storyDatabase: () => ({}), reserveStoryRequest: async () => {} },
     '../../lib/billing': { reserveBillingUsage: async () => { billingCalls++ } },

@@ -501,9 +501,16 @@ async function main() {
       startupOrder.push('tts-request')
       return new Response('synthetic audio', { headers: { 'Content-Type': 'audio/mpeg' } })
     }
+    let inListenGesture = false
     global.Audio = class {
-      constructor() { this.duration = 10; this.currentTime = 0; this.plays = 0; players.push(this) }
-      play() { this.plays++; return Promise.resolve() }
+      constructor(src) { this.src = src; this.unlocked = false; this.duration = 10; this.currentTime = 0; this.plays = 0; players.push(this) }
+      play() {
+        if (!this.unlocked && !inListenGesture) return Promise.reject(new Error('User activation required'))
+        this.unlocked = true
+        this.plays++
+        startupOrder.push(this.src.startsWith('data:audio/wav') ? 'media-unlock' : 'narration-play')
+        return Promise.resolve()
+      }
       pause() {}
     }
     URL.createObjectURL = () => 'blob:direct-google'
@@ -515,9 +522,14 @@ async function main() {
       await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
       assert.equal(fetches, 0, 'Listen cannot bypass cloud consent')
       hook.render().setCloudConsent(true)
-      await hook.render().speak('The rain falls.', undefined, { autoPlay: true })
-      assert.deepEqual(startupOrder, ['ambient-start', 'tts-request'], 'ambient playback starts in the Listen gesture before the asynchronous cloud request')
-      assert.equal(players[0].plays, 1, 'One Listen tap starts loaded audio without native Play')
+      inListenGesture = true
+      const playback = hook.render().speak('The rain falls.', undefined, { autoPlay: true })
+      inListenGesture = false
+      await playback
+      assert.deepEqual(startupOrder, ['ambient-start', 'media-unlock', 'tts-request', 'narration-play'],
+        'The media element is unlocked in the Listen gesture and reused after the cloud request')
+      assert.equal(players.length, 1, 'The downloaded narration reuses the activated media element')
+      assert.equal(players[0].plays, 2, 'One Listen tap activates silence and then starts narration without native Play')
       assert.equal(hook.render().textPosition, 0)
       assert.equal(hook.render().speaking, true)
       players[0].currentTime = 5
@@ -530,6 +542,22 @@ async function main() {
       hook.render().stop()
       assert.equal(hook.render().activeText, '')
       assert.equal(hook.spoken.length, 0, 'No unrequested device fallback')
+      let finishDownload
+      global.fetch = () => { fetches++; return new Promise(resolve => { finishDownload = resolve }) }
+      inListenGesture = true
+      const cancelledPlayback = hook.render().speak('A second scene.', undefined, { autoPlay: true })
+      inListenGesture = false
+      await Promise.resolve()
+      assert.equal(typeof finishDownload, 'function')
+      hook.render().stop()
+      finishDownload(new Response('synthetic audio', { headers: { 'Content-Type': 'audio/mpeg' } }))
+      await cancelledPlayback
+      assert.equal(players[1].plays, 1, 'Stopping during download prevents narration from starting on the unlocked player')
+      assert.equal(hook.render().status, 'idle')
+      const fetchesBeforeDeniedActivation = fetches
+      await hook.render().speak('Blocked playback.', undefined, { autoPlay: true })
+      assert.match(hook.render().error, /User activation required/, 'Blocked activation is explicitly reported')
+      assert.equal(fetches, fetchesBeforeDeniedActivation, 'Blocked activation does not spend a narration request')
     } finally {
       hook.dispose(); global.Audio = savedAudio
       URL.createObjectURL = create; URL.revokeObjectURL = revoke

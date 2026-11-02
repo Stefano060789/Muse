@@ -19,7 +19,7 @@ async function check(name, run) {
 async function main() {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
-    'src/lib/personalStoryShare.ts', 'src/lib/personalStoryShareCopy.ts', 'src/lib/personalStoryShareVisual.ts',
+    'src/lib/personalStoryShare.ts', 'src/lib/personalStoryShareCopy.ts', 'src/lib/personalStoryShareVisual.ts', 'src/lib/shareStudioCopy.ts',
     '--outDir', output, '--strict', '--module', 'commonjs', '--target', 'es2020',
     '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'
   ], { cwd: root, stdio: 'inherit' })
@@ -29,6 +29,7 @@ async function main() {
   const share = require(path.join(moduleOutput, 'personalStoryShare.js'))
   const copy = require(path.join(moduleOutput, 'personalStoryShareCopy.js'))
   const visual = require(path.join(moduleOutput, 'personalStoryShareVisual.js'))
+  const { shareStudioCopy } = require(path.join(moduleOutput, 'shareStudioCopy.js'))
   const locales = ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'it-IT', 'uk-UA', 'ar-SA']
 
   await check('share teaser input is limited to a valid title, mood, and supported language', () => {
@@ -102,6 +103,46 @@ async function main() {
     assert.deepEqual(JSON.parse(request.messages[1].content), input)
     assert.match(request.messages[0].content, /spoiler-free/)
     assert.match(request.messages[0].content, /Do not invent plot events/)
+  })
+
+  await check('moment cards support every size, theme and locale with escaped private selections and no external content', () => {
+    for (const language of locales) {
+      const studio = shareStudioCopy(language)
+      assert.ok(Object.values(studio).every(value => value.trim()))
+      for (const format of ['portrait', 'story', 'square']) {
+        for (const theme of ['starlight', 'paper', 'dawn']) {
+          const svg = visual.createStoryMomentSvg({
+            title: '<script>unsafe</script>', passage: 'A & B chose a new path.', reflection: 'My <moment>',
+            milestone: studio.complete, progress: studio.chapter.replace('{number}', '2'), format, theme, rtl: language === 'ar-SA'
+          })
+          assert.match(svg, new RegExp(`width="1080" height="${visual.SHARE_CARD_SIZES[format].height}"`))
+          assert.doesNotMatch(svg, /<script>|<image|<foreignObject|<animate|href=/)
+          assert.match(svg, /&lt;script&gt;/)
+          assert.match(svg, /A &amp; B/)
+          assert.match(svg, /My &lt;moment&gt;/)
+          assert.match(svg, new RegExp(`direction="${language === 'ar-SA' ? 'rtl' : 'ltr'}"`))
+          assert.match(svg, /text-anchor="start" direction=/, 'RTL start anchors to the right, not beyond the canvas')
+        }
+      }
+    }
+  })
+
+  await check('long CJK passages and titles keep bounded lines above the reflection and progress', () => {
+    const svg = visual.createStoryMomentSvg({
+      title: '星'.repeat(160), passage: '海'.repeat(200), reflection: '光'.repeat(120),
+      milestone: 'Milestone', progress: 'Chapter 1', theme: 'paper', format: 'square', rtl: false
+    })
+    const blocks = [...svg.matchAll(/<text[^>]+y="(\d+(?:\.\d+)?)"[^>]+font-size="(\d+)"[^>]*>(.*?)<\/text>/g)]
+    const title = blocks.find(block => block[1] === '250')
+    const passage = blocks.find(block => block[1] === '465')
+    const reflection = blocks.find(block => block[1] === '800')
+    assert.equal((title[3].match(/<tspan/g) || []).length, 3)
+    assert.equal((passage[3].match(/<tspan/g) || []).length, 9)
+    assert.equal((reflection[3].match(/<tspan/g) || []).length, 3)
+    assert.match(title[3], /…/)
+    assert.match(reflection[3], /…/)
+    assert.ok(465 + 8 * 30 * 1.22 < 800 - 27)
+    assert.ok(800 + 2 * 27 * 1.22 < 1080 - 157 - 24)
   })
 
   console.log(`Passed ${passed} personal story share checks.`)

@@ -359,3 +359,34 @@ main [role="status"] { line-height: 1.6; }
   line-height: 1.2;
 }
 .story-options { margin: 1rem 0; }
+.story-share { margin-top: 1rem; }
+.share-studio { margin-top: 1rem; padding: clamp(1rem, 3vw, 1.75rem); border: 1px solid var(--line); border-radius: 22px; background: #f7f3ed; animation: share-reveal 450ms ease-out both; }
+.share-studio-intro h3 { margin: 0.4rem 0; font-size: clamp(1.5rem, 3vw, 2rem); }
+.share-studio-intro > p:last-child { color: var(--muted); font-size: 0.9rem; }
+.share-studio-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.share-studio-fields, .share-studio-preview { min-width: 0; }
+.share-studio-fields .atelier-field { margin-block: 0 1rem; }
+.share-studio-fields textarea { width: 100%; resize: vertical; }
+.share-studio-fields small { color: var(--muted); text-align: end; }
+.share-studio-picker { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.8rem; border: 1px solid var(--line); border-radius: 14px; margin: 0 0 1rem; }
+.share-studio-picker legend { color: var(--plum); padding-inline: 0.3rem; font-size: 0.9rem; }
+.share-studio-picker button { flex: 1 1 90px; font-size: 0.85rem; }
+.share-studio-picker button[aria-pressed="true"] { outline: 2px solid var(--plum); outline-offset: 2px; }
+.share-studio-picker .share-style--starlight { background: #202c42; color: #fff5e5; }
+.share-studio-picker .share-style--paper { background: #fffaf0; color: #202c42; }
+.share-studio-picker .share-style--dawn { background: #f7ddd1; color: #342d49; }
+.share-studio-preview { margin: 0; }
+.share-studio-frame { position: relative; overflow: hidden; border-radius: 18px; box-shadow: 0 15px 32px #202c4226; animation: share-reveal 650ms ease-out both; }
+.share-studio-frame img { display: block; width: 100%; height: auto; }
+.share-studio-frame::after { content: ""; pointer-events: none; position: absolute; inset: -100%; background: linear-gradient(115deg, transparent 40%, #fff8df18 50%, transparent 60%); animation: share-shimmer 7s ease-in-out 2; }
+.share-studio-preview figcaption { margin-top: 0.8rem; color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
+.share-studio-ai { margin-top: 1.25rem; }
+.share-studio-review { margin-top: 1.5rem; }
+.share-studio-review .share-studio-preview { width: min(100%, 540px); margin: 1.25rem auto; }
+.share-studio-caption { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fffaf0; }
+@keyframes share-reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes share-shimmer { 0%, 15% { transform: translateX(-45%); } 75%, 100% { transform: translateX(45%); } }
+@media (max-width: 640px) {
+  .share-studio-layout { grid-template-columns: minmax(0, 1fr); }
+  .share-studio-preview { width: min(100%, 360px); margin-inline: auto; }
+}

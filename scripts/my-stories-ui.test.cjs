@@ -133,8 +133,8 @@ async function main() {
   assert.ok(hub.nodes().some(node => label(node) === 'In progress'))
   assert.ok(hub.nodes().some(node => label(node) === 'Completed'))
   assert.deepEqual(hub.nodes().filter(node => node.type === 'PersonalStoryShareCard')
-    .map(node => node.props.story.title), ['Completed story', 'Saved scenes'],
-  'Only completed personal stories expose the share-card action')
+    .map(node => node.props.story.title), ['Active story', 'Completed story', 'Next chapter', 'Saved scenes'],
+  'Both ongoing and completed personal stories expose the local share-card studio')
   await hub.click('Continue to Chapter 2')
   assert.deepEqual(hub.navigations.at(-1), '/story?continue=1', 'A completed chapter exposes a direct next-chapter action')
   await hub.click('Read Chapter 1')

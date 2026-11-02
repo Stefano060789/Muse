@@ -168,7 +168,7 @@ export default function LibraryPage() {
                   {entry.story.chapter ? <p>{entry.story.chapter.parentTitle
                     ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
                     : collectionText.chapter(entry.story.chapter.number)}</p> : null}
-                  {completed ? <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
+                  <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}

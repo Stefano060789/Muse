@@ -50,7 +50,12 @@ The prominent **Read this scene** and **Listen to this scene** cards explain
 their actions, show the selected mode and have visible keyboard focus.
 Read reveals full text with no audio requests or playback. Listen starts the
 current scene directly and reveals its words as the voice progresses, without
-flashing the full transcript while audio loads, pauses or fails. Prepared shared
+flashing the full transcript while audio loads, pauses or fails.
+Cloud Listen playback activates its media element with local silence in the
+original click before downloading narration, then reuses that element for the
+recording. This preserves browser playback permission across the asynchronous
+request without a second Play action. Stopping during loading cancels playback.
+Prepared shared
 recordings are loaded and played, never generated automatically. Live shared
 turns use device speech. Personal cloud narration still requires explicit
 provider consent before sending text or spending an allowance. Switching to
@@ -158,8 +163,23 @@ Returning visitors can continue their latest unfinished personal story directly
 from Home; completed stories offer **Read again**. Personal touches live on Myself,
 not Home, and personal library cards keep attempt details
 behind an optional disclosure.
-Completed personal stories can also create a spoiler-free social share card with
-the story title, mood and a short AI-written teaser. Teaser generation requires
+Personal stories in My stories and Archive offer a local social-card studio,
+including unfinished chapters. Choose a visited scene, edit a passage (up to 200
+characters), add a reflection (up to 120), and review the exact image before
+exporting. The default card includes only the title and saved progress, with no
+scene text selected. **Preview before sharing** opens a dedicated review of the
+full card and the exact caption (including the Muse link). Download, app-share
+and copy actions are available from this review; **Back to editing** keeps all
+selections and lets you adjust the card before reviewing again.
+Exhausted chapters are never labelled complete. Starlight,
+Paper & ink and First light styles export as PNG in feed (1080×1350),
+story (1080×1920) or square (1080×1080) sizes. Preview entrance and shimmer
+animations respect reduced-motion preferences; exported images are static.
+Download the image to upload to a social app; the app-share and copy actions
+share the selected words and progress as a caption. Passage selection, editing,
+preview and export require no AI call or AI consent and do not send private
+story contents to a server. Optional AI captions remain separate.
+Teaser generation requires
 explicit consent and uses one AI interaction; only the title, broad mood and
 selected story language are sent to the provider, never scenes, answers, choices
 or saved memories. The optional sharing-summary permission is saved once to the

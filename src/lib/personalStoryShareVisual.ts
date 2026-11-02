@@ -9,6 +9,11 @@ function wrapText(value: string, limit: number, maxLines: number): string[] {
   const lines: string[] = []
   let line = ''
   for (const word of words) {
+    if (line && Array.from(word).length <= limit && Array.from(`${line} ${word}`).length > limit) {
+      lines.push(line)
+      line = ''
+      if (lines.length === maxLines) break
+    }
     const remaining = Array.from(word)
     while (remaining.length) {
       const available = limit - Array.from(line).length - (line ? 1 : 0)
@@ -29,7 +34,7 @@ function wrapText(value: string, limit: number, maxLines: number): string[] {
     if (lines.length === maxLines) break
   }
   if (lines.length < maxLines && line) lines.push(line)
-  if (lines.join('').length < words.join('').length) {
+  if (lines.join('').replace(/\s/g, '').length < words.join('').length) {
     lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.…]+$/, '')}…`
   }
   return lines
@@ -67,4 +72,49 @@ export function createPersonalStoryShareSvg(input: {
 
 export function personalStoryShareText(title: string, teaser: string, mood: string, footer: string, url: string): string {
   return `${title}\n\n${teaser}\n\n${mood}\n${footer} ${url}`
+}
+
+export const SHARE_CARD_SIZES = {
+  portrait: { width: 1080, height: 1350 },
+  story: { width: 1080, height: 1920 },
+  square: { width: 1080, height: 1080 }
+} as const
+export type ShareCardFormat = keyof typeof SHARE_CARD_SIZES
+export type ShareCardTheme = 'starlight' | 'paper' | 'dawn'
+const palettes = {
+  starlight: { bg: '#202c42', end: '#493650', ink: '#fff5e5', muted: '#e3d2c4', accent: '#e5c38c' },
+  paper: { bg: '#fffaf0', end: '#e9e1d5', ink: '#202c42', muted: '#625366', accent: '#866136' },
+  dawn: { bg: '#f7ddd1', end: '#e3dbee', ink: '#342d49', muted: '#63516a', accent: '#81562d' }
+} as const
+
+export function createStoryMomentSvg(input: {
+  title: string; passage: string; reflection: string; milestone: string; progress: string
+  theme: ShareCardTheme; format: ShareCardFormat; rtl: boolean
+}): string {
+  const { height } = SHARE_CARD_SIZES[input.format]
+  const color = palettes[input.theme]
+  const x = input.rtl ? 984 : 96
+  const wideScript = /[\u3040-\u30ff\u3400-\u9fff]/u
+  const lines = (text: string, size: number, y: number, limit: number, count: number, fill: string) =>
+    `<text x="${x}" y="${y}" fill="${fill}" font-family="Georgia,serif" font-size="${size}" text-anchor="start" direction="${input.rtl ? 'rtl' : 'ltr'}">${wrapText(text, wideScript.test(text) ? Math.floor(limit / 2) : limit, count)
+      .map((line, index) => `<tspan x="${x}" dy="${index ? size * 1.22 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`
+  const offset = (height - 1080) * 0.34
+  const titleY = 250 + offset
+  const passageY = 465 + offset
+  const reflectionY = 800 + offset
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height}" viewBox="0 0 1080 ${height}" role="img">
+<defs><linearGradient id="moment-bg" x2="1" y2="1"><stop stop-color="${color.bg}"/><stop offset="1" stop-color="${color.end}"/></linearGradient></defs>
+<rect width="1080" height="${height}" fill="url(#moment-bg)"/>
+<circle cx="960" cy="130" r="290" fill="${color.accent}" opacity=".07"/>
+<circle cx="90" cy="${height - 140}" r="260" fill="${color.accent}" opacity=".08"/>
+<rect x="42" y="42" width="996" height="${height - 84}" rx="28" fill="none" stroke="${color.accent}" stroke-opacity=".45"/>
+<path d="M500 122h80m-40-40v80m-22-62 44 44m-44 0 44-44" stroke="${color.accent}" stroke-width="2"/>
+${lines(input.milestone, 25, 187 + offset, 54, 1, color.accent)}
+${lines(input.title.slice(0, 160), 56, titleY, 26, 3, color.ink)}
+<path d="M96 ${410 + offset}h888" stroke="${color.accent}" stroke-opacity=".35"/>
+${lines(input.passage.slice(0, 200), 30, passageY, 46, 9, color.ink)}
+${lines(input.reflection.slice(0, 120), 27, reflectionY, 46, 3, color.muted)}
+${lines(input.progress, 24, height - 157, 60, 2, color.accent)}
+<text x="540" y="${height - 80}" text-anchor="middle" fill="${color.accent}" font-family="Georgia,serif" font-size="32" letter-spacing="5">MUSE</text>
+</svg>`
 }

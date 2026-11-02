@@ -19,6 +19,8 @@ export type NarrationStatus = 'idle' | 'loading' | 'speaking' | 'paused'
 const STORAGE_READ_NOTICE = 'Saved narration preferences could not be read because browser storage is unavailable or blocked. Defaults are in use and new choices may not be remembered.'
 const STORAGE_INVALID_NOTICE = 'Some saved narration preferences were invalid and were ignored. Defaults are used for those settings; saved data only changes when you pick a new setting.'
 const STORAGE_WRITE_NOTICE = 'Your narration choice applies now, but it could not be remembered because browser storage is unavailable, blocked or full.'
+// Unlock the same media element in the Listen gesture, before the cloud request loses user activation.
+const AUDIO_ACTIVATION_SILENCE = 'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
 function readStoredPreferences(): { preferences: NarrationPreferences; notice: string } {
   let raw: string | null
@@ -340,6 +342,13 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     request.current = controller
     armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
     try {
+      let activatedPlayer: HTMLAudioElement | undefined
+      if (options.autoPlay) {
+        activatedPlayer = new Audio(AUDIO_ACTIVATION_SILENCE)
+        audio.current = activatedPlayer
+        await activatedPlayer.play()
+        if (!valid()) return
+      }
       const response = await accountFetch('/api/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION }), signal: controller.signal
@@ -362,7 +371,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         setStatus('idle')
         return
       }
-      const player = new Audio(url.current)
+      const player = activatedPlayer ?? new Audio(url.current)
+      if (activatedPlayer) player.src = url.current
       audio.current = player
       player.volume = immersiveRef.current.voiceVolume
       player.ontimeupdate = () => {
