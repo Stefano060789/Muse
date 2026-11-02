@@ -4,6 +4,7 @@ const path = require('node:path')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
 const consentVersion = plain('src/lib/legalContact.ts').MUSE_AI_CONSENT_VERSION
+const { fitTextareaToContent } = plain('src/lib/textareaVisibility.ts')
 function compile(file) {
   return ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
@@ -21,6 +22,15 @@ function flatten(node) {
 }
 const label = node => flatten(node.props?.children).filter(value => ['string', 'number'].includes(typeof value)).join('')
 async function main() {
+  const fakeResponseTextarea = { style: {}, scrollHeight: 420, scrollTop: 0 }
+  fitTextareaToContent(fakeResponseTextarea, 1000, true)
+  assert.equal(fakeResponseTextarea.style.height, '288px', 'Long dictation grows the answer field up to its viewport-safe limit')
+  assert.equal(fakeResponseTextarea.scrollTop, 420, 'Dictation keeps the newest transcript visible inside the answer field')
+  fakeResponseTextarea.scrollTop = 90
+  fakeResponseTextarea.scrollHeight = 120
+  fitTextareaToContent(fakeResponseTextarea, 1000, false)
+  assert.equal(fakeResponseTextarea.style.height, '120px', 'Short typed answers grow naturally')
+  assert.equal(fakeResponseTextarea.scrollTop, 90, 'Editing earlier text does not force the answer field to the end')
   let cursor = 0, tree
   const slots = [], effects = [], requests = [], storage = new Map()
   const timers = new Map()
@@ -86,6 +96,7 @@ async function main() {
     if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => ({ managed: false, services: false, romance: false, ready: true }) }
     if (id.endsWith('/journeyLimits')) return plain('src/lib/journeyLimits.ts')
     if (id.endsWith('/chapterRecoveryCopy')) return plain('src/lib/chapterRecoveryCopy.ts')
+    if (id.endsWith('/textareaVisibility')) return plain('src/lib/textareaVisibility.ts')
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => interfaceLocale, interfaceText: () => 'Settings' }
     if (id.endsWith('/browserDrafts')) return plain('src/lib/browserDrafts.ts', browser)
     if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
@@ -510,7 +521,12 @@ async function main() {
   assert.ok(!responseField(), 'A legacy AI final scene is complete without a meaningless extra answer')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Send response'))
   await click('Read again')
-  assert.ok(nodes().some(node => node.type === '../components/StoryPassage' && node.props.text === 'The Door'))
+  const rereadPassages = nodes().filter(node => node.type === '../components/StoryPassage')
+  assert.ok(rereadPassages.some(node => node.props.text === 'The Door'))
+  assert.ok(rereadPassages.length > 0 && rereadPassages.every(node => node.props.mode === 'read'),
+    'Read again immediately reveals all saved story scenes in read mode')
+  assert.ok(!nodes().some(node => node.type === '../components/NarrationButton'),
+    'Read again does not accidentally start audio')
   assert.ok(!nodes().some(node => node.type === '../components/StoryKeepsake'),
     'Completed stories no longer offer PDF keepsakes')
   assert.ok(!fs.readFileSync(path.join(root, 'src/pages/shared.tsx'), 'utf8').includes('StoryKeepsake'),

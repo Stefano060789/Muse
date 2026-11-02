@@ -30,6 +30,7 @@ import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { interfaceFlowText as flowText, type InterfaceFlowKey } from '../lib/interfaceFlow'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
 import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
+import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
@@ -114,6 +115,7 @@ export default function StoryPage() {
   const [answerLoaded, setAnswerLoaded] = useState<string | null>(null)
   const draftWritable = useRef(true)
   const answerWritable = useRef(true)
+  const responseInput = useRef<HTMLTextAreaElement>(null)
   const creationSection = useRef<HTMLElement>(null)
   const requestLock = useRef(false)
   const deletedOnServer = useRef<string | null>(null)
@@ -127,6 +129,16 @@ export default function StoryPage() {
   const interaction = useStoryInteraction(stopSpeaking, story?.language || language)
   const stopRecording = interaction.stopRecording
   const isRecording = Boolean(interaction.recordingTarget)
+  useEffect(() => {
+    const textarea = responseInput.current
+    if (!textarea) return
+    fitTextareaToContent(
+      textarea,
+      window.innerHeight,
+      interaction.recordingTarget === 'response' || interaction.stoppingTarget === 'response' ||
+        textarea.selectionStart === responseDraft.length
+    )
+  }, [responseDraft, interaction.recordingTarget, interaction.stoppingTarget])
   const moveCreationStep = (step: number) => {
     interaction.cancelRecording()
     setCreationStep(step)
@@ -560,14 +572,14 @@ export default function StoryPage() {
       void narrator.speak(text, undefined, { autoPlay: true })
     }
   }
-  const savedScenes = story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
+  const savedScenes = (mode: StoryMode = storyMode) => story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
     {story.scenes.map((savedScene, index) => {
       const text = `${savedScene.title}. ${savedScene.body}`
-      const active = storyMode === 'listen' && narrator.activeText === text && (narrator.speaking || narrator.paused)
+      const active = mode === 'listen' && narrator.activeText === text && (narrator.speaking || narrator.paused)
       return <article key={index} className="atelier-card">
-        <h3><StoryPassage mode={storyMode} text={savedScene.title} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></h3>
-        <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage mode={storyMode} text={savedScene.body} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></p>
-        {storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
+        <h3><StoryPassage mode={mode} text={savedScene.title} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></h3>
+        <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage mode={mode} text={savedScene.body} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></p>
+        {mode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
       </article>
     })}
   </div> : null
@@ -732,7 +744,7 @@ export default function StoryPage() {
                   {!story.journey.choices?.length ? <p>{flow('actionsLoadAutomatically')}</p> : null}
                 </> : <>
                 <label>{flow('responseLabel')}
-                <textarea aria-label={flow('responseLabel')} value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder={flow('responsePlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                <textarea ref={responseInput} className="story-response-input" aria-label={flow('responseLabel')} value={responseDraft} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setResponseDraft(event.target.value) }} maxLength={story.journey ? 800 : 600} disabled={finished} rows={3} placeholder={flow('responsePlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '0.9rem', font: 'inherit', lineHeight: 1.5 }} />
                 </label>
                 <div style={{ display: 'flex', gap: '0.7rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
                   <button onClick={submitResponse} disabled={(responseRequiresAi && !aiConsent) || !responseDraft.trim() || isGenerating || finished || Boolean(story.journey && (!reconciled || story.journey.pending))} style={{ padding: '0.75rem 1rem', border: 0, borderRadius: 999, background: '#2d2926', color: '#fffaf6', cursor: responseDraft.trim() && (!responseRequiresAi || aiConsent) ? 'pointer' : 'not-allowed' }}>{isGenerating ? flow('writing') : flow('continueResponse')}</button>
@@ -749,7 +761,7 @@ export default function StoryPage() {
               </article> : null}
               {archiveReading ? <section aria-label={flow('archivedStory')}>
                 <h2>{flow('savedScenes')}</h2>
-                {savedScenes}
+                {savedScenes(storyMode)}
                 {storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
                 {storyMode === 'listen' && narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
@@ -789,7 +801,7 @@ export default function StoryPage() {
                     <button type="button" disabled={!chapterConsent || isGenerating || Boolean(preparation) || Boolean(story.romance && !chapterRomanceConfirmed)} onClick={() => void continueChapter()}>{isGenerating ? flow('startingChapter') : flow('confirmStartChapter')}</button>
                   </div> : null}
                 </section> : null}
-                {rereading ? savedScenes : null}
+                {rereading ? savedScenes('read') : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
                 <StoryLifeBridge

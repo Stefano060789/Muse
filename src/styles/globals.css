@@ -199,6 +199,12 @@ main [role="status"] { line-height: 1.6; }
 .atelier-reading > .atelier-card > p { line-height: 1.85; }
 .atelier-reading article > p { font-family: var(--serif); }
 .atelier-reading .atelier-prose { font-family: var(--serif); font-size: clamp(1.12rem, 2vw, 1.25rem); line-height: 1.9; }
+.atelier-reading .story-response-input {
+  min-height: 6rem;
+  max-height: min(40vh, 18rem);
+  overflow-y: auto;
+  resize: none;
+}
 .atelier-footer { background: #eee9e2; border-top: 1px solid var(--line); color: var(--muted); font-family: var(--sans); padding: 2rem 1.5rem; font-size: 0.85rem; }
 .atelier-footer > div { max-width: 1040px; margin: auto; display: grid; gap: 1rem; }
 .atelier-footer nav { display: flex; gap: 1.2rem; flex-wrap: wrap; }
