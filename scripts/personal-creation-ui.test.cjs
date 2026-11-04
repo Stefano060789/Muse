@@ -458,12 +458,34 @@ async function main() {
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
   assert.equal(find('button', 'Send response').props.disabled, false)
   assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
+  loadedStory = {
+    ...loadedStory, currentStep: 1,
+    scenes: [
+      { title: 'The Door', body: 'A light glows.', question: '', choices: [] },
+      { title: 'The Garden', body: 'A path opens.', question: '', choices: [] }
+    ],
+    journey: { ...loadedStory.journey, revision: 2, maxTurns: 3, status: 'active' }
+  }
   const beforeClosingStory = structuredClone(loadedStory)
-  loadedStory = { ...loadedStory, journey: { ...loadedStory.journey, revision: 2 } }
   slots.length = 0; effects.length = 0
   await flush()
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'))
-  assert.ok(!responseField(), 'The last allowance offers a closing scene, not another writing box')
+  assert.ok(responseField(), 'The final available turn keeps the response box available')
+  assert.ok(find('button', 'Send response'), 'The player can use the last turn to respond')
+  responseField().props.onChange({ target: { value: 'I answer on the final turn.' } })
+  await flush()
+  nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
+  await flush()
+  assert.equal(find('button', 'Send response').props.disabled, false)
+  const responseRequests = requests.length
+  await click('Send response')
+  assert.equal(requests.length, responseRequests + 1)
+  assert.equal(requests.at(-1).action, 'respond', 'The final-turn response is sent as a normal story action')
+  assert.equal(requests.at(-1).revision, 2)
+  assert.equal(requests.at(-1).text, 'I answer on the final turn.')
+  loadedStory = beforeClosingStory
+  slots.length = 0; effects.length = 0
+  await flush()
   const closingRequests = requests.length
   await click('Create closing scene')
   assert.equal(requests.length, closingRequests, 'Closing still requires the story AI consent')

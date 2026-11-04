@@ -152,8 +152,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         try { current = publicJourney(await db.personalJourney({ ...common, operation: 'view' }), capability) } catch (reconciliationError) {
           console.error('Personal journey progress reconciliation failed', reconciliationError instanceof Error ? reconciliationError.name : 'Unknown error')
         }
+        const retryableResponseError = error instanceof SharedStoryError && [
+          'The AI provider returned invalid story JSON. Please try again.',
+          'The AI response failed story validation.',
+          'The AI provider did not finish the story. Please try again.'
+        ].includes(error.message)
+        const invalidResponse = body.action === 'respond' && retryableResponseError
+        const retryGuidance = current?.snapshot.status === 'exhausted'
+          ? 'This attempt was used, and no regular responses remain. Your saved scenes are safe. Click Retry closing scene to finish this chapter; that retry will use another attempt.'
+          : current?.snapshot.choiceMode === 'suggested'
+            ? 'This attempt was used. Choose a story action again to retry; another attempt will be used.'
+            : 'Your answer is still in the box. Click Send response again to retry. This attempt was used; trying again will use another attempt.'
         return res.status(error instanceof SharedStoryError ? error.status : 503).json({
-          error: `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} No automatic retry was made. Your draft and any saved scenes are kept.`,
+          error: invalidResponse
+            ? `The AI could not prepare a story reply this time. ${retryGuidance}`
+            : `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} No automatic retry was made. Your draft and any saved scenes are kept.`,
           ...current
         })
       }

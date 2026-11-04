@@ -734,7 +734,8 @@ export default function StoryPage() {
                   <button type="button" className="atelier-button" disabled={!aiConsent || isGenerating || !reconciled || Boolean(story.journey?.pending)} onClick={() => void writeClosingScene()}>
                     {isGenerating ? flow('writing') : flow('writeEnding')}
                   </button>
-                </section> : !finished && !archiveReading ? <>
+                </section> : null}
+                {!finished && !archiveReading ? <>
                 <h3 style={{ marginTop: '2rem' }}>{story.journey && !sceneQuestion ? flow('doOrSay') : storyMode !== null ? <ReadAlongText text={sceneQuestion} startAt={sceneQuestionStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</h3>
                 {story.journey?.choiceMode === 'suggested' ? <>
                   <p>{flow('eachChoiceUsesAttempt')}</p>

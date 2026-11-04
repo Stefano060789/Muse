@@ -252,8 +252,15 @@ async function main() {
       const failed = await api(action)
       providerMode = 'ok'
       assert.ok(failed.status >= 400)
-      assert.equal((failed.body.error.match(/No automatic retry was made/g) || []).length, 1,
-        'Failure copy explains the consumed attempt without repeating itself')
+      if (failure === 'invalid') {
+        assert.match(failed.body.error, /Your answer is still in the box\. Click Send response again to retry\./,
+          'Malformed response explains how to retry with the preserved answer')
+        assert.match(failed.body.error, /This attempt was used; trying again will use another attempt\./,
+          'Retry guidance is transparent about attempt usage')
+      } else {
+        assert.equal((failed.body.error.match(/No automatic retry was made/g) || []).length, 1,
+          'Other failure copy explains the consumed attempt without repeating itself')
+      }
       assert.equal(failed.body.snapshot.revision, concurrency.snapshot.revision + 1)
       assert.equal(failed.body.snapshot.pending, false)
       assert.equal(failed.body.story.scenes.length, concurrency.story.scenes.length)
@@ -281,12 +288,14 @@ async function main() {
   })
   await check('failed final response blocks ordinary turns, preserving last narration without fake conclusion', async () => {
     const action = responseBody(concurrency)
-    providerMode = 'network'
+    providerMode = 'invalid'
     const before = calls
     const failed = await api(action)
     providerMode = 'ok'
     assert.equal(failed.body.snapshot.status, 'exhausted')
     assert.equal(failed.body.snapshot.revision, 6)
+    assert.match(failed.body.error, /no regular responses remain.*Click Retry closing scene to finish this chapter/i,
+      'An exhausted chapter guides the player to the available ending recovery control')
     assert.notEqual(failed.body.story.scenes.at(-1).body, conclusion)
     assert.equal((await api(responseBody(failed.body))).status, 409)
     assert.equal((await api(action)).body.status, 'failed')
