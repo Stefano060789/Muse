@@ -27,11 +27,11 @@ function load(relative) {
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Settings']
+const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Settings', 'Plans &amp; pricing']
 for (const [pathname, selected] of [
   ['/', 'Home'], ['/story', 'My stories'], ['/my-stories', 'My stories'], ['/myself', 'Myself'],
   ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Archive'],
-  ['/demo', null], ['/billing', null], ['/privacy', null], ['/creator', null]
+  ['/demo', null], ['/billing', 'Plans &amp; pricing'], ['/privacy', null], ['/creator', null]
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/)[1]
@@ -45,6 +45,7 @@ assert.ok(recipient.includes('Muse home'))
 assert.ok(!recipient.includes('<nav'), 'Recipients have a quiet brand-only header')
 const italianNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'it-IT' }))
 assert.ok(italianNavigation.includes('Impostazioni'), 'Interface language updates navigation labels')
+assert.ok(italianNavigation.includes('Piani e prezzi'), 'Plans are visible in the localized primary navigation')
 assert.ok(italianNavigation.includes('Crea una storia regalo'))
 let created = 0, prevented = 0
 const tree = Navigation({ pathname: '/shared', onCreateGift: () => created++ })

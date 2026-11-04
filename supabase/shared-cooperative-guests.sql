@@ -40,7 +40,7 @@ begin
         if length(requested_name) > 40 then
           raise exception 'Cooperative: display name must be at most 40 characters';
         end if;
-        if player_count >= 20 then raise exception 'Cooperative: this story is full (20 participants maximum)'; end if;
+        if player_count >= 2 then raise exception 'Cooperative: this story is full (two participants maximum)'; end if;
         if exists (
           select 1 from public.muse_cooperative_players where story_id = sid and display_name = requested_name
         ) then requested_name := 'Participant ' || next_position; end if;

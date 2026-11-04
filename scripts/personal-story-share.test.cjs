@@ -31,6 +31,7 @@ async function main() {
   const visual = require(path.join(moduleOutput, 'personalStoryShareVisual.js'))
   const { shareStudioCopy } = require(path.join(moduleOutput, 'shareStudioCopy.js'))
   const { shareMotionCopy } = require(path.join(moduleOutput, 'shareMotionCopy.js'))
+  const artwork = require(path.join(moduleOutput, 'storyShareArtwork.js'))
   const locales = ['en-US', 'zh-CN', 'hi-IN', 'es-ES', 'it-IT', 'uk-UA', 'ar-SA']
 
   await check('share teaser input is limited to a valid title, mood, and supported language', () => {
@@ -155,6 +156,34 @@ async function main() {
     const long = visual.suggestStoryMoment([{ body: 'This is a meaningful first sentence that stays intact and is long enough to remember. ' + 'extra '.repeat(60) }], 'adventure')
     assert.equal(long.passage, 'This is a meaningful first sentence that stays intact and is long enough to remember.')
     assert.ok(visual.suggestStoryMoment([{ body: '星'.repeat(250) }], 'curious').passage.length <= 200)
+  })
+  await check('original artwork matches story motifs, escapes text and leaves text below art in every format', () => {
+    for (const [text, motif] of [
+      ['La Mappa dei Venti Dimenticati', 'map'], ['A silver sword', 'sword'], ['An opening doorway', 'doorway'],
+      ['海上的旅程', 'ocean'], ['A fresh beginning', 'light'], ['Research on marketing', 'light']
+    ]) assert.equal(artwork.suggestStoryMotif(text, ''), motif)
+    for (const motif of artwork.STORY_MOTIFS.filter(value => value !== 'light')) {
+      const frame = artwork.createStoryFrameSvg(motif)
+      assert.match(frame, /width="720" height="1280"/)
+      assert.match(frame, /<path d=/)
+      assert.doesNotMatch(frame, /<text|<image|<script|PRIVATE/)
+      for (const format of Object.keys(visual.SHARE_CARD_SIZES)) {
+        const svg = visual.createStoryMomentSvg({ title: '<script>A & B</script>', passage: '海'.repeat(200),
+          reflection: '光'.repeat(120), milestone: 'Milestone', progress: 'Progress',
+          theme: 'starlight', format, rtl: true, motif })
+        assert.match(svg, new RegExp(`data-story-motif="${motif}"`))
+        assert.doesNotMatch(svg, /<script>|<image|href=|<animate/)
+        assert.match(svg, /&lt;script&gt;/)
+        const bounds = artwork.storyArtworkBounds(format)
+        const blocks = [...svg.matchAll(/<text[^>]+y="([\d.]+)"[^>]+font-size="(\d+)"[^>]*>(.*?)<\/text>/g)]
+        const title = blocks[1], passage = blocks[2], reflection = blocks[3], progress = blocks[4]
+        const bottom = block => Number(block[1]) + ((block[3].match(/<tspan/g) || []).length - 1) * Number(block[2]) * 1.22
+        assert.ok(bounds.y + bounds.height < Number(title[1]) - Number(title[2]))
+        assert.ok(bottom(title) < Number(passage[1]) - Number(passage[2]))
+        assert.ok(bottom(passage) < Number(reflection[1]) - Number(reflection[2]))
+        assert.ok(bottom(reflection) < Number(progress[1]) - Number(progress[2]))
+      }
+    }
   })
 
   console.log(`Passed ${passed} personal story share checks.`)

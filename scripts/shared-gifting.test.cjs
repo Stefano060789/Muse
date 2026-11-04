@@ -133,6 +133,9 @@ async function main() {
     assert.equal(opened.body.player.cooperative.currentTurnName, 'Alex')
     assert.deepEqual(opened.body.player.cooperative.members.map(member => member.displayName), ['Alex', 'Sam'])
     const repository = storyRepository()
+    await assert.rejects(() => repository.cooperative({
+      storyId, userId: 'third-participant', operation: 'join', displayName: 'Taylor'
+    }), /two participants maximum/)
     const second = await repository.cooperative({ storyId, userId: guestId, operation: 'view' })
     assert.equal(second.isYourTurn, false)
     assert.equal(second.currentTurnName, 'Alex')

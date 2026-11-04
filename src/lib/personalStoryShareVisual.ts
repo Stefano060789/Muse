@@ -1,3 +1,5 @@
+import { storyArtworkSvg, type StoryMotif } from './storyShareArtwork'
+
 function escapeXml(value: string): string {
   return value.replace(/[<>&"']/g, character => ({
     '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;'
@@ -107,6 +109,7 @@ const palettes = {
 export function createStoryMomentSvg(input: {
   title: string; passage: string; reflection: string; milestone: string; progress: string
   theme: ShareCardTheme; format: ShareCardFormat; rtl: boolean
+  motif?: StoryMotif
 }): string {
   const { height } = SHARE_CARD_SIZES[input.format]
   const color = palettes[input.theme]
@@ -117,6 +120,23 @@ export function createStoryMomentSvg(input: {
       .map((line, index) => `<tspan x="${x}" dy="${index ? size * 1.22 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`
   const offset = (height - 1080) * 0.34
   const vertical = input.format === 'story'
+  if (input.motif && input.motif !== 'light') {
+    const square = input.format === 'square'
+    const titleY = vertical ? 850 : square ? 510 : 650
+    const passageY = vertical ? 1150 : square ? 650 : 815
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height}" viewBox="0 0 1080 ${height}" role="img">
+<defs><linearGradient id="moment-bg" x2="1" y2="1"><stop stop-color="${color.bg}"/><stop offset="1" stop-color="${color.end}"/></linearGradient></defs>
+<rect width="1080" height="${height}" fill="url(#moment-bg)"/>
+<rect x="42" y="42" width="996" height="${height - 84}" rx="28" fill="none" stroke="${color.accent}" stroke-opacity=".45"/>
+${lines(input.milestone, vertical ? 30 : 24, vertical ? 165 : 112, 54, 1, color.accent)}
+${storyArtworkSvg(input.motif, input.format)}
+${lines(input.title.slice(0, 160), vertical ? 64 : square ? 42 : 48, titleY, vertical ? 25 : square ? 34 : 30, vertical ? 3 : 2, color.ink)}
+${lines(input.passage.slice(0, 200), vertical ? 40 : 27, passageY, vertical ? 39 : 49, vertical ? 8 : square ? 5 : 7, color.ink)}
+${lines(input.reflection.slice(0, 120), vertical ? 30 : 23, vertical ? 1600 : square ? 840 : 1080, vertical ? 44 : 57, vertical ? 3 : 2, color.muted)}
+${lines(input.progress, 24, height - 157, 60, 2, color.accent)}
+<text x="540" y="${height - 80}" text-anchor="middle" fill="${color.accent}" font-family="Georgia,serif" font-size="32" letter-spacing="5">MUSE</text>
+</svg>`
+  }
   const titleY = vertical ? 400 : 250 + offset
   const passageY = vertical ? 790 : 465 + offset
   const reflectionY = vertical ? 1490 : 800 + offset

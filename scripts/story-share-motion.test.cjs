@@ -2,26 +2,28 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const ts = require('typescript')
-const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'storyShareMotion.ts'), 'utf8')
-const moduleResult = { exports: {} }
-new Function('module', 'exports', 'require', ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
-}).outputText)(moduleResult, moduleResult.exports, () => ({
-  SHARE_CARD_SIZES: { portrait: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 }, square: { width: 1080, height: 1080 } }
-}))
-const { createShareClip, shareVideoType, SHARE_CLIP_SECONDS } = moduleResult.exports
+function load(name) {
+  const module = { exports: {} }
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', name + '.ts'), 'utf8')
+  new Function('module', 'exports', 'require', ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  }).outputText)(module, module.exports, id => load(id.replace('./', '')))
+  return module.exports
+}
+const { createShareClip, shareVideoType, SHARE_CLIP_SECONDS } = load('storyShareMotion')
+const artwork = load('storyShareArtwork')
 
 async function main() {
-  const keys = ['MediaRecorder', 'HTMLCanvasElement', 'Image', 'document', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout']
+  const keys = ['MediaRecorder', 'HTMLCanvasElement', 'Image', 'document', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout', 'Path2D']
   const originals = new Map(keys.map(key => [key, Object.getOwnPropertyDescriptor(global, key)]))
   const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL
   let time = 0, id = 0, captures = [], tracksStopped = 0, draws = 0, released = 0
-  let recorder, supported = ['video/mp4'], empty = false, encodeFailure = false, constructorFailure = false, stall = false
+  let recorder, supported = ['video/mp4'], empty = false, encodeFailure = false, constructorFailure = false, stall = false, paths = []
   let imageFailure = false, imagePending = false, canvasFailure = false
   const timers = new Map(), frames = new Map(), listeners = new Map()
   const context = {
     drawImage() { draws++ }, save() {}, restore() {}, fillRect() {}, beginPath() {}, arc() {}, fill() {},
-    moveTo() {}, bezierCurveTo() {}, stroke() {}, createRadialGradient: () => ({ addColorStop() {} })
+    translate() {}, scale() {}, moveTo() {}, bezierCurveTo() {}, stroke() {}, createRadialGradient: () => ({ addColorStop() {} })
   }
   const input = signal => ({ svg: '<svg/>', format: 'story', theme: 'starlight', signal, onProgress() {} })
   const tick = async ms => {
@@ -35,6 +37,7 @@ async function main() {
   const settleImage = async () => { await new Promise(resolve => setImmediate(resolve)) }
   try {
     global.setTimeout = (callback, ms) => { timers.set(++id, { callback, at: time + ms }); return id }
+    global.Path2D = class { constructor(d) { paths.push(d) } }
     global.clearTimeout = key => timers.delete(key)
     global.requestAnimationFrame = callback => { frames.set(++id, callback); return id }
     global.cancelAnimationFrame = key => frames.delete(key)
@@ -99,6 +102,18 @@ async function main() {
     assert.ok(draws >= 9, 'Each clip draws changing frames, not a still-image placeholder')
     assert.equal(tracksStopped, 3)
     assert.equal(released, 3)
+    for (const motif of ['map', 'sword', 'doorway', 'ocean']) {
+      paths = []
+      const promise = createShareClip({ ...input(new AbortController().signal), motif })
+      await settleImage()
+      const start = paths.slice()
+      await tick(1500)
+      assert.notDeepEqual(paths.slice(start.length), start, `${motif} animates geometry in the exported canvas`)
+      await tick(4500)
+      assert.ok((await promise).size)
+      assert.notDeepEqual(artwork.storyArtworkShapes(motif, 0), artwork.storyArtworkShapes(motif, 1.5))
+    }
+    const stoppedBeforeAbort = tracksStopped
     let controller = new AbortController()
     let promise = createShareClip(input(controller.signal))
     const abortResult = assert.rejects(promise, { name: 'AbortError' })
@@ -106,7 +121,7 @@ async function main() {
     controller.abort()
     await abortResult
     assert.equal(recorder.state, 'inactive')
-    assert.equal(tracksStopped, 4)
+    assert.equal(tracksStopped, stoppedBeforeAbort + 1)
     assert.equal(timers.size + frames.size + listeners.size, 0)
     imagePending = true
     controller = new AbortController()

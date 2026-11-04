@@ -668,7 +668,7 @@ export class SqliteStoryRepository implements StoryRepository {
             throw new SharedStoryError('Choose a display name of 1 to 40 characters.')
           }
           const count = Number(db.prepare('SELECT COUNT(*) AS count FROM muse_cooperative_players WHERE story_id = ?').get(input.storyId)!.count)
-          if (count >= 20) throw new SharedStoryError('Cooperative: this story is full (20 participants maximum).', 409)
+          if (count >= 2) throw new SharedStoryError('Cooperative: this story is full (two participants maximum).', 409)
           const position = count + 1
           const duplicateName = db.prepare('SELECT 1 FROM muse_cooperative_players WHERE story_id = ? AND display_name = ?')
             .get(input.storyId, name)

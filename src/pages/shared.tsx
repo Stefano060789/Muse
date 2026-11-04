@@ -28,7 +28,8 @@ import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
 import { registrationCopy } from '../lib/registrationCopy'
 import { togetherStoryBrief, togetherStoryCopy } from '../lib/togetherStory'
-import { STORY_LANGUAGES, storyLanguage, recipientCopy } from '../lib/storyLanguage'
+import { STORY_LANGUAGES, storyLanguage, recipientCopy, type StoryLanguageCode } from '../lib/storyLanguage'
+import { parseSharedStoryTranslation, type SharedStoryTranslation } from '../lib/sharedStoryTranslation'
 import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
@@ -77,7 +78,7 @@ const cardStyle: CSSProperties = { padding: 'clamp(1rem, 4vw, 1.75rem)', border:
 const buttonStyle: CSSProperties = { padding: '0.8rem 1.1rem', minHeight: 48, borderRadius: 999, border: '1px solid #d8cdd6', background: 'transparent', color: '#202c42', cursor: 'pointer', fontSize: '1rem' }
 const primaryStyle: CSSProperties = { ...buttonStyle, background: '#202c42', borderColor: '#202c42', color: '#f7f3ed' }
 const DEFAULT_NARRATION = 'A warm, playful mystery told in the second person, with gentle suspense.'
-const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', answerType: 'phrase', answerInstruction: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
+const blankBrief: SharedStoryBrief = { creatorName: '', recipientName: '', narration: DEFAULT_NARRATION, setting: '', recipientHints: '', goal: '', solution: '', puzzleDifficulty: 'balanced', answerType: 'phrase', answerInstruction: '', message: '', durationMinutes: 5, language: 'en-US', assistanceHints: [], alternativeAnswers: [] }
 const idleUpload: UploadState = { phase: 'idle', progress: 0 }
 const mediaLabel = (kind: SharedMediaKind) => kind === 'video' ? 'video' : 'photo'
 const hasGiftDraftWriting = (brief: SharedStoryBrief) =>
@@ -113,6 +114,27 @@ function isRecipientAnswerDraft(value: unknown): value is RecipientAnswerDraft {
   return Object.keys(draft).sort().join() === 'revision,text' &&
     Number.isInteger(draft.revision) && Number(draft.revision) >= 0 &&
     typeof draft.text === 'string' && draft.text.length <= 800
+}
+
+function localizeRecipientPlayer(player: SharedStoryPlayer, translation: SharedStoryTranslation | null): SharedStoryPlayer {
+  if (!translation) return player
+  const sourceCopy = recipientCopy(player.language)
+  const targetCopy = recipientCopy(translation.language)
+  const sourceScene = translation.content.scenes[player.sceneIndex]
+  const liveTurn = Boolean(player.adventure?.turn)
+  return {
+    ...player,
+    language: translation.language,
+    narrationLanguage: translation.language,
+    title: translation.content.title,
+    description: translation.content.description,
+    ...(!liveTurn && sourceScene ? { scene: sourceScene } : {}),
+    discoveries: liveTurn ? player.discoveries
+      : player.discoveries.map((_, index) => translation.content.scenes[index] ?? player.discoveries[index]),
+    ...(player.feedback === sourceCopy.feedbackSolved ? { feedback: targetCopy.feedbackSolved }
+      : player.feedback === sourceCopy.feedbackWrong ? { feedback: targetCopy.feedbackWrong }
+        : player.feedback === sourceCopy.feedbackSkipped ? { feedback: targetCopy.feedbackSkipped } : {})
+  }
 }
 
 async function recipientAnswerDraftKey(token: string, kind: 'answer' | 'action', revision: number): Promise<string> {
@@ -204,6 +226,10 @@ export default function SharedStoryPage() {
   const [titleDraft, setTitleDraft] = useState('')
   const [titleFeedback, setTitleFeedback] = useState<{ message: string; failed: boolean } | null>(null)
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
+  const [sourcePlayer, setSourcePlayer] = useState<SharedStoryPlayer | null>(null)
+  const [readerLanguage, setReaderLanguage] = useState<StoryLanguageCode | null>(null)
+  const [readerTranslation, setReaderTranslation] = useState<SharedStoryTranslation | null>(null)
+  const [translationConsent, setTranslationConsent] = useState(false)
   const [playToken, setPlayToken] = useState('')
   const [sessionToken, setSessionToken] = useState('')
   const [guestNameRequired, setGuestNameRequired] = useState(false)
@@ -342,10 +368,46 @@ export default function SharedStoryPage() {
     setError('Review the pre-send checks and finish uploads before sharing this story.')
     return false
   }
-  const recipientText = recipientCopy(player?.language)
-  const recipientLanguage = storyLanguage(player?.language || romanceNotice?.language)
+  const activeReaderLanguage = readerLanguage || player?.language || romanceNotice?.language || 'en-US'
+  const activeReaderTranslation = readerTranslation?.language === activeReaderLanguage ? readerTranslation : null
+  const recipientText = recipientCopy(activeReaderLanguage)
+  const recipientLanguage = storyLanguage(activeReaderLanguage)
   const romanceText = romanceCopy(romanceNotice?.language || player?.language)
   const recipientRequest = <T,>(body: Record<string, unknown>) => request<T>({ ...body, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
+  const applyRecipientPlayer = (next: SharedStoryPlayer, session = sessionToken, restoreCached = false) => {
+    let translation = readerTranslation?.language === readerLanguage ? readerTranslation : null
+    let selectedLanguage = next.language ?? 'en-US'
+    if (restoreCached && session) {
+      try {
+        const selected = window.sessionStorage.getItem(`muse-story-translation-language:${session}`)
+        const selectedOption = STORY_LANGUAGES.find(item => item.code === selected)
+        if (selectedOption) selectedLanguage = selectedOption.code
+        const cacheKey = `muse-story-translation:${session}:${selectedLanguage}`
+        const cached = window.sessionStorage.getItem(cacheKey)
+        if (cached) {
+          const value: unknown = JSON.parse(cached)
+          const cachedLanguage = value && typeof value === 'object' && 'language' in value
+            ? STORY_LANGUAGES.find(item => item.code === value.language) : undefined
+          if (cachedLanguage) {
+            const parsed = parseSharedStoryTranslation(value, cachedLanguage.code)
+            if (parsed.content.scenes.length === next.sceneCount) {
+              translation = parsed
+              selectedLanguage = parsed.language
+            }
+          }
+        }
+      } catch {
+        try {
+          window.sessionStorage.removeItem(`muse-story-translation:${session}:${selectedLanguage}`)
+          window.sessionStorage.removeItem(`muse-story-translation-language:${session}`)
+        } catch { /* Storage is optional. */ }
+      }
+    }
+    setReaderTranslation(translation)
+    setReaderLanguage(translation?.language ?? selectedLanguage)
+    setSourcePlayer(next)
+    setPlayer(localizeRecipientPlayer(next, translation))
+  }
   const applyStoryPreferences = () => {
     try {
       const preferences = loadStoryPreferences()
@@ -447,6 +509,10 @@ export default function SharedStoryPage() {
         const fragment = new URLSearchParams(window.location.hash.slice(1))
         const recipientToken = fragment.get('play')
         if (recipientToken) {
+          setReaderTranslation(null)
+          setReaderLanguage(null)
+          setSourcePlayer(null)
+          setTranslationConsent(false)
           setPlayToken(recipientToken)
           let savedSession: string | null = null
           try {
@@ -461,6 +527,7 @@ export default function SharedStoryPage() {
             setRomanceAccepted(false)
             setRecipientConfirmation(false)
             setRomanceDeclined(false)
+            setSourcePlayer(null)
             setPlayer(null)
             return
           }
@@ -472,7 +539,7 @@ export default function SharedStoryPage() {
             }
             return
           }
-          setPlayer(result.player)
+          applyRecipientPlayer(result.player, result.sessionToken, true)
           setSessionToken(result.sessionToken)
           try {
             window.localStorage.setItem(`muse-shared-player:${recipientToken}`, result.sessionToken)
@@ -600,7 +667,7 @@ export default function SharedStoryPage() {
             setCooperativeSyncError('')
           }
         } else if (!('romanceNotice' in result) && active) {
-          setPlayer(result.player)
+          applyRecipientPlayer(result.player, sessionToken)
           setCooperativeSyncError('')
         }
       } catch (cause) {
@@ -644,7 +711,7 @@ export default function SharedStoryPage() {
         setGuestNameRequired(true)
         return
       }
-      setPlayer(result.player)
+      applyRecipientPlayer(result.player, result.sessionToken, true)
       setSessionToken(result.sessionToken)
       try { window.localStorage.setItem(`muse-shared-player:${playToken}`, result.sessionToken) } catch {
         setNotice('This browser cannot save progress. Keep this page open to continue.')
@@ -671,12 +738,79 @@ export default function SharedStoryPage() {
       if ('romanceNotice' in result || 'requiresDisplayName' in result) {
         throw new Error('Muse could not register this display name. Check it and try again.')
       }
-      setPlayer(result.player)
+      applyRecipientPlayer(result.player, result.sessionToken, true)
       setSessionToken(result.sessionToken)
       setGuestNameRequired(false)
       window.localStorage.setItem(`muse-shared-player:${playToken}`, result.sessionToken)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not join this cooperative story.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const startGiftStory = async () => {
+    if (!player || busy) return
+    const source = sourcePlayer ?? player
+    const sourceLanguage = source.language ?? 'en-US'
+    const targetLanguage = readerLanguage ?? sourceLanguage
+    if (targetLanguage === sourceLanguage) {
+      setReaderTranslation(null)
+      setReaderLanguage(targetLanguage)
+      setPlayer(source)
+      setGiftOpened(true)
+      return
+    }
+    if (activeReaderTranslation?.language === targetLanguage) {
+      setGiftOpened(true)
+      return
+    }
+    const cacheKey = `muse-story-translation:${sessionToken}:${targetLanguage}`
+    try {
+      const cached = window.sessionStorage.getItem(cacheKey)
+      if (cached) {
+        const translation = parseSharedStoryTranslation(JSON.parse(cached), targetLanguage)
+        if (translation.content.scenes.length === source.sceneCount) {
+          setReaderTranslation(translation)
+          setReaderLanguage(targetLanguage)
+          try { window.sessionStorage.setItem(`muse-story-translation-language:${sessionToken}`, targetLanguage) } catch {
+            setNotice(flow('translationCacheUnavailable'))
+          }
+          setPlayer(localizeRecipientPlayer(source, translation))
+          setTranslationConsent(false)
+          setGiftOpened(true)
+          return
+        }
+        window.sessionStorage.removeItem(cacheKey)
+      }
+    } catch {
+      setNotice(flow('translationCacheUnavailable'))
+    }
+    if (!translationConsent) {
+      setError(flow('translationConsentRequired'))
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const result = await recipientRequest<{ translation: unknown }>({
+        action: 'translate', token: playToken, sessionToken, language: targetLanguage, translationConsent: true
+      })
+      const translation = parseSharedStoryTranslation(result.translation, targetLanguage)
+      if (translation.content.scenes.length !== source.sceneCount) throw new Error('The translated story has an unexpected number of scenes.')
+      try {
+        window.sessionStorage.setItem(cacheKey, JSON.stringify(translation))
+        window.sessionStorage.setItem(`muse-story-translation-language:${sessionToken}`, targetLanguage)
+      } catch {
+        setNotice(flow('translationCacheUnavailable'))
+      }
+      setReaderTranslation(translation)
+      setReaderLanguage(targetLanguage)
+      setPlayer(localizeRecipientPlayer(source, translation))
+      setTranslationConsent(false)
+      setGiftOpened(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not translate the story. The AI attempt may count; check the story before deciding whether to try again.')
     } finally {
       setBusy(false)
     }
@@ -1057,7 +1191,7 @@ export default function SharedStoryPage() {
     narrator.stop()
     try {
       const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}) })
-      setPlayer(result.player)
+      applyRecipientPlayer(result.player)
       if (action !== 'hint') setGuess('')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not continue the story.')
@@ -1090,16 +1224,20 @@ export default function SharedStoryPage() {
           // Persist before sending. Network retries and tabs reuse the same ID;
           // a changed draft cannot silently turn a retry into another paid call.
           const attempt = {
-            ...(saved ? JSON.parse(saved) : { requestId: crypto.randomUUID(), revision: player.adventure.revision, text: selectedChoice ?? actionText.trim() }),
+            ...(saved ? JSON.parse(saved) : {
+              requestId: crypto.randomUUID(), revision: player.adventure.revision,
+              text: selectedChoice ?? actionText.trim(), language: activeReaderLanguage
+            }),
             consentVersion: MUSE_AI_CONSENT_VERSION
           }
+          if (!attempt.language) attempt.language = activeReaderLanguage
           window.localStorage.setItem(storageKey, JSON.stringify(attempt))
           if (saved) setActionText(attempt.text)
           submission = { action: 'adventure', token: playToken, sessionToken, ...attempt, consentVersion: MUSE_AI_CONSENT_VERSION }
         }
         const response = await accountFetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...submission, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }) })
         const data = await response.json()
-        if (data.player) setPlayer(data.player)
+        if (data.player) applyRecipientPlayer(data.player)
         if (!refresh && data.player && (!data.player.adventure?.pending || response.ok)) {
           window.localStorage.removeItem(storageKey)
         }
@@ -1208,7 +1346,8 @@ export default function SharedStoryPage() {
     (!player.cooperative || player.cooperative.isYourTurn))
 
   return (
-    <main className="atelier-page" lang={interfaceLanguage} dir={STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
+    <main className="atelier-page" lang={playToken ? activeReaderLanguage : interfaceLanguage}
+      dir={playToken ? recipientLanguage.dir : STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
       <Head>
         <title>{`Muse - ${pageText('giftEyebrow', playToken ? recipientLanguage.code : interfaceLanguage)}`}</title>
         <meta name="description" content="Give Muse your idea and personal clues. Create a mystery for someone else to solve." />
@@ -1270,7 +1409,31 @@ export default function SharedStoryPage() {
               <p>{recipientText.from(player.creatorName)}</p>
               {player.gift?.dedication ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, maxWidth: 440, margin: '1.5rem auto', overflowWrap: 'anywhere' }}>{player.gift.dedication}</p> : null}
               <p>{recipientText.duration(player.durationMinutes)}</p>
-              <button type="button" onClick={() => setGiftOpened(true)} style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>{recipientText.openStory}</button>
+              <label htmlFor="recipient-story-language">{flow('readerLanguage')}
+                <select id="recipient-story-language" value={readerLanguage ?? player.language ?? 'en-US'} disabled={busy} style={fieldStyle}
+                  onChange={event => {
+                    const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
+                    if (!language) return
+                    setReaderLanguage(language.code)
+                    setTranslationConsent(false)
+                    if (sourcePlayer) setPlayer(localizeRecipientPlayer(sourcePlayer, readerTranslation?.language === language.code ? readerTranslation : null))
+                  }}>
+                  {STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}
+                </select>
+              </label>
+              {readerLanguage !== (player.language ?? 'en-US') && !activeReaderTranslation ? <>
+                <p>{flow('translationDisclosure')}</p>
+                <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'start', textAlign: 'start', padding: '0.75rem 0' }}>
+                  <input type="checkbox" checked={translationConsent} disabled={busy} onChange={event => setTranslationConsent(event.target.checked)} />
+                  <span>{flow('translationConsent')}</span>
+                </label>
+              </> : null}
+              <button type="button" onClick={() => void startGiftStory()}
+                disabled={busy || (readerLanguage !== (player.language ?? 'en-US') && !activeReaderTranslation && !translationConsent)}
+                style={{ ...primaryStyle, marginTop: '1rem', minHeight: 48 }}>
+                {busy && readerLanguage !== (player.language ?? 'en-US') && !activeReaderTranslation ? flow('translationWorking')
+                  : readerLanguage !== (player.language ?? 'en-US') && !activeReaderTranslation ? flow('translateAndStart') : recipientText.openStory}
+              </button>
               {player.cooperative ? <p>Muse members use their profile name; guests can join with a display name.</p> : <p style={{ fontSize: '0.9rem' }}>{recipientText.noAccount}</p>}
             </article> : <>
             <h1 className="story-reading-title">{player.title}</h1>
@@ -1742,6 +1905,18 @@ export default function SharedStoryPage() {
                 </label>
                 {textField('recipientHints', togetherStoryCopy(interfaceLanguage).memory, '', 1500, true)}
                 {textField('message', togetherStoryCopy(interfaceLanguage).message, '', 2000)}
+                <label htmlFor="together-puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('puzzleDifficulty')}
+                  <select id="together-puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
+                    if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
+                    updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))
+                    setAiConsent(false)
+                  }} style={fieldStyle}>
+                    <option value="gentle">{flow('difficultyGentle')}</option>
+                    <option value="balanced">{flow('difficultyBalanced')}</option>
+                    <option value="challenging">{flow('difficultyChallenging')}</option>
+                  </select>
+                </label>
+                <p>{flow('difficultyAttention')}</p>
                 <p>{togetherStoryCopy(interfaceLanguage).limits}</p>
                 <details><summary>{flow('privacyLimits')}</summary><p>{flow('giftPrivacy')}</p><p>{flow('giftBackupNote')}</p></details>
                 <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>{flow('giftConsent')}</ExplicitConsent>
@@ -1795,6 +1970,18 @@ export default function SharedStoryPage() {
                 <h2>2. {giftFormText('stepStory', interfaceLanguage)}</h2>
                 {textField('setting', flow('giftStoryIdea'), '', 3000)}
                 {textField('goal', flow('giftGoal'), '', 600)}
+                <label htmlFor="puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('puzzleDifficulty')}
+                  <select id="puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
+                    if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
+                    updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))
+                    setAiConsent(false)
+                  }} style={fieldStyle}>
+                    <option value="gentle">{flow('difficultyGentle')}</option>
+                    <option value="balanced">{flow('difficultyBalanced')}</option>
+                    <option value="challenging">{flow('difficultyChallenging')}</option>
+                  </select>
+                </label>
+                <p>{flow('difficultyAttention')}</p>
                 {textField('recipientHints', flow('giftPersonalTouches'), '', 1500, true)}
                 <label style={{ fontWeight: 700 }}>{flow('duration')}
                   <select value={brief.durationMinutes} onChange={(event) => {

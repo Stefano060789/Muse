@@ -280,7 +280,7 @@ async function main() {
     assert.equal(made.status, 201)
     const token = made.body.playToken
     const storyId = token.split('.')[0]
-    assert.deepEqual((await api({ action: 'manage', token: made.body.ownerToken })).body.brief, assistedBrief)
+    assert.deepEqual((await api({ action: 'manage', token: made.body.ownerToken })).body.brief, { ...assistedBrief, puzzleDifficulty: 'balanced' })
     assert.equal((await api({ action: 'hint', token, sessionToken: 'd'.repeat(64) })).status, 400)
     assert.equal((await api({ action: 'hint', token })).status, 400)
     assert.equal((await api({ action: 'hint', token: made.body.ownerToken, sessionToken: 'd'.repeat(64) })).status, 404)

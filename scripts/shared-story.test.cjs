@@ -27,6 +27,8 @@ async function main() {
   ], { cwd: root, stdio: 'inherit' })
   const { parseSharedStoryBrief, parseGeneratedStory, normalizeSharedAnswer, sceneCountForDuration, sharedStoryPlayerView } = require(path.join(output, 'lib', 'sharedStory.js'))
   const { generateSharedStory } = require(path.join(output, 'lib', 'sharedStoryGenerator.js'))
+  const { translateSharedStory } = require(path.join(output, 'lib', 'sharedStoryTranslator.js'))
+  const { parseSharedStoryTranslation } = require(path.join(output, 'lib', 'sharedStoryTranslation.js'))
   const handler = require(path.join(output, 'pages', 'api', 'shared-story.js')).default
   const personalHandler = require(path.join(output, 'pages', 'api', 'personal-story.js')).default
   const { parsePersonalStoryRequest, generatePersonalStory } = require(path.join(output, 'lib', 'personalStoryGenerator.js'))
@@ -61,7 +63,7 @@ async function main() {
   }
 
   await check('brief preserves the creator setting, recipient hints and private payoff', () => {
-    assert.deepEqual(parseSharedStoryBrief(brief), { ...brief, answerType: 'phrase', assistanceHints: [], alternativeAnswers: [] })
+    assert.deepEqual(parseSharedStoryBrief(brief), { ...brief, puzzleDifficulty: 'balanced', answerType: 'phrase', assistanceHints: [], alternativeAnswers: [] })
   })
   await check('final answer types and public directions validate and appear only at the ending', () => {
     const directed = parseSharedStoryBrief({ ...brief, answerType: 'word', solution: 'starlight', alternativeAnswers: ['moonbeam'], answerInstruction: 'At the observatory door, say it aloud.' })
@@ -102,6 +104,15 @@ async function main() {
       assert.throws(() => parseSharedStoryBrief({ ...brief, ...update }))
     }
     assert.throws(() => parseSharedStoryBrief(null))
+  })
+  await check('puzzle difficulty defaults to balanced and validates supported levels', () => {
+    assert.equal(parseSharedStoryBrief(brief).puzzleDifficulty, 'balanced')
+    for (const puzzleDifficulty of ['gentle', 'balanced', 'challenging']) {
+      assert.equal(parseSharedStoryBrief({ ...brief, puzzleDifficulty }).puzzleDifficulty, puzzleDifficulty)
+    }
+    for (const puzzleDifficulty of [null, '', 'impossible']) {
+      assert.throws(() => parseSharedStoryBrief({ ...brief, puzzleDifficulty }), /puzzle difficulty/)
+    }
   })
   await check('5/10/15/20 minutes scale scene count and validated narration length', () => {
     for (const minutes of [5, 10, 15, 20]) {
@@ -201,6 +212,46 @@ async function main() {
     assert.equal(schemaExample.narrationLanguage, 'en-US')
     assert.ok(Array.isArray(schemaExample.scenes))
     assert.equal(providerRequest.response_format.type, 'json_object')
+  })
+  await check('puzzle difficulty directs clue clarity and fair attention in generation', async () => {
+    process.env.LLM_API_KEY = 'test-key'
+    process.env.LLM_PROVIDER = 'GROQ'
+    for (const [puzzleDifficulty, expected] of [
+      ['gentle', /Puzzle difficulty: gentle.*one simple inference/],
+      ['balanced', /Puzzle difficulty: balanced.*few clear details/],
+      ['challenging', /Puzzle difficulty: challenging but fair.*several concrete details/]
+    ]) {
+      await generateSharedStory(parseSharedStoryBrief({ ...brief, puzzleDifficulty }))
+      assert.match(providerRequest.messages[0].content, expected)
+    }
+  })
+  await check('translation validates target language and sends only public story content', async () => {
+    const translatedContent = {
+      ...content, title: 'La stanza delle stelle', description: 'Trova la lettera nascosta.',
+      narrationLanguage: 'it-IT',
+      scenes: content.scenes.map((scene, index) => ({
+        title: `Scoperta ${index + 1}`, body: `Guarda le stelle ${index + 1}.`,
+        clue: `Osserva il cielo ${index + 1}.`
+      }))
+    }
+    global.fetch = async (_url, options) => {
+      providerRequest = JSON.parse(options.body)
+      return json({ choices: [{ message: { content: JSON.stringify(translatedContent) } }] })
+    }
+    const privateBrief = {
+      ...brief, recipientHints: 'PRIVATE RECIPIENT HINT', assistanceHints: ['PRIVATE ASSISTANCE'],
+      alternativeAnswers: ['PRIVATE ALTERNATIVE'], solution: 'PRIVATE SECRET', message: 'PRIVATE REVEAL',
+      gift: { occasion: 'surprise', dedication: 'PRIVATE DEDICATION', allowReply: false }
+    }
+    const translation = await translateSharedStory(parseSharedStoryBrief(privateBrief), content, 'it-IT')
+    assert.equal(translation.language, 'it-IT')
+    assert.equal(translation.content.scenes.length, content.scenes.length)
+    const serializedInput = JSON.stringify(providerRequest.messages[1].content)
+    for (const privateValue of [privateBrief.recipientHints, privateBrief.assistanceHints[0], privateBrief.alternativeAnswers[0],
+      privateBrief.solution, privateBrief.message, privateBrief.gift.dedication]) {
+      assert.ok(!serializedInput.includes(privateValue), `translation prompt excluded ${privateValue}`)
+    }
+    assert.throws(() => parseSharedStoryTranslation({ ...translation, language: 'en-US' }, 'it-IT'), /invalid/)
   })
   await check('explicit OpenAI selection preserves its key, endpoint and model', async () => {
     process.env.LLM_PROVIDER = 'OPENAI'
@@ -564,6 +615,12 @@ async function main() {
     assert.equal(opened.status, 200)
     playerSession = opened.body.sessionToken
     assert.match(playerSession, /^[a-f0-9]{64}$/)
+    const callsBeforeUnconsentedTranslation = runtimeProviderCalls
+    const unconsentedTranslation = await api({
+      action: 'translate', token: created.body.playToken, sessionToken: playerSession, language: 'it-IT'
+    })
+    assert.equal(unconsentedTranslation.status, 403, 'The server requires explicit translation consent')
+    assert.equal(runtimeProviderCalls, callsBeforeUnconsentedTranslation, 'Unconsented translation never reaches the AI provider')
     const wrong = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: `not ${brief.solution}` })
     const next = await api({ action: 'next', token: created.body.playToken, sessionToken: playerSession })
     for (const result of [opened, wrong, next]) {

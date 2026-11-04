@@ -4,6 +4,7 @@ import { getPublicContactConfig } from '../lib/legalContact'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { publicContactStatus, publicLegalCopy } from '../lib/publicLegalCopy'
 import { shareConsentCopy, shareConsentPrivacyCopy } from '../lib/shareConsentCopy'
+import { runwayShareCopy } from '../lib/runwayShareCopy'
 
 export default function PrivacyPage() {
   const language = useInterfaceLanguage()
@@ -24,6 +25,10 @@ export default function PrivacyPage() {
         <section>
           <h2>{shareConsentCopy(language).title}</h2>
           <p>{shareConsentPrivacyCopy(language)}</p>
+        </section>
+        <section>
+          <h2>{runwayShareCopy(language).title}</h2>
+          <p>{runwayShareCopy(language).disclosure}</p>
         </section>
         {Object.values(copy.sections).map(section => (
           <section key={section.heading}>

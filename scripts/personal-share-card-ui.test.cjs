@@ -46,6 +46,7 @@ async function main() {
     } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     '../lib/providerConsent': { PROVIDER_CONSENT_VERSION: 'fixture' },
+    './RunwayStoryShare': { default: 'RunwayStoryShare' },
     '../lib/storyShareMotion': {
       shareVideoType: () => clipSupport ? 'video/mp4' : null,
       createShareClip(options) {
@@ -95,6 +96,10 @@ async function main() {
   assert.ok(button('Customize this highlight'), 'The first click opens a ready-to-review highlight')
   button('Customize this highlight').props.onClick(); render()
   assert.equal(nodes.filter(node => node?.type === 'option').length, 2, 'Only visited scenes are selectable')
+  assert.match(preview(), /data-story-motif="doorway"/, 'The visited gate scene selects an object template')
+  button('Map in the wind').props.onClick(); render()
+  assert.match(preview(), /data-story-motif="map"/)
+  assert.equal(calls.length, 0, 'Selecting an object animation never requests paid AI')
   nodes.find(node => node?.type === 'select').props.onChange({ target: { value: '0' } }); render()
   assert.match(preview(), /I chose to open/)
   const fields = nodes.filter(node => node?.type === 'textarea')
@@ -180,6 +185,7 @@ async function main() {
     button('Create animated preview').props.onClick(); render()
     assert.equal(button('Create animated preview').props.disabled, true)
     const firstRecording = recording
+    assert.equal(firstRecording.options.motif, 'map', 'The chosen object is wired into video export')
     button('Cancel').props.onClick()
     await new Promise(resolve => setImmediate(resolve)); render()
     assert.ok(firstRecording.options.signal.aborted)

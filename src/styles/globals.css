@@ -388,6 +388,12 @@ main [role="status"] { line-height: 1.6; }
 .share-studio-motion { padding-block: 1rem; border-block: 1px solid var(--line); }
 .share-studio-motion progress { display: block; width: min(100%, 540px); margin-block: 0.75rem; accent-color: var(--plum); }
 .share-studio-video { display: block; width: min(100%, 540px); max-height: 75vh; object-fit: contain; margin-inline: auto; border-radius: 18px; background: #202c42; }
+.runway-share { margin-block: 1.25rem; }
+.runway-share-panel { margin-top: 1rem; padding: 1rem; border: 1px solid #ac8450; border-radius: 18px; background: #fffaf0; overflow-wrap: anywhere; }
+.runway-share-approval { display: flex; gap: 0.75rem; align-items: flex-start; margin-block: 1rem; line-height: 1.65; }
+.runway-share-approval input { margin-top: 0.35rem; flex-shrink: 0; }
+.runway-share-video { display: block; width: min(100%, 420px, 42.1875vh); margin: 1rem auto; border-radius: 16px; }
+.runway-share-panel details button { display: block; margin-block: 0.5rem; }
 @keyframes share-reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes share-shimmer { 0%, 15% { transform: translateX(-45%); } 75%, 100% { transform: translateX(45%); } }
 @media (max-width: 640px) {

@@ -8,7 +8,7 @@ create table if not exists public.muse_cooperative_players (
   story_id uuid not null references public.shared_stories(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   display_name text not null check (length(display_name) between 1 and 40),
-  position integer not null check (position between 1 and 20),
+  position integer not null check (position between 1 and 2),
   joined_at timestamptz not null default now(),
   primary key (story_id, user_id),
   unique (story_id, position)
@@ -58,7 +58,7 @@ begin
       select count(*), coalesce(max(position), 0) + 1 into player_count, next_position
         from public.muse_cooperative_players where story_id = sid;
       if not exists (select 1 from public.muse_cooperative_players where story_id = sid and user_id = uid) then
-        if player_count >= 20 then raise exception 'Cooperative: this story is full (20 participants maximum)'; end if;
+        if player_count >= 2 then raise exception 'Cooperative: this story is full (two participants maximum)'; end if;
         if requested_name is null or exists (
           select 1 from public.muse_cooperative_players where story_id = sid and display_name = requested_name
         ) then requested_name := 'Participant ' || next_position; end if;

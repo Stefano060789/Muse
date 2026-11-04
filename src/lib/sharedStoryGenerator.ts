@@ -25,6 +25,11 @@ export async function generateSharedStory(
     : brief.answerType === 'action'
       ? 'The final challenge is a specific action the recipient describes or dictates at the ending. The last scene must clearly cue when and where the action belongs, and clues must point to the exact private solution. The app can match their description but cannot verify physical actions.'
       : 'The final challenge requires the recipient to say one specific phrase aloud. The last scene must clearly cue when and where to say it, and its clues must point to the exact private solution.'
+  const difficultyInstruction = brief.puzzleDifficulty === 'gentle'
+    ? 'Puzzle difficulty: gentle. Use a clear, memorable clue and only one simple inference. Repeat the key clue naturally; no trick wording, obscure knowledge or time pressure.'
+    : brief.puzzleDifficulty === 'challenging'
+      ? 'Puzzle difficulty: challenging but fair. Reward close attention by connecting several concrete details across scenes. Make every needed detail available in the story and offer a path to the answer without obscure knowledge, trick wording or time pressure.'
+      : 'Puzzle difficulty: balanced. Ask the recipient to notice and connect a few clear details, with a modest amount of thought. Keep the answer fair and solvable from the story alone.'
   const system = [
     romanceInstruction(brief.romance),
     'Write an original, safe, non-therapeutic interactive mystery from a creator to one recipient.',
@@ -39,6 +44,7 @@ export async function generateSharedStory(
     'assistanceHints are private on-demand help revealed separately by the server. Do not copy them into the story, titles, clues or description.',
     'Clues must indirectly lead to the exact creator-supplied solution; do not invent a different answer.',
     answerInstruction,
+    difficultyInstruction,
     brief.answerInstruction ? `Final-scene direction (public story information): ${brief.answerInstruction}. Integrate this exact intent clearly and consistently into the final scene without revealing the secret answer.` : '',
     'Return JSON only, without markdown: {"title":"...","description":"...","narrationStyle":"suspenseful","narrationLanguage":"en-US","scenes":[{"title":"...","body":"...","clue":"...","choices":["...","...","..."]}]}.',
     brief.adventure

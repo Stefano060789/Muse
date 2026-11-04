@@ -21,13 +21,15 @@ import { generateStudioScene, purgeStudioAudio, readStudioAudio, studioStatus } 
 import { PERMANENT_STORY_EXPIRY, publicStoryExpiry } from '../../lib/storyRetention'
 import { matchesRecoveryKey, recoveryKey } from '../../lib/creatorRecovery'
 import { reserveBillingUsage } from '../../lib/billing'
+import { translateSharedStory } from '../../lib/sharedStoryTranslator'
+import { parseStoryLanguage } from '../../lib/storyLanguage'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
+const PLAYER_ACTIONS = ['open', 'translate', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
 const OWNER_ACTIONS = ['library', 'activity', 'manage', 'progress', 'share', 'title', 'follow-up', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function followUpField(value: unknown, label: string, maximum: number): string {
@@ -557,6 +559,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw error
       }
     }
+    if (action === 'translate') {
+      if (body.translationConsent !== true) {
+        throw new SharedStoryError('Consent is required before translating the public story text.', 403)
+      }
+      let language: ReturnType<typeof parseStoryLanguage>
+      try { language = parseStoryLanguage(body.language) } catch (error) {
+        throw new SharedStoryError(error instanceof Error ? error.message : 'Choose a supported story language.')
+      }
+      if (!language) throw new SharedStoryError('Choose a supported story language.')
+      if (language === (story.brief.language ?? story.content.narrationLanguage)) {
+        throw new SharedStoryError('The story is already in that language.', 409)
+      }
+      if (story.owner_id) {
+        const participant = cooperative ? cooperativeParticipantId : hash(sessionToken)
+        const requestId = `translation:${hash(`${id}:${participant}:${language}`)}`
+        await reserveBillingUsage(story.owner_id, requestId, 'interaction')
+      }
+      const translation = await translateSharedStory(story.brief, story.content, language)
+      return res.status(200).json({ translation })
+    }
     if (action === 'studio-audio') {
       if (!story.brief.message && !ready) throw new SharedStoryError('The creator is still finishing this story.', 409)
       const audio = await readStudioAudio(db, story, body.sceneIndex, sessionHash)
@@ -628,7 +650,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (action === 'adventure') {
         const currentView = (await db.adventure(base)).view
         const authoritativeChoices = currentView.turn ? currentView.turn.choices : story.content.scenes[0]?.choices
-        const submission = parseAdventureAction(body, story.brief, authoritativeChoices, body.revision !== currentView.revision)
+        let actionLanguage: ReturnType<typeof parseStoryLanguage>
+        try { actionLanguage = parseStoryLanguage(body.language) } catch (error) {
+          throw new SharedStoryError(error instanceof Error ? error.message : 'Choose a supported story language.')
+        }
+        actionLanguage ??= story.brief.language
+        const submission = parseAdventureAction(body, story.brief, authoritativeChoices, body.revision !== currentView.revision, actionLanguage)
         if (cooperative) {
           const turn = await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'view' })
           if (!turn.isYourTurn) throw new SharedStoryError('Cooperative: it is another participant’s turn.', 409)
@@ -645,7 +672,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         if (reserved.status === 'reserved') {
           try {
-            const turn = await generateAdventureTurn(story, reserved.view, submission.text)
+            const turn = await generateAdventureTurn(story, reserved.view, submission.text, actionLanguage)
             player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', turn })).view, story)
           } catch (error) {
             if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('request-failure')

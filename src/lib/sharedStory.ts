@@ -13,6 +13,7 @@ export type SharedStoryGift = {
 }
 
 export type SharedStoryAnswerType = 'clue' | 'word' | 'phrase' | 'action'
+export type SharedStoryPuzzleDifficulty = 'gentle' | 'balanced' | 'challenging'
 export type SharedStoryBrief = {
   romance?: StoryRomance
   language?: StoryLanguageCode
@@ -23,6 +24,7 @@ export type SharedStoryBrief = {
   recipientHints: string
   goal: string
   solution: string
+  puzzleDifficulty?: SharedStoryPuzzleDifficulty
   answerType?: SharedStoryAnswerType
   answerInstruction?: string
   message: string
@@ -108,6 +110,10 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     throw new SharedStoryError('Choose whether the recipient should find a clue, say a word or phrase, or describe an action.')
   }
   const answerInstruction = input.answerInstruction === undefined ? '' : text(input.answerInstruction, 'Final-scene instruction', 500, true)
+  const puzzleDifficulty = input.puzzleDifficulty === undefined ? 'balanced' : input.puzzleDifficulty
+  if (!['gentle', 'balanced', 'challenging'].includes(String(puzzleDifficulty))) {
+    throw new SharedStoryError('Choose a supported puzzle difficulty.')
+  }
   const brief = {
     ...(romance ? { romance } : {}),
     ...(language ? { language } : {}),
@@ -118,6 +124,7 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     recipientHints: text(input.recipientHints, 'Personal hints', 1500, true),
     goal: text(input.goal, 'What the recipient needs to find or solve', 600),
     solution: text(input.solution, 'Secret answer', 200),
+    puzzleDifficulty: puzzleDifficulty as SharedStoryPuzzleDifficulty,
     answerType: answerType as SharedStoryAnswerType,
     ...(answerInstruction ? { answerInstruction } : {}),
     message: options.allowEmptyMessage && typeof input.message === 'string' && !input.message.trim() ? '' : text(input.message, 'Final message', 2000),

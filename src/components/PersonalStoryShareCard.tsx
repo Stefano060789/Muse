@@ -13,6 +13,9 @@ import { useAccountPermissions } from '../lib/useAccountPermissions'
 import { registrationCopy } from '../lib/registrationCopy'
 import { shareStudioCopy } from '../lib/shareStudioCopy'
 import { storyLanguage } from '../lib/storyLanguage'
+import RunwayStoryShare from './RunwayStoryShare'
+import { STORY_MOTIFS, suggestStoryMotif, type StoryMotif } from '../lib/storyShareArtwork'
+import { storyArtworkCopy } from '../lib/storyArtworkCopy'
 
 export default function PersonalStoryShareCard({
   story,
@@ -29,6 +32,7 @@ export default function PersonalStoryShareCard({
   const [message, setMessage] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [theme, setTheme] = useState<ShareCardTheme>('starlight')
+  const [motif, setMotif] = useState<StoryMotif>('light')
   const [format, setFormat] = useState<ShareCardFormat>('story')
   const [passage, setPassage] = useState('')
   const [reflection, setReflection] = useState('')
@@ -52,6 +56,7 @@ export default function PersonalStoryShareCard({
   }, [])
   const studio = shareStudioCopy(interfaceLanguage)
   const motion = shareMotionCopy(interfaceLanguage)
+  const artwork = storyArtworkCopy(interfaceLanguage)
   const language = story.language ?? interfaceLanguage
   const mood = personalStoryMoodText(story.mood, language)
   const copy = (key: Parameters<typeof personalStoryShareText>[0]) => personalStoryShareText(key, interfaceLanguage)
@@ -62,7 +67,7 @@ export default function PersonalStoryShareCard({
   const milestone = completed ? studio.complete : studio.active
   const progress = `${studio.chapter.replace('{number}', String(story.chapter?.number ?? 1))} · ${studio.scenes.replace('{number}', String(savedScenes.length))}`
   const cardSvg = createStoryMomentSvg({
-    title: story.title, passage, reflection, milestone, progress, theme, format,
+    title: story.title, passage, reflection, milestone, progress, theme, format, motif,
     rtl: storyLanguage(language).dir === 'rtl'
   })
   useEffect(() => {
@@ -123,6 +128,7 @@ export default function PersonalStoryShareCard({
     setSelectedScene(suggested.scene)
     setPassage(suggested.passage)
     setTheme(suggested.theme)
+    setMotif(suggestStoryMotif(story.title, suggested.passage))
     setFormat('story')
     setReflection('')
     setMessage('')
@@ -142,7 +148,7 @@ export default function PersonalStoryShareCard({
     setClipBusy(true)
     setClipProgress(0)
     try {
-      const blob = await createShareClip({ svg: cardSvg, format, theme, signal: operation.signal, onProgress: setClipProgress })
+      const blob = await createShareClip({ svg: cardSvg, format, theme, motif, signal: operation.signal, onProgress: setClipProgress })
       if (operation.signal.aborted) return
       const url = URL.createObjectURL(blob)
       if (clipUrl.current) URL.revokeObjectURL(clipUrl.current)
@@ -299,6 +305,11 @@ export default function PersonalStoryShareCard({
             <small>{reflection.length}/120</small>
           </label>
           <fieldset className="share-studio-picker">
+            <legend>{artwork.label}</legend>
+            {STORY_MOTIFS.map(value => <button key={value} type="button" aria-pressed={motif === value}
+              onClick={() => setMotif(value)}>{artwork[value]}</button>)}
+          </fieldset>
+          <fieldset className="share-studio-picker">
             <legend>{studio.style}</legend>
             {(['starlight', 'paper', 'dawn'] as const).map(value => <button key={value} type="button" aria-pressed={theme === value}
               className={`share-style share-style--${value}`} onClick={() => setTheme(value)}>{studio[value]}</button>)}
@@ -314,7 +325,7 @@ export default function PersonalStoryShareCard({
             <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`} alt={studio.preview}
               width={SHARE_CARD_SIZES[format].width} height={SHARE_CARD_SIZES[format].height} />
           </div>
-          <figcaption>{motion.note}</figcaption>
+          <figcaption>{artwork.note}</figcaption>
         </figure>
       </div>
       <div className="atelier-actions">
@@ -351,7 +362,7 @@ export default function PersonalStoryShareCard({
             <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`} alt={studio.preview}
               width={SHARE_CARD_SIZES[format].width} height={SHARE_CARD_SIZES[format].height} />
           </div>
-          <figcaption>{motion.note}</figcaption>
+          <figcaption>{artwork.note}</figcaption>
         </figure>
         <div className="share-studio-motion">
           {!clip ? <button type="button" className="atelier-button" disabled={clipBusy || exporting} onClick={() => void createClip()}>{motion.animate}</button> : <>
@@ -378,6 +389,7 @@ export default function PersonalStoryShareCard({
         </div>
         <h4>{studio.captionPreview}</h4>
         <p className="share-studio-caption" dir={storyLanguage(language).dir}>{shareText()}</p>
+        <RunwayStoryShare title={story.title} passage={passage} caption={shareText()} language={interfaceLanguage} motif={motif} />
         <div className="atelier-actions">
           <button type="button" className="atelier-button" disabled={exporting} aria-busy={exporting} onClick={() => void downloadCard()}>{copy('downloadCard')}</button>
           <button type="button" className="atelier-secondary" onClick={() => void share()}>{copy('shareOnSocial')}</button>

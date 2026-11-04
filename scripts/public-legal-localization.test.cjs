@@ -43,6 +43,7 @@ function load(relative) {
     if (id.endsWith('/publicLegalCopy')) return load('src/lib/publicLegalCopy.ts')
     if (id.endsWith('/shareConsentCopy')) return load('src/lib/shareConsentCopy.ts')
     if (id.endsWith('/audioControlsCopy')) return load('src/lib/audioControlsCopy.ts')
+    if (id.endsWith('/runwayShareCopy')) return load('src/lib/runwayShareCopy.ts')
     throw new Error(`Unexpected dependency ${id} in ${relative}`)
   }
   new Function('module', 'exports', 'require', code)(module, module.exports, resolve)
@@ -119,6 +120,10 @@ for (const pageName of ['privacy', 'terms', 'support']) {
       `${pageName} sets the document language to ${locale}`)
     assert.ok(text.includes(copy.publicLegalCopy(locale).eyebrow),
       `${pageName} renders its ${locale} shared eyebrow`)
+    if (pageName === 'privacy') {
+      assert.ok(text.includes(load('src/lib/runwayShareCopy.ts').runwayShareCopy(locale).disclosure),
+        `Privacy explains Runway processing and retention in ${locale}`)
+    }
   }
   assert.notEqual(textContent(rendered.get('en-US')), textContent(rendered.get('it-IT')),
     `${pageName} responds to an interface-language change`)

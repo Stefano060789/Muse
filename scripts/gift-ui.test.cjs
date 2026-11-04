@@ -159,6 +159,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (id.endsWith('/registrationCopy')) return plainModule('src/lib/registrationCopy.ts')
     if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
     if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
+    if (id.endsWith('/sharedStoryTranslation')) return { parseSharedStoryTranslation: value => value }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory(story) {
       if (failures.library) throw new Error('Browser library is full')
       savedStories.push(story)
@@ -247,6 +248,8 @@ async function main() {
   await quick.click('Start a story for two')
   assert.equal(quick.requests.length, 0, 'Selecting a template never starts a paid request')
   assert.ok(quick.nodes().some(node => node.type === 'form' && node.props['aria-label'] === 'Five minutes together'))
+  assert.equal(quick.field('together-puzzle-difficulty').props.value, 'balanced')
+  quick.field('together-puzzle-difficulty').props.onChange({ target: { value: 'challenging' } }); await quick.flush()
   assert.equal(quick.nodes().filter(node => node.type === 'fieldset').length, 0, 'Short creation has no multi-step fieldsets')
   assert.equal(quick.button('Prepare our story').props.disabled, true, 'Names must be supplied before generation')
   const quickNames = quick.nodes().filter(node => node.type === 'input' && node.props.maxLength === 80)
@@ -257,6 +260,7 @@ async function main() {
   quick.field('together-language').props.onChange({ target: { value: 'it-IT' } }); await quick.flush()
   const quickDraft = JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY))
   assert.equal(quickDraft.brief.durationMinutes, 5)
+  assert.equal(quickDraft.brief.puzzleDifficulty, 'challenging')
   assert.deepEqual(quickDraft.brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
   assert.equal(quickDraft.brief.creatorName, 'Alex')
   assert.equal(quickDraft.brief.recipientName, 'Sam')
@@ -267,6 +271,7 @@ async function main() {
   assert.equal(quick.requests.length, 1, 'Only explicit preparation starts a request')
   assert.equal(quick.requests[0].action, 'create')
   assert.equal(quick.requests[0].brief.durationMinutes, 5)
+  assert.equal(quick.requests[0].brief.puzzleDifficulty, 'challenging')
   assert.deepEqual(quick.requests[0].brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
   assert.ok(quick.nodes().some(node => node.props.role === 'alert' && label(node).includes('Test preparation unavailable')))
   assert.equal(JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY)).brief.creatorName, 'Alex', 'Preparation failure preserves the draft')
@@ -440,7 +445,7 @@ async function main() {
   assert.ok(liveMode, 'Creator can select a live adventure before enabling cooperative play')
   liveMode.props.onChange()
   await creator.flush()
-  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story · 2–20 participants'))
+  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story · 2 participants'))
   assert.ok(cooperativeLabel, 'Cooperative setup explains the participant and device model')
   assert.ok(creator.nodes().some(node => node.type === 'p' && label(node).includes('Turns rotate in join order')),
     'Cooperative setup explains names and turn order')

@@ -92,6 +92,7 @@ surprise for someone else. The gift creator labels its main writing area
 The same primary menu appears across Muse: **Home**, **Myself** (`/myself`),
 **Create a story** (`/story?new=1`), **Create a gift story** (`/shared#new`),
 **Saved stories** (`/library`) and **Settings** (`/account`).
+**Plans & pricing** (`/billing`) follows Settings in the primary navigation.
 It sits above decorative artwork, highlights the current area, and uses a
 two-column menu on phones. Gift recipients retain a quiet, brand-only header.
 Saved stories groups **Stories for me** and **Gift stories for others**, including
@@ -119,8 +120,11 @@ sign in and join using the private recipient link; the creator starts the
 shared adventure, and the group sees the same progress and participant names.
 Turns rotate in join order, only the current participant can act, and they can
 pass to the next participant. The group waits if the current participant is
-away. Cooperative play is capped at 20 participants. The creator's account
+away. Cooperative play is capped at two participants. The creator's account
 owns the story and pays for its live AI interactions.
+Gift stories also let the creator select a puzzle difficulty: gentle,
+balanced or challenging. This controls how explicit and attention-demanding
+the clues should be, not a timer or an outside-knowledge requirement.
 **Five minutes together** on gift creation offers a short, single-form setup:
 names, an optional shared memory, story language and a personal message. It
 uses the existing cooperative engine with suggested choices, an approximate
@@ -128,10 +132,16 @@ five-minute length and a six-action total AI budget. Preparation and live
 actions use the creator's paid attempts; failures may count. It makes no
 request until the creator explicitly prepares the story, then retains the
 existing preview and sharing checks. The private link is intended for one
-chosen person, but the underlying group capacity remains 2–20; it is not a
-two-person access restriction. Participants can pass or leave. Switching to
+chosen person; only one other participant can join. Participants can pass or leave. Switching to
 the template asks before replacing existing writing settings, preserves
 names, personal details and messages, and never grants consent.
+Each participant chooses their reading language independently before opening
+the story. Translating public scenes and clues uses one additional paid AI
+attempt from the creator's allowance; failures may count. The secret answer,
+private hints, dedication and reveal message are not sent for translation and
+remain in their original language. A translation cached only in the current
+browser session may need another paid attempt if the cache is lost or another
+device is used.
 Completed personal stories offer **A small step outside the story**:
 optional, static suggestions based on the selected mood, not analysis of
 private writing. Users can choose an intention, another suggestion or
@@ -179,7 +189,18 @@ Paper & ink and First light styles export as PNG in feed (1080×1350),
 story (1080×1920) or square (1080×1080) sizes. Preview entrance and shimmer
 animations respect reduced-motion preferences; exported PNG images are static.
 Opening the review automatically prepares a short, silent, 30 fps canvas video
-with drifting light, edge sparkles and flowing lines, at the selected card size.
+with original story-object templates at the selected card size. Muse locally
+matches the title and selected visited-scene excerpt to a wind-blown map, a
+gleaming sword, an opening doorway or a moonlit ocean voyage; unmatched stories
+keep the soft-starlight card. **Customize this highlight** lets users override
+the motif independently of theme and size. Motif matching is keyword-based, not
+AI understanding, and never reads future scenes, answers or memories.
+The object illustration occupies its own area above the text. The same vector
+geometry renders into both the still SVG/PNG and the exported canvas video,
+with animated parchment, sword highlights, opening doors or waves in the MP4/WebM.
+These reusable templates have no per-export AI provider charge. They are not
+unique AI-generated illustrations or full AI video. User-approved illustration
+generation and a cheaper image-to-video tier are not enabled by this template work.
 Recording targets about six seconds after encoder startup; actual length varies
 by browser and the preview shows the recorded duration when available.
 **Create animated preview** retries a cancelled/failed recording.
@@ -195,7 +216,77 @@ available. Use Download and upload the file in your social app if native
 file-sharing is unavailable. The separate text-share/copy actions send only
 the reviewed caption and homepage link, not the video. Passage selection, editing,
 preview and export require no AI call or AI consent and do not send private
-story contents to a server. Optional AI captions remain separate.
+story contents to a server. Optional AI captions and Runway cinema remain separate.
+
+### Optional Runway cinematic sharing
+
+**Bring this moment to life · Runway** is an optional premium alternative to the
+no-AI story-object templates, not the default sharing path:
+for example a wind-blown parchment map or a sword emerging through forest mist.
+The suggested visual brief is selected locally from generic motifs; no title,
+scene text, answer, reflection or memory is copied to Runway automatically.
+Users can edit the 40–900 character English visual brief, review the provider
+disclosure and cost, and explicitly approve ONE paid generation. Opening the
+studio, viewing the quote, polling jobs and downloading never generate video.
+Changing the brief or closing the studio clears approval.
+
+The optional integration uses Runway's `POST /v1/image_to_video`,
+`grok_imagine_1_5_lite`, 720p, 5 seconds, MP4. Muse locally renders a vertical
+starting illustration
+from the selected story-object template, sends that artwork (without card text)
+and the approved visual brief, then animates it. No separate paid image-generation
+step is used. As checked on 3 November 2026, published Grok Lite pricing is
+3 credits/second plus 1 credit for the starting image at $0.01/credit:
+16 credits, approximately US$0.16 before tax per generation. Runway's `auto_720p`
+ratio preserves the starting illustration's portrait framing. The illustration
+transfer is an external-provider disclosure;
+the title, passage, answers, reflection and memories are not sent automatically.
+This is an estimate of the operator's Runway provider spend,
+not an extra Stripe charge or a Muse interaction credit. Review current
+[Runway pricing](https://docs.dev.runwayml.com/guides/pricing/) before enabling.
+Quality varies; there is no hidden regeneration or promise of an exact object.
+The exported cinematic MP4 contains imagery without baked-in story text; native
+sharing attaches the reviewed caption separately.
+
+To enable:
+
+1. Add `RUNWAYML_API_SECRET` privately to the local `.env.local` or hosted
+   deployment environment. Never paste it into chat, commit it, or prefix it
+   with `NEXT_PUBLIC_`. Muse uses server-side REST; no SDK installation is needed.
+2. Hosted Supabase: apply `supabase/runway-sharing.sql`, which creates the
+   service-role-only job ledger, atomic reservation RPC and private
+   `muse-runway-clips` bucket. The application does not apply migrations.
+   Local SQLite needs Node.js 24 and private durable disk; optionally configure
+   `MUSE_RUNWAY_SQLITE_PATH` (default `data/runway-share.sqlite`).
+3. Set `MUSE_RUNWAY_BUDGET_CREDITS` to an explicit global lifetime ceiling.
+   A cautious initial test ceiling is `32` (two 16-credit reservations).
+   Set `MUSE_RUNWAY_ACCOUNT_DAILY_CAP=1` for one attempt/account/UTC day.
+   Also respect the existing global `MUSE_AI_DAILY_ATTEMPT_CAP`.
+4. Set `MUSE_RUNWAY_SHARING_ENABLED=true`, then restart/redeploy. Defaults are
+   disabled and zero budget. Do not enable until the Runway account has credits.
+5. Sign in and enable account processing permissions. Open the studio, inspect
+   the visual brief/cost, and explicitly approve a test generation in the UI.
+
+Reservations are atomic and bound to account/request ID/prompt fingerprint.
+Duplicate IDs never dispatch again. Failed, interrupted or unknown submissions
+remain budget-counted; never delete the ledger to reset spending. Unknown
+submissions require operator reconciliation in the Runway dashboard.
+Jobs survive reloads and appear under **Your recent cinematic jobs**; use
+**Refresh saved jobs** if polling stops after an error. Closing the studio does
+not cancel a submitted provider job or refund its cost.
+Provider keys, raw errors and temporary output URLs are never returned to the
+client. Completed outputs are validated as MP4 (30 MB maximum), fetched only
+from Runway's documented CDN without redirects, and saved to private storage.
+Only the authenticated owner can poll or fetch that video. Play the actual
+video before download or native file sharing unlocks. Local PNG/animation
+sharing remains usable when Runway is disabled.
+
+Cinematic jobs and saved videos have no automatic expiry. Users should contact
+the operator for removal; remove the exact private video object/file while
+retaining its budget reservation. Keep provider retention/terms and deletion
+operations under review before a public rollout. `npm run test:runway-share`
+uses mocked provider responses and isolated SQLite storage; it spends no credits.
+
 Teaser generation requires
 explicit consent and uses one AI interaction; only the title, broad mood and
 selected story language are sent to the provider, never scenes, answers, choices
@@ -681,7 +772,10 @@ Enable Supabase Auth email/password sign-in and configure the production site
 URL and allowed redirect URLs in the Supabase Auth settings. Apply the current
 `supabase/shared-stories.sql`, `supabase/personal-journeys.sql`,
 `supabase/operations.sql`, then `supabase/account-ownership.sql` migrations
-before deploying. Existing retained gift stories remain unowned until claimed
+before deploying. Apply `supabase/shared-cooperative-two-person.sql` after
+`supabase/shared-cooperative-guests.sql` to cap new cooperative joins at two.
+Existing groups with more participants remain intact, but cannot add members.
+Existing retained gift stories remain unowned until claimed
 through their private owner link; existing personal journeys are not attributed
 to an account. Creator APIs fail closed without a verified Supabase session.
 The operations code authorizes only the internal operations dashboard and

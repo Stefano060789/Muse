@@ -39,6 +39,7 @@
     "test:notifications": "node scripts/story-progress-notifications.test.cjs",
     "test:settings": "node scripts/settings-preferences.test.cjs",
     "test:personal-story-share": "node scripts/personal-story-share.test.cjs && node scripts/share-consent.test.cjs && node scripts/personal-share-card-ui.test.cjs && node scripts/story-share-motion.test.cjs",
+    "test:runway-share": "node scripts/runway-share.test.cjs && node scripts/runway-share-ui.test.cjs && node scripts/runway-share-frame.test.cjs",
     "test:gifting": "node scripts/shared-gifting.test.cjs",
     "test:gift-card": "node scripts/gift-card.test.cjs",
     "test:illustrations": "node scripts/illustrations.test.cjs",

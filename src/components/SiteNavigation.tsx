@@ -8,7 +8,8 @@ const destinations: { href: string; key: InterfaceCopyKey; routes: readonly stri
   { href: '/my-stories', key: 'navMyStories', routes: ['/my-stories', '/story'] },
   { href: '/shared#new', key: 'navCreateGift', routes: ['/shared', '/couples'] },
   { href: '/library', key: 'navArchive', routes: ['/library'] },
-  { href: '/account', key: 'navSettings', routes: ['/account'] }
+  { href: '/account', key: 'navSettings', routes: ['/account'] },
+  { href: '/billing', key: 'navPlans', routes: ['/billing'] }
 ]
 
 export default function SiteNavigation({ pathname, recipient = false, onCreateGift, interfaceLanguage = 'en-US' }: {

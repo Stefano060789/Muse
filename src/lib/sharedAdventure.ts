@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { normalizeSharedAnswer, SharedStoryError, type SharedStoryBrief } from './sharedStory'
 import type { StoredStory } from './storyRepository'
 import { generateStoryJson } from './storyProvider'
-import { assertStoryNarrationLanguage, storyLanguageInstruction, storyWordCount } from './storyLanguage'
+import { assertStoryNarrationLanguage, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { romanceInstruction } from './storyRomance'
 import {
   freeformSystemPrompt, parseSuggestedChoices, validatePlayerChoiceSelection,
@@ -40,7 +40,7 @@ export function adventureGlobalCap(): number {
   return value
 }
 
-export function parseAdventureAction(body: Record<string, unknown>, brief: SharedStoryBrief, authoritativeChoices?: string[], replay = false) {
+export function parseAdventureAction(body: Record<string, unknown>, brief: SharedStoryBrief, authoritativeChoices?: string[], replay = false, language?: StoryLanguageCode) {
   if (typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId) ||
       !Number.isInteger(body.revision) || Number(body.revision) < 0) {
     throw new SharedStoryError('Provide a request ID and current revision.')
@@ -50,7 +50,7 @@ export function parseAdventureAction(body: Record<string, unknown>, brief: Share
   assertAdventurePrivacy(text, brief, 400)
   return {
     text, requestId: body.requestId, revision: Number(body.revision),
-    fingerprint: createHash('sha256').update(JSON.stringify([text, body.revision])).digest('hex')
+    fingerprint: createHash('sha256').update(JSON.stringify([text, body.revision, language ?? brief.language])).digest('hex')
   }
 }
 
@@ -65,7 +65,7 @@ export function assertAdventurePrivacy(text: string, brief: SharedStoryBrief, st
   }
 }
 
-export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode: StoryChoiceMode = 'free', concluding = false): AdventureTurn {
+export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode: StoryChoiceMode = 'free', concluding = false, language = brief.language): AdventureTurn {
   const invalid = () => new SharedStoryError('The AI response failed adventure validation. This attempt was charged.', 502)
   const isSuggested = mode === 'suggested' && !concluding
   const keys = isSuggested ? ['narration', 'state', 'choices'] : ['narration', 'state']
@@ -78,9 +78,9 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
     return input.trim()
   }
   let turnValue = value
-  if (brief.language) {
+  if (language) {
     const envelope = object(value, ['narrationLanguage', 'turn'])
-    try { assertStoryNarrationLanguage(envelope.narrationLanguage, brief.language) } catch (error) {
+    try { assertStoryNarrationLanguage(envelope.narrationLanguage, language) } catch (error) {
       throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid adventure language response.', 502)
     }
     turnValue = envelope.turn
@@ -99,17 +99,17 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
     state: { inventory: list(state.inventory), discoveries: list(state.discoveries), relationships: list(state.relationships), progress: bounded(state.progress, 300) },
     ...(choices ? { choices } : {})
   }
-  const words = storyWordCount(turn.narration, brief.language)
+  const words = storyWordCount(turn.narration, language)
   if (words < 30 || words > 180) throw invalid()
   assertAdventurePrivacy(JSON.stringify(turn), brief)
   return turn
 }
 
-export async function generateAdventureTurn(story: StoredStory, view: AdventureView, text: string): Promise<AdventureTurn> {
+export async function generateAdventureTurn(story: StoredStory, view: AdventureView, text: string, language = story.brief.language): Promise<AdventureTurn> {
   const plan = story.content.scenes.map(scene => ({ title: scene.title.slice(0, 80), clue: scene.clue.slice(0, 200), context: scene.body.slice(0, 350) }))
   const input = {
     ...(story.brief.romance ? { romance: story.brief.romance } : {}),
-    title: story.content.title, style: story.content.narrationStyle, language: story.brief.language ?? story.content.narrationLanguage,
+    title: story.content.title, style: story.content.narrationStyle, language: language ?? story.content.narrationLanguage,
     plan, state: view.turn?.state ?? { inventory: [], discoveries: [], relationships: [], progress: 'The journey begins.' },
     recentNarration: view.turn?.narration ?? story.content.scenes[0].body.slice(0, 1000),
     action: text, actionsRemaining: view.actionsRemaining
@@ -133,10 +133,10 @@ export async function generateAdventureTurn(story: StoredStory, view: AdventureV
       ? 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"},"choices":["...","...","..."]}.'
       : 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"}}.',
     'State lists: at most 8 unique entries each, each at most 120 characters; progress at most 300 characters. Narration at most 1800 characters. No extra keys.',
-    storyLanguageInstruction(story.brief.language),
-    story.brief.language ? 'For this explicit language, wrap the requested turn JSON in exactly {"narrationLanguage":"' + story.brief.language + '","turn":{...the requested turn...}}. No other outer keys.' : ''
+    storyLanguageInstruction(language),
+    language ? 'For this explicit language, wrap the requested turn JSON in exactly {"narrationLanguage":"' + language + '","turn":{...the requested turn...}}. No other outer keys.' : ''
   ].join('\n')
-  return parseAdventureTurn(await generateStoryJson(system, input, 1600), story.brief, mode, isConcluding)
+  return parseAdventureTurn(await generateStoryJson(system, input, 1600), story.brief, mode, isConcluding, language)
 }
 
 export function adventureChoiceView(view: AdventureView, story: StoredStory): AdventureView {

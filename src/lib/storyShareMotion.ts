@@ -1,4 +1,5 @@
 import { SHARE_CARD_SIZES, type ShareCardFormat, type ShareCardTheme } from './personalStoryShareVisual'
+import { drawStoryArtwork, type StoryMotif } from './storyShareArtwork'
 
 export const SHARE_CLIP_SECONDS = 6
 const VIDEO_TYPES = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
@@ -11,11 +12,12 @@ export function shareVideoType(): string | null {
 
 export function drawShareMotion(
   context: CanvasRenderingContext2D, image: CanvasImageSource, width: number, height: number,
-  seconds: number, theme: ShareCardTheme
+  seconds: number, theme: ShareCardTheme, motif: StoryMotif = 'light', format: ShareCardFormat = 'story'
 ): void {
   const phase = seconds / SHARE_CLIP_SECONDS * Math.PI * 2
   const accent = theme === 'starlight' ? '229,195,140' : '134,97,54'
   context.drawImage(image, 0, 0, width, height)
+  if (motif !== 'light') drawStoryArtwork(context, motif, format, seconds)
   context.save()
   const glowX = width * (0.5 + 0.4 * Math.sin(phase))
   const glow = context.createRadialGradient(glowX, height * 0.25, 0, glowX, height * 0.25, width * 0.75)
@@ -46,6 +48,7 @@ export function drawShareMotion(
 
 export async function createShareClip(input: {
   svg: string; format: ShareCardFormat; theme: ShareCardTheme; signal: AbortSignal
+  motif?: StoryMotif
   onProgress: (progress: number) => void
 }): Promise<Blob> {
   const mimeType = shareVideoType()
@@ -78,7 +81,7 @@ export async function createShareClip(input: {
       image.src = svgUrl
     })
     input.signal.throwIfAborted()
-    drawShareMotion(context, image, width, height, 0, input.theme)
+    drawShareMotion(context, image, width, height, 0, input.theme, input.motif, input.format)
     stream = canvas.captureStream(30)
     const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 })
     return await new Promise<Blob>((resolve, reject) => {
@@ -129,7 +132,7 @@ export async function createShareClip(input: {
         if (settled || recorder.state === 'inactive') return
         try {
           const elapsed = start === undefined ? 0 : Math.min((performance.now() - start) / 1000, SHARE_CLIP_SECONDS)
-          drawShareMotion(context, image, width, height, elapsed, input.theme)
+          drawShareMotion(context, image, width, height, elapsed, input.theme, input.motif, input.format)
           input.onProgress(Math.min(99, Math.floor(elapsed / SHARE_CLIP_SECONDS * 100)))
           frame = requestAnimationFrame(draw)
         } catch { fail(new Error('Could not animate the share card.')) }
