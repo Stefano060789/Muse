@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { loadStoryLibrary, saveLibraryPersonalStory, selectPersonalStory, type LibraryEntry } from '../lib/storyLibrary'
+import { loadStoryLibrary, saveLibraryPersonalStory, selectPersonalStory, validatePersonalStory, type LibraryEntry } from '../lib/storyLibrary'
 import { accountFetch, supabase } from '../lib/accountClient'
 import { collectionCopy, interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
@@ -40,7 +40,12 @@ export default function MyStoriesPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Could not load your account stories.')
       if (!Array.isArray(data.stories)) throw new Error('The server returned an invalid personal story collection.')
-      for (const story of data.stories) saveLibraryPersonalStory(story)
+      const stories = data.stories.map(validatePersonalStory).sort((a, b) =>
+        Date.parse(a.createdAt) - Date.parse(b.createdAt) ||
+        (a.chapter?.number ?? 1) - (b.chapter?.number ?? 1) ||
+        a.id.localeCompare(b.id)
+      )
+      for (const story of stories) saveLibraryPersonalStory(story)
       refresh()
     } catch (cause) {
       setSyncError(cause instanceof Error ? cause.message : 'Could not sync your stories. Saved stories have not been removed.')

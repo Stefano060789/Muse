@@ -40,7 +40,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.body?.mode === 'journey' && req.body?.action === 'library') {
       const db = storyDatabase()
       const cap = adventureGlobalCap()
-      const records = await db.listPersonalJourneys(account.id)
+      const records = (await db.listPersonalJourneys(account.id)).sort((first, second) =>
+        Date.parse(first.createdAt) - Date.parse(second.createdAt) ||
+        (first.input.chapter?.number ?? 1) - (second.input.chapter?.number ?? 1) ||
+        first.id.localeCompare(second.id)
+      )
       const stories = await Promise.all(records.map(async record => {
         const capability = randomBytes(32).toString('hex')
         const result = await db.personalJourney({

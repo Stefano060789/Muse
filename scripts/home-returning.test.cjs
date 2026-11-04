@@ -190,6 +190,28 @@ function main() {
     assert.deepEqual(ui.assigned, ['/story'])
   }
   {
+    const firstChapter = entry('chapter-one', '2026-10-17T00:00:00.000Z', true)
+    firstChapter.story = {
+      ...firstChapter.story,
+      chapter: { number: 1, rootId: 'chapter-one' },
+      journey: { status: 'concluded' }
+    }
+    const secondChapter = entry('chapter-two', '2026-10-18T00:00:00.000Z')
+    secondChapter.story = {
+      ...secondChapter.story,
+      title: 'The next passage',
+      chapter: { number: 2, rootId: 'chapter-one', parentId: 'chapter-one', parentTitle: 'Story chapter-one' },
+      journey: { status: 'active' }
+    }
+    const ui = homeLibrary([secondChapter, firstChapter])
+    const tree = ui.flushEffects()
+    assert.ok(text(tree).includes('The next passage'), 'Returning Home offers the current in-progress chapter')
+    assert.ok(text(tree).includes('2/3'), 'The home card shows the current chapter scene progress')
+    button(tree, 'Continue story').props.onClick()
+    assert.deepEqual(ui.selected, ['chapter-two'], 'Continue story selects Chapter 2, not the completed parent')
+    assert.deepEqual(ui.assigned, ['/story'])
+  }
+  {
     const ui = homeLibrary([], 'Browser storage is unavailable.')
     const tree = ui.flushEffects()
     assert.ok(nodes(tree).some(node => node.props.role === 'alert' && text(node).includes('Browser storage is unavailable.')))
@@ -220,7 +242,7 @@ function main() {
     assert.equal(nodes(tree).find(node => node.type === 'select' && node.props['aria-label'] === 'Personal touches voice language').props.value, 'en-US')
     assert.ok(nodes(tree).some(node => node.props.role === 'alert' && text(node).includes('Saved story language is not supported')))
   }
-  console.log('6 returning-user Home and personal-touch checks passed')
+  console.log('7 returning-user Home and personal-touch checks passed')
 }
 
 try { main() } catch (error) {

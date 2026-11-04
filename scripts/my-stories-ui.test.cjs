@@ -11,8 +11,9 @@ function flatten(node) {
   return typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [node]
 }
 const label = node => flatten(node.props?.children).filter(value => ['string', 'number'].includes(typeof value)).join('')
-async function mount({ signedIn = false, responseError = '', invalid = false, selectionError = false, cacheError = false } = {}) {
-  const state = [], effects = [], requests = [], navigations = [], selections = [], listeners = new Map()
+async function mount({ signedIn = false, responseError = '', invalid = false, selectionError = false, cacheError = false, cloudStories } = {}) {
+  const state = [], effects = [], requests = [], navigations = [], selections = [], saveOrder = [], listeners = new Map()
+  let latestSavedStoryId = null
   let cursor = 0, tree
   const entries = [
     { kind: 'personal', id: 'active', updatedAt: '2026-10-26T01:00:00Z', story: { title: 'Active story', currentStep: 0, scenes: [{}], journey: { status: 'active' } } },
@@ -71,8 +72,11 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
       loadStoryLibrary: () => ({ library: { entries: [...entries] }, error: '' }),
       saveLibraryPersonalStory(story) {
         if (cacheError) throw new Error('Cannot save account story in this browser')
+        saveOrder.push(story.id)
+        latestSavedStoryId = story.id
         entries.push({ kind: 'personal', id: story.id, updatedAt: '2026-10-27T00:00:00Z', story })
       },
+      validatePersonalStory: story => story,
       selectPersonalStory(id) { if (selectionError) throw new Error('Cannot select story'); selections.push(id) }
     }
     if (id.endsWith('/accountClient')) return {
@@ -80,7 +84,7 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
       accountFetch: async (_url, init) => {
         requests.push(JSON.parse(init.body))
         return { ok: !responseError, json: async () => responseError ? { error: responseError } : {
-          stories: invalid ? null : [{ id: 'cloud', title: 'Cloud story', journey: { status: 'active' } }]
+          stories: invalid ? null : cloudStories || [{ id: 'cloud', title: 'Cloud story', journey: { status: 'active' } }]
         } }
       }
     }
@@ -95,7 +99,7 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
   }
   const nodes = () => flatten(tree).filter(node => typeof node === 'object')
   await flush()
-  return { flush, nodes, requests, navigations, selections, listeners,
+  return { flush, nodes, requests, navigations, selections, listeners, saveOrder, latestSavedStoryId: () => latestSavedStoryId,
     async click(text) { const button = nodes().find(node => node.type === 'button' && label(node) === text); assert.ok(button, text); button.props.onClick(); await flush() } }
 }
 async function main() {
@@ -149,6 +153,13 @@ async function main() {
   assert.equal(account.requests.length, 1)
   assert.deepEqual(account.requests[0], { mode: 'journey', action: 'library' })
   assert.ok(account.nodes().some(node => node.type === 'h3' && label(node) === 'Cloud story'))
+  const chapters = await mount({ signedIn: true, cloudStories: [
+    { id: 'chapter-two', createdAt: '2026-11-04T12:00:00Z', title: 'Chapter Two', currentStep: 0, responses: [], scenes: [{}], chapter: { number: 2, rootId: 'chapter-one', parentId: 'chapter-one', parentTitle: 'Chapter One' }, journey: { status: 'active' } },
+    { id: 'chapter-one', createdAt: '2026-11-04T11:00:00Z', title: 'Chapter One', currentStep: 0, responses: [], scenes: [{}], chapter: { number: 1, rootId: 'chapter-one' }, journey: { status: 'concluded' } }
+  ] })
+  assert.deepEqual(chapters.saveOrder, ['chapter-one', 'chapter-two'], 'Server result order cannot make an earlier chapter the latest story')
+  assert.equal(chapters.latestSavedStoryId(), 'chapter-two', 'Returning to Story opens the newest chapter after account sync')
+  assert.ok(chapters.nodes().some(node => node.type === 'h3' && label(node) === 'Chapter Two'), 'Account sync retains the in-progress next chapter')
   const unavailable = await mount({ responseError: 'Please sign in' })
   await unavailable.click('Sync account stories')
   unavailable.listeners.get('focus')()

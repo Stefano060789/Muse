@@ -574,6 +574,8 @@ async function main() {
     assert.equal(grandchild.body.story.chapter.parentId, child.id)
     const cloud = await api({ mode: 'journey', action: 'library' })
     assert.equal(cloud.body.stories.find(story => story.id === child.id).chapter.number, 2)
+    assert.equal(cloud.body.stories.at(-1).id, grandchild.body.story.id,
+      'Account-library stories are returned oldest first so syncing cannot make an earlier chapter current')
     const record = await storyRepository().personalJourney({ operation: 'view', id: grandchild.body.story.id, accountId: 'local-development', capabilityHash: journey.journeyHash(grandchild.body.story.journey.capability), cap: 1000 })
     assert.equal(record.record.input.continuation.previousEnding, conclusion)
     assert.equal(record.record.input.continuation.recentActions.length, 3, 'Continuity stays bounded instead of nesting all previous chapters')
