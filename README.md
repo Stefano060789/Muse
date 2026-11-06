@@ -1,5 +1,25 @@
 # Muse
 
+Stripe is **sandbox-only and disabled by default**. See
+[docs/STRIPE-SANDBOX.md](docs/STRIPE-SANDBOX.md) for the explicit opt-in,
+public test catalogue, secure manual provisioning and shared-account event routing.
+Annual and gift prices remain catalogue-only; live charging is not supported.
+
+Support and feedback default to **hellogodwit@gmail.com**, as approved by the
+operator. Support, footer and legal-contact surfaces share this address through
+`legalContact.ts`. `NEXT_PUBLIC_MUSE_SUPPORT_EMAIL` remains an explicit deployment
+override: remove an obsolete value or set it to the approved address before
+rebuilding. Contact links open the user's email application; they do not send
+mail automatically or establish inbox delivery. Operator/legal review gates
+remain separate.
+
+> Commercial-readiness restrictions: ElevenLabs narration and Runway video
+> generation are disabled server-side pending commercial entitlement review.
+> Google Cloud narration remains optional when fully configured and consented;
+> story generation continues to use the server-configured Anthropic, OpenAI or
+> Groq provider. See [docs/COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md)
+> for data-use, owner-confirmation and unresolved asset/license audit gates.
+
 ## Google WaveNet narration
 
 For lower-cost multilingual MP3 narration, follow
@@ -37,6 +57,8 @@ The full product definition lives in four documents:
   comparison, pricing, and go-to-market
 - [docs/MARKET-ANALYSIS.md](docs/MARKET-ANALYSIS.md) — market differentiation,
   revenue scenarios, risks, and validation targets
+- [docs/COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md) — provider status,
+  owner-confirmation gates, asset provenance and dependency-license inventory
 
 ## Gifts inside Shared Story
 
@@ -218,7 +240,7 @@ the reviewed caption and homepage link, not the video. Passage selection, editin
 preview and export require no AI call or AI consent and do not send private
 story contents to a server. Optional AI captions and Runway cinema remain separate.
 
-### Optional Runway cinematic sharing
+### Runway video sharing — disabled
 
 **Bring this moment to life · Runway** is an optional premium alternative to the
 no-AI story-object templates, not the default sharing path:
@@ -532,10 +554,9 @@ Generation stays disabled unless all server-only settings are present:
 - `MUSE_STUDIO_NARRATION_ENABLED=true`
 - Google: `NEXT_PUBLIC_NARRATION_PROVIDER=google`, `GOOGLE_TTS_API_KEY` and
   `MUSE_GOOGLE_TTS_BUDGET_CHARACTERS`, with the storage setup in the Google guide.
-- Legacy ElevenLabs: `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` and
-  `MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS`, an explicit positive integer
-  lifetime reservation cap, shared across stories. This is **not a euro cap**;
-  check provider pricing and set provider-side billing limits too.
+- ElevenLabs Studio generation is blocked pending commercial entitlement
+  review. Legacy ElevenLabs credentials/settings do not enable narration and
+  should not be configured for Muse.
 
 Apply `supabase/shared-story-studio.sql` before enabling hosted Studio.
 SQLite migrates automatically. The hosted migration is not applied by local
@@ -660,16 +681,25 @@ synthesized in the browser, is not AI-generated audio, and uses no AI
 interaction allowance; scenes start it only after the listener presses Play.
 
 The trial and monthly story/interaction counters are server-enforced after
-applying `supabase/billing.sql`. Monthly Plus checkout uses Stripe and requires
-`STRIPE_SECRET_KEY`, `STRIPE_MONTHLY_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and
+applying `supabase/billing.sql` (not applied by the sandbox change). Monthly
+Plus checkout is test-only and requires `MUSE_STRIPE_SANDBOX_ENABLED=true`,
+`MUSE_STRIPE_ISOLATED_BILLING_STORAGE_ACK=isolated-test-database` after verifying
+that Supabase targets isolated test entitlement storage,
+a test `STRIPE_SECRET_KEY`, `STRIPE_MONTHLY_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and
 `NEXT_PUBLIC_SITE_URL`. Configure Stripe webhook `/api/stripe-webhook` for
-subscription created, updated and deleted events. The migration starts existing
+test subscription created, updated and deleted events, with a separate signing
+secret per app. Only Muse-tagged monthly sandbox subscriptions are fulfilled.
+See [sandbox provisioning and routing](docs/STRIPE-SANDBOX.md). The migration starts existing
 accounts' trial on migration and new accounts' trial at signup; the trial
 expires after one calendar month and never charges automatically. Usage-limit
 responses link users to the Plus benefits and opt-in checkout.
 
-Subscription checkout is not operational until valid Stripe credentials,
-price IDs and the Supabase migration are configured. The One-off Long Gift
+Sandbox checkout is not operational until the explicit opt-in, test credentials,
+the public catalogue defaults (or valid test price overrides) and isolated test
+Supabase schema are configured. Runtime account verification must match
+`acct_1UQsxxC5ufGRzg9R`; lookup failures or mismatches fail closed. Live checkout
+remains unsupported regardless of configuration; automatic tax is disabled.
+The One-off Long Gift
 purchase flow and its proposed 60-action limit are still not implemented; do
 not sell or advertise it as an active purchase. Final taxes, terms,
 cancellation/refund policy, backup/recovery and end-to-end webhook testing
@@ -944,8 +974,9 @@ Old self-contained `/couples?share=...` links are explicitly retired;
 
 The entire creator brief, including the answer and final message, is sent
 to the configured provider (Claude Haiku by default; OpenAI/Groq when selected).
-Narration text is sent to Google Cloud or ElevenLabs when selected and consented; browser
-dictation can use the browser vendor's speech service. Do not include
+Narration text is sent to Google Cloud only when Google mode is configured and
+consented; otherwise Listen uses browser/device speech. Browser dictation can
+use the browser vendor's speech service. Do not include
 sensitive third-party personal data. Shared Story does not read or forward
 the creator's local Myself profile automatically.
 
@@ -1282,10 +1313,11 @@ explicitly to voice-only. No new account, environment variable or database
 migration is required. Run `npm run test:narration` and `npm run test:ambience`.
 
 This free immersive mode does not enable premium narration or run paid comparisons.
-The legacy operator-configured ElevenLabs mode remains separate and still
-incurs generation costs per request; do not use it for production recipients.
-Shared Story instead uses the optional private, cached Studio path above,
-which requires its own migration, opt-in and lifetime character reservation cap.
+ElevenLabs narration is disabled server-side pending commercial entitlement
+review, including when legacy provider settings or credentials are present.
+Shared Story keeps the optional private, cached Google Studio path described
+above; Google generation still requires its own migration, opt-in and lifetime
+character reservation cap.
 Realistic licensed crowd/footstep recordings and premium voice comparison remain
 future work; no commercial quality claim is made for local synthesized ambience.
 

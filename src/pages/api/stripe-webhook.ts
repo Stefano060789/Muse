@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import type Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { applyStripeSubscription, stripeClient } from '../../lib/billing'
+import { requireStripeSandbox, isMuseSandboxSubscription, requireSandboxSubscription, requireSandboxAccount } from '../../lib/stripeSandbox'
+import { STRIPE_SANDBOX_ACCOUNT_ID } from '../../lib/stripeCatalogue'
 
 export const config = { api: { bodyParser: false } }
 
@@ -26,6 +28,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  try { requireStripeSandbox() } catch {
+    return res.status(503).json({ error: 'Stripe sandbox webhook is disabled.' })
+  }
   const signature = req.headers['stripe-signature']
   const secret = process.env.STRIPE_WEBHOOK_SECRET
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -47,6 +52,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     event = stripeClient().webhooks.constructEvent(body, signature, secret)
   } catch {
     return res.status(400).json({ error: 'Invalid Stripe webhook signature.' })
+  }
+  if (event.livemode !== false) {
+    return res.status(400).json({ error: 'Live Stripe events are not permitted.' })
+  }
+  if (event.account && event.account !== STRIPE_SANDBOX_ACCOUNT_ID) {
+    return res.status(400).json({ error: 'Stripe event is from an unapproved account.' })
+  }
+  if (!['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'].includes(event.type)) {
+    return res.status(200).json({ received: true, ignored: true })
+  }
+  const subscription = event.data.object as Stripe.Subscription
+  if (subscription.livemode !== false) {
+    return res.status(400).json({ error: 'Live Stripe subscriptions are not permitted.' })
+  }
+  if (!isMuseSandboxSubscription(subscription)) {
+    return res.status(200).json({ received: true, ignored: true })
+  }
+  try { requireSandboxSubscription(subscription) } catch {
+    return res.status(400).json({ error: 'Unsupported Muse sandbox subscription.' })
+  }
+  try { await requireSandboxAccount(stripeClient()) } catch {
+    return res.status(503).json({ error: 'Could not verify the approved Stripe sandbox account.' })
   }
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const { error: claimError } = await admin.from('muse_stripe_events').insert({ event_id: event.id })

@@ -7,7 +7,6 @@ import { googleNarrationConfiguration, googleVoice, synthesizeGoogleNarration } 
 // A reservation is never retried or refunded: an interrupted provider request may
 // already have been billed. The budget is lifetime characters, not a dollar quote.
 export const STUDIO_MAX_BYTES = 5 * 1024 * 1024
-export const STUDIO_MODEL = 'eleven_multilingual_v2'
 export type StudioRecord = {
   story_id: string; scene_index: number; fingerprint: string; object_key: string
   status: 'pending' | 'ready' | 'failed'; characters: number; size: number; created_at: string
@@ -22,21 +21,14 @@ export type StudioRequest =
 export type StudioResult = { records: StudioRecord[]; reserved: boolean; keys: string[] }
 
 export function studioConfiguration() {
-  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
-    const google = googleNarrationConfiguration()
-    return { available: process.env.MUSE_STUDIO_NARRATION_ENABLED === 'true' && google.available,
-      budget: google.budget, voice: 'google-wavenet', key: '',
-      reason: process.env.MUSE_STUDIO_NARRATION_ENABLED !== 'true' ? 'disabled' : google.reason }
+  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER !== 'google') {
+    return { available: false, budget: 0, voice: '', reason: process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'elevenlabs'
+      ? 'commercial-entitlement-required' : 'disabled' }
   }
-  const raw = process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS
-  const budget = raw && /^[1-9]\d*$/.test(raw) ? Number(raw) : 0
-  const voice = process.env.ELEVEN_VOICE_ID || ''
-  const key = process.env.ELEVEN_API_KEY || ''
-  const enabled = process.env.MUSE_STUDIO_NARRATION_ENABLED === 'true'
-  const configured = Number.isSafeInteger(budget) && budget > 0 && budget <= 100000000 &&
-    /^[a-zA-Z0-9_-]{1,100}$/.test(voice) && Boolean(key.trim())
-  return { available: enabled && configured, budget, voice, key,
-    reason: !enabled ? 'disabled' : !configured ? 'configuration-required' : null }
+  const google = googleNarrationConfiguration()
+  return { available: process.env.MUSE_STUDIO_NARRATION_ENABLED === 'true' && google.available,
+    budget: google.budget, voice: 'google-wavenet',
+    reason: process.env.MUSE_STUDIO_NARRATION_ENABLED !== 'true' ? 'disabled' : google.reason }
 }
 
 export function studioScene(story: StoredStory, sceneIndex: unknown) {
@@ -64,40 +56,6 @@ export async function studioStatus(db: StoryRepository, story: StoredStory) {
   }
 }
 
-async function synthesize(text: string, config: ReturnType<typeof studioConfiguration>): Promise<Uint8Array> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 40000)
-  try {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voice}?output_format=mp3_44100_128`, {
-      method: 'POST', redirect: 'error', signal: controller.signal,
-      headers: { 'xi-api-key': config.key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: STUDIO_MODEL })
-    })
-    if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'audio/mpeg') {
-      throw new Error('Invalid provider response')
-    }
-    const reader = response.body.getReader()
-    const chunks: Uint8Array[] = []
-    let size = 0
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        size += value.length
-        if (size > STUDIO_MAX_BYTES) throw new Error('Audio too large')
-        chunks.push(value)
-      }
-    } finally { await reader.cancel().catch(() => undefined) }
-    const audio = Buffer.concat(chunks)
-    if (audio.length < 3 || !(audio.subarray(0, 3).toString() === 'ID3' || (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0))) {
-      throw new Error('Invalid MP3')
-    }
-    return audio
-  } catch {
-    throw new SharedStoryError('Studio provider failed. This reservation remains charged and cannot be retried.', 502)
-  } finally { clearTimeout(timeout) }
-}
-
 export async function generateStudioScene(db: StoryRepository, story: StoredStory, index: unknown, store = sharedMediaStore()) {
   const { text, sceneIndex } = studioScene(story, index)
   // Ready cache playback/reuse does not require a paid provider to remain enabled.
@@ -107,14 +65,16 @@ export async function generateStudioScene(db: StoryRepository, story: StoredStor
     return studioStatus(db, story)
   }
   const config = studioConfiguration()
-  if (!config.available) throw new SharedStoryError('Studio generation is disabled or lacks credentials and an explicit character budget.', 503)
+  if (!config.available) throw new SharedStoryError(config.reason === 'commercial-entitlement-required'
+    ? 'ElevenLabs Studio narration is disabled pending commercial entitlement review.'
+    : 'Studio narration is disabled or not configured.', 503)
   if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
     googleVoice(story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
   }
   await store.ready('audio/mpeg')
   const record: StudioRecord = {
     story_id: story.id, scene_index: sceneIndex,
-    fingerprint: createHash('sha256').update(JSON.stringify([text, process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google-wavenet' : STUDIO_MODEL,
+    fingerprint: createHash('sha256').update(JSON.stringify([text, 'google-wavenet',
       config.voice, story.content.narrationLanguage, story.content.narrationStyle, 'mp3_44100_128'])).digest('hex'),
     object_key: `stories/${story.id}/${randomUUID()}.mp3`, status: 'pending',
     characters: text.length, size: 0, created_at: new Date().toISOString()
@@ -122,9 +82,7 @@ export async function generateStudioScene(db: StoryRepository, story: StoredStor
   const reservation = await db.studio({ operation: 'reserve', record, budget: config.budget })
   if (!reservation.reserved) throw new SharedStoryError('This scene already has a Studio reservation. Refresh its status.', 409)
   try {
-    const audio = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google'
-      ? await synthesizeGoogleNarration(text, story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
-      : await synthesize(text, config)
+    const audio = await synthesizeGoogleNarration(text, story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
     await store.write(record.object_key, audio, 'audio/mpeg')
     await db.studio({ operation: 'finish', record: { ...record, size: audio.length } })
   } catch (error) {

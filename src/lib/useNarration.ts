@@ -68,7 +68,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const paused = useRef(false)
   const pendingAdvance = useRef<(() => void) | null>(null)
   const configuredProvider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER
-  const provider = !options.browserOnly && !deviceOnly && (configuredProvider === 'elevenlabs' || configuredProvider === 'google') ? configuredProvider : 'browser'
+  const provider = !options.browserOnly && !deviceOnly && configuredProvider === 'google' ? 'google' : 'browser'
   const aiStyle = NARRATION_STYLES.includes(metadata.narrationStyle as NarrationStyle) ? metadata.narrationStyle : undefined
   const style = styleOverride === 'auto' ? aiStyle || legacyNarrationStyle(mood) : styleOverride
   let inferredLanguage = 'en-US'

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { SharedStoryError } from './sharedStory'
+import { sandboxApiKey, requireSandboxSubscription, requireSandboxAccount } from './stripeSandbox'
 
 export type BillingStatus = {
   tier: 'free' | 'plus'
@@ -24,8 +25,7 @@ function billingDatabase() {
 }
 
 export function stripeClient() {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) throw new SharedStoryError('Subscription checkout is not configured yet.', 503)
+  const key = sandboxApiKey()
   return new Stripe(key, { apiVersion: '2022-11-15' })
 }
 
@@ -71,13 +71,10 @@ export async function reserveBillingUsage(ownerId: string, requestId: string, ki
 }
 
 export async function applyStripeSubscription(subscription: Stripe.Subscription) {
+  requireSandboxSubscription(subscription)
+  await requireSandboxAccount(stripeClient())
   const ownerId = subscription.metadata?.muse_owner_id
   if (!ownerId) throw new SharedStoryError('Stripe subscription is missing its Muse account reference.', 400)
-  const priceId = subscription.items.data[0]?.price.id
-  const configuredPrice = process.env.STRIPE_MONTHLY_PRICE_ID
-  if (!configuredPrice || priceId !== configuredPrice) {
-    throw new SharedStoryError('Stripe subscription does not match the configured Muse Plus price.', 400)
-  }
   const status = subscription.status === 'active' ? 'active'
     : subscription.status === 'past_due' ? 'past_due'
       : 'canceled'

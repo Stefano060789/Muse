@@ -44,6 +44,7 @@ function load(relative) {
     if (id.endsWith('/shareConsentCopy')) return load('src/lib/shareConsentCopy.ts')
     if (id.endsWith('/audioControlsCopy')) return load('src/lib/audioControlsCopy.ts')
     if (id.endsWith('/runwayShareCopy')) return load('src/lib/runwayShareCopy.ts')
+    if (id.endsWith('/providerStatusCopy')) return load('src/lib/providerStatusCopy.ts')
     throw new Error(`Unexpected dependency ${id} in ${relative}`)
   }
   new Function('module', 'exports', 'require', code)(module, module.exports, resolve)
@@ -121,8 +122,14 @@ for (const pageName of ['privacy', 'terms', 'support']) {
     assert.ok(text.includes(copy.publicLegalCopy(locale).eyebrow),
       `${pageName} renders its ${locale} shared eyebrow`)
     if (pageName === 'privacy') {
-      assert.ok(text.includes(load('src/lib/runwayShareCopy.ts').runwayShareCopy(locale).disclosure),
-        `Privacy explains Runway processing and retention in ${locale}`)
+      const runway = load('src/lib/runwayShareCopy.ts').runwayShareCopy(locale)
+      const provider = load('src/lib/providerStatusCopy.ts').providerStatusCopy(locale)
+      assert.ok(text.includes(runway.statusTitle) && text.includes(runway.commercialStatus),
+        `Privacy explains disabled Runway commercial status in ${locale}`)
+      assert.ok(text.includes(provider.title) && text.includes(provider.body),
+        `Privacy explains enabled and disabled provider processing in ${locale}`)
+      assert.ok(!text.includes(runway.disclosure),
+        `Privacy does not advertise disabled Runway processing in ${locale}`)
     }
   }
   assert.notEqual(textContent(rendered.get('en-US')), textContent(rendered.get('it-IT')),
@@ -138,6 +145,6 @@ process.env.NEXT_PUBLIC_MUSE_SUPPORT_EMAIL = 'help@example.test'
 assert.match(textContent(renderPage('support', 'en-US')), /help@example\.test/)
 assert.match(textContent(renderPage('support', 'en-US')), /Email support/)
 delete process.env.NEXT_PUBLIC_MUSE_SUPPORT_EMAIL
-assert.match(textContent(renderPage('support', 'en-US')), /none has been invented/)
+assert.match(textContent(renderPage('support', 'en-US')), /hellogodwit@gmail\.com/)
 
 console.log('PASS public legal pages render complete localized copy for all seven interface languages')

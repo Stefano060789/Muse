@@ -3,7 +3,7 @@ import { requireAccount } from '../../lib/accountAuth'
 import { requireAccountProviderConsent } from '../../lib/providerConsent'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
-import { createRunwayJob, publicRunwayJob, refreshRunwayJob, runwayIdentifier, runwayQuote } from '../../lib/runwayShare'
+import { createRunwayJob, publicRunwayJob, refreshRunwayJob, runwayIdentifier } from '../../lib/runwayShare'
 import { readRunwayVideo, runwayJob, runwayJobs } from '../../lib/runwayShareStore'
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' }, responseLimit: false }, maxDuration: 60 }
@@ -18,7 +18,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const account = await requireAccount(req, res)
     if (!account) return
-    if (req.body?.action === 'quote') return res.status(200).json(runwayQuote())
+    if (req.body?.action === 'quote') {
+      return res.status(503).json({
+        error: 'Runway video generation is disabled pending commercial entitlement review.',
+        code: 'runway-commercial-entitlement-required'
+      })
+    }
     if (req.body?.action === 'list') return res.status(200).json({ jobs: (await runwayJobs(account.id)).map(publicRunwayJob) })
     if (req.body?.action === 'create') {
       if (account.id !== 'local-development') requireAccountProviderConsent(account.permissions)

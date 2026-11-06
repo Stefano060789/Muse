@@ -2,6 +2,7 @@ import { createHash, createHmac } from 'crypto'
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { SharedStoryError } from './sharedStory'
 import { consumeOperation, storeOperationAlert, operationStatus } from './operationsStore'
+import { getPublicContactConfig } from './legalContact'
 
 export const OPERATION_EVENTS = ['ai-budget-warning', 'ai-budget-exhausted', 'provider-failure', 'storage-failure', 'request-failure', 'client-render-failure', 'story-created'] as const
 export type OperationEvent = typeof OPERATION_EVENTS[number]
@@ -99,7 +100,7 @@ export async function productionOperationStatus() {
   const cap = dailyAiLimit()
   const status = await operationStatus(aiDayBucket())
   const operator = process.env.NEXT_PUBLIC_MUSE_OPERATOR_NAME?.trim()
-  const support = process.env.NEXT_PUBLIC_MUSE_SUPPORT_EMAIL?.trim()
+  const support = getPublicContactConfig(operator, process.env.NEXT_PUBLIC_MUSE_SUPPORT_EMAIL).supportEmail.value
   const backupTime = Date.parse(process.env.MUSE_BACKUP_LAST_VERIFIED_AT || '')
   return {
     day: new Date(Date.now()).toISOString().slice(0, 10), used: status.used, cap,

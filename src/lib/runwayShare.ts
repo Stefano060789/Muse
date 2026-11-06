@@ -5,25 +5,19 @@ import { runwayJob, reserveRunwayJob, runwayStoreReady, updateRunwayJob, writeRu
 import { reserveAiAttempt } from './operations'
 
 export function runwayConfiguration() {
-  const budget = Number(process.env.MUSE_RUNWAY_BUDGET_CREDITS || '0')
-  const dailyCap = Number(process.env.MUSE_RUNWAY_ACCOUNT_DAILY_CAP || '2')
-  const key = process.env.RUNWAYML_API_SECRET?.trim() || ''
-  const enabled = process.env.MUSE_RUNWAY_SHARING_ENABLED === 'true'
-  const valid = Number.isInteger(budget) && budget >= RUNWAY_SHARE_CREDITS && budget <= 100000 &&
-    Number.isInteger(dailyCap) && dailyCap >= 1 && dailyCap <= 10 && !!key
-  return { available: enabled && valid, key, budget, dailyCap }
+  return { available: false, key: '', budget: 0, dailyCap: 0, reason: 'commercial-entitlement-required' }
 }
 export function runwayQuote() {
   return {
     available: runwayConfiguration().available, model: RUNWAY_SHARE_MODEL,
     seconds: RUNWAY_SHARE_SECONDS, ratio: RUNWAY_SHARE_RATIO, credits: RUNWAY_SHARE_CREDITS,
     estimatedUsd: RUNWAY_SHARE_CREDITS * 0.01, pricingCheckedAt: '2026-11-03',
-    consentVersion: RUNWAY_SHARE_CONSENT
+    consentVersion: RUNWAY_SHARE_CONSENT, disabledReason: runwayConfiguration().reason
   }
 }
 function configured() {
   const config = runwayConfiguration()
-  if (!config.available) throw new SharedStoryError('Cinematic generation is disabled or not configured. Set the server-only Runway key and spending cap.', 503)
+  if (!config.available) throw new SharedStoryError('Runway generation and provider status checks are disabled pending commercial entitlement review.', 503)
   return config
 }
 export function runwayIdentifier(value: unknown): string {

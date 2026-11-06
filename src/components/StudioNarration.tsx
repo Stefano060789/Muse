@@ -20,13 +20,13 @@ type Props = {
   check?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
-  provider?: 'google' | 'elevenlabs'
+  provider?: 'google' | 'disabled'
   playRequest?: number
 }
 
 export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
   ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9, playRequest = 0,
-  provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'elevenlabs' }: Props) {
+  provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'disabled' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const permissions = useAccountPermissions()
   const [localConsent, setConsent] = useState(false)
@@ -127,17 +127,17 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   }, [playRequest])
 
   const content = <>
-    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'Studio voice recording'} · Listen plays saved audio; it never generates a paid recording automatically.</p> : null}
+    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'New Studio narration is disabled pending commercial entitlement review. Saved recordings are unchanged.'} · Listen plays saved audio; it never generates a paid recording automatically.</p> : null}
     {owner ? <>
-      <details><summary>Recording privacy and cost</summary><p>Optional {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} narration of this scene and clue, excluding the private answer and reveal. New recordings use the paid narration allowance; replay reuses them. Live AI turns are not included.</p></details>
+      <details><summary>Recording privacy and cost</summary><p>{provider === 'google' ? 'Optional Google Cloud narration sends this scene and clue, excluding the private answer and reveal. New recordings use the paid narration allowance; replay reuses them. Live AI turns are not included.' : 'Previously saved Studio audio may still be played. New cloud recordings are disabled pending commercial entitlement review.'}</p></details>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
-      {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
-      {status?.enabled && !status.ready && !status.blocked ? <>
-        <ExplicitConsent scope="cloudAudio" checked={consent} onChange={setConsent}>Send this scene and clue to {provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} and use a paid generation attempt. <a href="/privacy">Privacy</a></ExplicitConsent>
+      {status ? <p role="status">{status.message || (status.ready ? 'This scene has a prepared recording.' : provider !== 'google' ? 'New Studio narration is disabled pending commercial entitlement review.' : status.enabled ? 'Studio is configured. This scene has no recording yet.' : 'Studio generation is disabled until credentials and a budget are configured.')}</p> : null}
+      {provider === 'google' && status?.enabled && !status.ready && !status.blocked ? <>
+        <ExplicitConsent scope="cloudAudio" checked={consent} onChange={setConsent}>Send this scene and clue to Google Cloud and use a paid generation attempt. <a href="/privacy">Privacy</a></ExplicitConsent>
         <button type="button" disabled={busy || disabled || !consent} onClick={() => void run('generate')}>Prepare this scene&apos;s Studio audio</button>
       </> : null}
     </> : null}
-    {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load Studio audio'}</button> : null}
+    {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load saved Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
     {url ? <>
@@ -158,7 +158,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   </>
   if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>
     {content}
-    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'AI-generated Studio narration.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Listen starts playback; if your browser blocks it, press Play. It never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
+    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'This is a sender-prepared saved recording.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Listen starts playback; if your browser blocks it, press Play. It never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
   </section>
   return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>{content}</section>
 }

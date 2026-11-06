@@ -1,6 +1,8 @@
 import type { StoryLanguageCode } from './storyLanguage'
 
 const english = {
+  statusTitle: 'Runway video sharing status',
+  commercialStatus: 'Runway video generation is disabled pending commercial entitlement review. Muse does not send prompts or starting illustrations to Runway. Previously saved private clips and jobs are not deleted.',
   open: 'Bring this moment to life · Runway',
   title: 'Your story, brought to life',
   brief: 'Visual brief sent with Muse’s local story illustration',
@@ -11,7 +13,7 @@ const english = {
   generate: 'Generate cinematic clip',
   loading: 'Loading cinematic settings…',
   pending: 'Runway is preparing your clip. You can leave and check saved jobs later; no new paid request is made.',
-  unavailable: 'Runway generation is not enabled yet. Configure the private API key, spending cap and storage first.',
+  unavailable: 'Runway is disabled pending commercial entitlement review. No provider request or replacement generation is made; saved private clips and jobs are unchanged.',
   failure: 'Runway did not complete this generation. The reservation remains counted. No automatic paid retry was made.',
   unknown: 'Submission could not be confirmed. A reservation may still be counted. Check saved jobs and the Runway dashboard before paying for another attempt.',
   refresh: 'Refresh saved jobs',
@@ -31,13 +33,15 @@ type Copy = Record<keyof typeof english, string>
 const copies: Record<StoryLanguageCode, Copy> = {
   'en-US': english,
   'it-IT': {
+    statusTitle: 'Stato della condivisione video Runway',
+    commercialStatus: 'La generazione video Runway è disabilitata in attesa della verifica dei diritti commerciali. Muse non invia prompt o immagini iniziali a Runway. I video e i lavori privati già salvati non vengono eliminati.',
     open: 'Dai vita a questo momento · Runway', title: 'La tua storia prende vita', brief: 'Descrizione visiva e illustrazione locale Muse inviate a Runway',
     disclosure: 'La descrizione visiva e un’immagine iniziale disegnata localmente da Muse vengono inviate a Runway, un fornitore esterno di video IA. L’immagine non contiene testo della storia. Non includere dati personali nella descrizione. Titolo, passaggio, risposte, riflessioni e ricordi non vengono inviati automaticamente. Il video resta privato in Muse senza scadenza automatica; contatta il gestore per rimuoverlo. Le copie scaricate restano sul dispositivo.',
     cost: 'Costo stimato del fornitore', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 secondi · 16 crediti Runway (circa 0,16 USD) prima delle imposte. Prezzi verificati il 3 novembre 2026. Anche errori e interruzioni possono essere addebitati. Questi crediti sono separati dai tentativi storia Muse.',
     approve: 'Approvo l’invio a Runway della descrizione e dell’immagine iniziale generata da Muse, e l’uso dei crediti indicati per una generazione a pagamento.',
     generate: 'Genera il video cinematografico', loading: 'Caricamento impostazioni…',
     pending: 'Runway sta preparando il video. Puoi tornare più tardi ai lavori salvati: non viene fatta una nuova richiesta a pagamento.',
-    unavailable: 'Runway non è ancora abilitato. Configura prima chiave privata, limite di spesa e archivio.',
+    unavailable: 'Runway è disabilitato in attesa della verifica dei diritti commerciali. Non vengono inviate richieste né create generazioni sostitutive; video e lavori privati salvati restano invariati.',
     failure: 'Runway non ha completato il video. La prenotazione resta conteggiata. Nessun nuovo tentativo automatico a pagamento.',
     unknown: 'Invio non confermato. Una prenotazione potrebbe restare conteggiata. Controlla i lavori salvati e il pannello Runway prima di pagare un altro tentativo.',
     refresh: 'Aggiorna lavori salvati', recent: 'I tuoi video recenti', newClip: 'Prepara un altro video',
@@ -48,13 +52,15 @@ const copies: Record<StoryLanguageCode, Copy> = {
     status: 'Lavoro video', settings: 'Accedi / controlla i permessi IA', close: 'Chiudi lo studio cinematografico', submitting: 'Invio di una richiesta a pagamento…'
   },
   'es-ES': {
+    statusTitle: 'Estado del vídeo de Runway',
+    commercialStatus: 'La generación de vídeo de Runway está desactivada mientras se revisan los derechos comerciales. Muse no envía instrucciones ni imágenes iniciales a Runway. Los vídeos y trabajos privados ya guardados no se eliminan.',
     open: 'Da vida a este momento · Runway', title: 'Tu historia cobra vida', brief: 'Descripción visual e ilustración local de Muse enviadas a Runway',
     disclosure: 'Se envían a Runway, un proveedor externo de vídeo IA, la descripción visual y una imagen inicial dibujada localmente por Muse. La imagen no contiene texto de la historia. No incluyas datos personales en la descripción. El título, pasaje, respuestas, reflexiones y recuerdos no se envían automáticamente. El vídeo queda privado en Muse sin caducidad automática; contacta al operador para retirarlo. Las copias descargadas permanecen en tu dispositivo.',
     cost: 'Coste estimado del proveedor', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 segundos · 16 créditos Runway (unos 0,16 USD) antes de impuestos. Precios revisados el 3 de noviembre de 2026. Los fallos e interrupciones pueden cobrarse. Son independientes de las interacciones Muse.',
     approve: 'Apruebo enviar a Runway esta descripción y la imagen inicial generada por Muse, y usar los créditos indicados para una generación de pago.',
     generate: 'Generar vídeo cinematográfico', loading: 'Cargando ajustes…',
     pending: 'Runway prepara el vídeo. Puedes volver a los trabajos guardados sin iniciar otra solicitud de pago.',
-    unavailable: 'Runway aún no está habilitado. Configura la clave privada, límite de gasto y almacenamiento.',
+    unavailable: 'Runway está desactivado mientras se revisan los derechos comerciales. No se envían solicitudes ni se crean generaciones de reemplazo; los vídeos y trabajos privados guardados no cambian.',
     failure: 'Runway no completó el vídeo. La reserva sigue contando. No hubo reintento de pago automático.',
     unknown: 'No se confirmó el envío. Una reserva puede seguir contando. Revisa los trabajos y Runway antes de pagar otro intento.',
     refresh: 'Actualizar trabajos', recent: 'Tus vídeos recientes', newClip: 'Preparar otro vídeo',
@@ -65,12 +71,14 @@ const copies: Record<StoryLanguageCode, Copy> = {
     status: 'Trabajo de vídeo', settings: 'Iniciar sesión / revisar permisos', close: 'Cerrar estudio', submitting: 'Enviando una solicitud de pago…'
   },
   'zh-CN': {
+    statusTitle: 'Runway 视频分享状态',
+    commercialStatus: 'Runway 视频生成已停用，等待商业授权审查。Muse 不会向 Runway 发送提示词或起始插画。已保存的私人视频和任务不会被删除。',
     open: '让此刻鲜活起来 · Runway', title: '让故事画面动起来', brief: '发送给 Runway 的画面描述',
     disclosure: '下方画面描述和 Muse 在本机绘制的起始插画会发送给外部 AI 视频服务 Runway。插画不含故事文字。请勿在描述中填写个人信息。标题、片段、回答、感悟和记忆不会自动发送。视频在 Muse 私密保存，不会自动过期；删除请联系运营者。下载副本保留在设备中。',
     cost: '服务商费用估算', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 秒 · 16 个 Runway 点数（约 0.16 美元，税前）。价格核查于 2026 年 11 月 3 日。失败或中断也可能收费，与 Muse 故事额度分开。',
     approve: '我同意将画面描述和 Muse 生成的起始插画发送给 Runway，并使用所示点数进行一次付费生成。',
     generate: '生成电影感短片', loading: '加载设置…', pending: 'Runway 正在制作。可稍后查看已保存任务，不会重新发起付费请求。',
-    unavailable: 'Runway 尚未启用。请配置私密密钥、预算和存储。',
+    unavailable: 'Runway 已停用，等待商业授权审查。不会发送服务请求或创建替代视频；已保存的私人视频和任务保持不变。',
     failure: 'Runway 未完成生成。预留点数仍计入额度，没有自动付费重试。',
     unknown: '无法确认提交。预留点数可能仍计入额度。再次付费前请检查任务和 Runway 控制台。',
     refresh: '刷新任务', recent: '最近的视频任务', newClip: '准备另一个短片',
@@ -80,12 +88,14 @@ const copies: Record<StoryLanguageCode, Copy> = {
     status: '视频任务', settings: '登录 / 检查处理权限', close: '关闭视频工作室', submitting: '正在提交一次付费请求…'
   },
   'hi-IN': {
+    statusTitle: 'Runway वीडियो साझा करने की स्थिति',
+    commercialStatus: 'व्यावसायिक पात्रता की समीक्षा लंबित रहने तक Runway वीडियो निर्माण बंद है। Muse, Runway को प्रॉम्प्ट या शुरुआती चित्र नहीं भेजता। पहले से सहेजे निजी वीडियो और कार्य हटाए नहीं गए हैं।',
     open: 'इस पल को जीवंत करें · Runway', title: 'आपकी कहानी जीवंत होती है', brief: 'Runway को भेजा जाने वाला दृश्य विवरण',
     disclosure: 'यह दृश्य विवरण और Muse द्वारा डिवाइस पर बनाया गया आरंभिक चित्र बाहरी AI वीडियो सेवा Runway को भेजे जाते हैं। चित्र में कहानी का पाठ नहीं है। विवरण में निजी जानकारी न लिखें। शीर्षक, अंश, उत्तर, विचार और यादें अपने आप नहीं भेजे जाते। वीडियो Muse में निजी रहता है और अपने आप नहीं मिटता; हटाने के लिए संचालक से संपर्क करें। डाउनलोड प्रतियाँ डिवाइस पर रहती हैं।',
     cost: 'प्रदाता लागत अनुमान', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 सेकंड · 16 Runway क्रेडिट (लगभग US$0.16), कर से पहले। कीमत 3 नवंबर 2026 को जाँची गई। विफलता या रुकावट का भी शुल्क हो सकता है। यह Muse कहानी प्रयासों से अलग है।',
     approve: 'मैं यह दृश्य विवरण और Muse का आरंभिक चित्र Runway को भेजने तथा दिखाए क्रेडिट से एक भुगतान वाला वीडियो बनाने की अनुमति देता हूँ।',
     generate: 'सिनेमाई क्लिप बनाएँ', loading: 'सेटिंग लोड हो रही हैं…', pending: 'Runway क्लिप बना रहा है। बाद में सहेजे कार्य देखें; नया भुगतान अनुरोध नहीं होगा।',
-    unavailable: 'Runway अभी चालू नहीं है। निजी कुंजी, बजट और स्टोरेज सेट करें।',
+    unavailable: 'व्यावसायिक पात्रता की समीक्षा लंबित रहने तक Runway बंद है। कोई अनुरोध या विकल्प के रूप में नया वीडियो नहीं बनाया जाएगा; सहेजे निजी वीडियो और कार्य अपरिवर्तित हैं।',
     failure: 'Runway क्लिप पूरा नहीं कर सका। आरक्षित क्रेडिट गिने जाते हैं। भुगतान वाला पुनः प्रयास नहीं हुआ।',
     unknown: 'भेजने की पुष्टि नहीं हुई। आरक्षित क्रेडिट अब भी गिने जा सकते हैं। नया भुगतान करने से पहले कार्य और Runway जाँचें।',
     refresh: 'कार्य ताज़ा करें', recent: 'हाल के वीडियो कार्य', newClip: 'एक और क्लिप तैयार करें',
@@ -95,12 +105,14 @@ const copies: Record<StoryLanguageCode, Copy> = {
     status: 'वीडियो कार्य', settings: 'साइन इन / अनुमतियाँ देखें', close: 'स्टूडियो बंद करें', submitting: 'एक भुगतान अनुरोध भेज रहे हैं…'
   },
   'uk-UA': {
+    statusTitle: 'Стан відеосервісу Runway',
+    commercialStatus: 'Генерацію відео Runway вимкнено до перевірки комерційних прав. Muse не надсилає Runway описи чи початкові ілюстрації. Раніше збережені приватні відео й завдання не видаляються.',
     open: 'Оживити цю мить · Runway', title: 'Ваша історія оживає', brief: 'Візуальний опис для Runway',
     disclosure: 'Візуальний опис і початкова ілюстрація, створена Muse на пристрої, надсилаються зовнішньому відео-ШІ Runway. Ілюстрація не містить тексту історії. Не додавайте особисті дані до опису. Назва, уривок, відповіді, роздуми й спогади не надсилаються автоматично. Відео приватно зберігається в Muse без автоматичного строку; для видалення зверніться до оператора. Завантажені копії залишаються на пристрої.',
     cost: 'Оцінка вартості провайдера', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 секунд · 16 кредитів Runway (близько 0,16 USD) без податків. Ціни перевірено 3 листопада 2026. Збої теж можуть оплачуватися. Окремо від спроб Muse.',
     approve: 'Дозволяю надіслати Runway цей опис і початкову ілюстрацію Muse та використати зазначені кредити для однієї платної генерації.',
     generate: 'Створити кінематографічний кліп', loading: 'Завантаження налаштувань…', pending: 'Runway створює кліп. Поверніться до збережених завдань пізніше без нового платного запиту.',
-    unavailable: 'Runway ще не ввімкнено. Налаштуйте приватний ключ, бюджет і сховище.',
+    unavailable: 'Runway вимкнено до перевірки комерційних прав. Запити не надсилаються й нові відео на заміну не створюються; збережені приватні відео та завдання не змінюються.',
     failure: 'Runway не завершив кліп. Резерв залишається врахованим. Автоматичного платного повтору не було.',
     unknown: 'Надсилання не підтверджено. Резерв може залишатися врахованим. Перед новою оплатою перевірте завдання та Runway.',
     refresh: 'Оновити завдання', recent: 'Нещодавні відеозавдання', newClip: 'Підготувати інший кліп',
@@ -110,12 +122,14 @@ const copies: Record<StoryLanguageCode, Copy> = {
     status: 'Відеозавдання', settings: 'Увійти / перевірити дозволи', close: 'Закрити студію', submitting: 'Надсилання одного платного запиту…'
   },
   'ar-SA': {
+    statusTitle: 'حالة مشاركة فيديو Runway',
+    commercialStatus: 'تم تعطيل إنشاء فيديو Runway إلى حين مراجعة الاستحقاق التجاري. لا يرسل Muse المطالبات أو الصور الأولية إلى Runway. لم تُحذف مقاطع الفيديو والمهام الخاصة المحفوظة سابقاً.',
     open: 'أحيِ هذه اللحظة · Runway', title: 'قصتك تنبض بالحياة', brief: 'الوصف المرئي المرسل إلى Runway',
     disclosure: 'يُرسل هذا الوصف وإطار البداية الذي رسمه Muse محليًا إلى Runway، مزود فيديو ذكاء اصطناعي خارجي. لا يحتوي الرسم على نص القصة. لا تكتب معلومات شخصية في الوصف. لا يُرسل العنوان أو المقطع أو الإجابات أو التأملات أو الذكريات تلقائيًا. يُحفظ الفيديو بشكل خاص في Muse دون انتهاء تلقائي؛ تواصل مع المشغّل لحذفه. تبقى النسخ المنزّلة على جهازك.',
     cost: 'تكلفة المزود التقديرية', estimate: 'Grok Imagine Video 1.5 Lite · 720p · 5 ثوانٍ · 16 رصيدًا من Runway (نحو 0.16 دولار أمريكي) قبل الضرائب. راجعت الأسعار في 3 نوفمبر 2026. قد تُحسب المحاولات الفاشلة أو المنقطعة أيضًا، وهي منفصلة عن محاولات Muse.',
     approve: 'أوافق على إرسال الوصف وإطار البداية الذي أنشأه Muse إلى Runway واستخدام الرصيد المعروض لإنشاء فيديو مدفوع واحد.',
     generate: 'إنشاء مقطع سينمائي', loading: 'جارٍ تحميل الإعدادات…', pending: 'يُعدّ Runway المقطع. يمكنك العودة للمهام المحفوظة لاحقًا دون طلب مدفوع جديد.',
-    unavailable: 'لم يُفعّل Runway بعد. اضبط المفتاح الخاص والميزانية والتخزين.',
+    unavailable: 'تم تعطيل Runway إلى حين مراجعة الاستحقاق التجاري. لن يُرسل أي طلب ولن يُنشأ فيديو بديل؛ وستبقى المقاطع والمهام الخاصة المحفوظة دون تغيير.',
     failure: 'لم يكمل Runway المقطع. يظل الحجز محسوبًا. لم تُجرَ إعادة محاولة مدفوعة تلقائيًا.',
     unknown: 'تعذر تأكيد الإرسال. قد يظل الحجز محسوبًا. راجع المهام ولوحة Runway قبل دفع محاولة أخرى.',
     refresh: 'تحديث المهام', recent: 'مهام الفيديو الأخيرة', newClip: 'إعداد مقطع آخر',

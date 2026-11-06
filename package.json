@@ -9,7 +9,7 @@
     "test:public-pages": "node scripts/billing-preview.test.cjs && node scripts/demo-localization.test.cjs && node scripts/public-legal-localization.test.cjs && node scripts/privacy-consent.test.cjs && node scripts/navigation.test.cjs",
     "test:onboarding": "node scripts/onboarding.test.cjs",
     "test:design": "node scripts/navigation.test.cjs && node scripts/my-stories-ui.test.cjs && node scripts/onboarding.test.cjs && node scripts/personal-creation-ui.test.cjs && node scripts/gift-ui.test.cjs && node scripts/billing-preview.test.cjs",
-    "test:billing": "node scripts/billing-preview.test.cjs",
+    "test:billing": "node scripts/billing-preview.test.cjs && node scripts/stripe-sandbox.test.cjs",
     "test:languages": "node scripts/story-language.test.cjs",
     "test:romance": "node scripts/story-romance.test.cjs && node scripts/romance-access.test.cjs",
     "test:creator-access": "node scripts/creator-access.test.cjs",

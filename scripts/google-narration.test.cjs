@@ -272,13 +272,13 @@ async function main() {
   process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
   process.env.ELEVEN_API_KEY = 'test-eleven-key'
   process.env.ELEVEN_VOICE_ID = 'test-voice'
-  global.fetch = async (url, options) => {
-    assert.equal(url, 'https://api.elevenlabs.io/v1/text-to-speech/test-voice')
-    assert.equal(options.headers['xi-api-key'], 'test-eleven-key')
-    assert.equal(JSON.parse(options.body).model_id, 'eleven_multilingual_v2')
-    return new Response(frame, { headers: { 'Content-Type': 'audio/mpeg' } })
-  }
-  assert.equal((await api(body)).status, 200)
+  let elevenLabsCalls = 0
+  global.fetch = async () => { elevenLabsCalls++; throw new Error('ElevenLabs must remain blocked') }
+  const blockedElevenLabs = await api(body)
+  assert.equal(blockedElevenLabs.status, 503)
+  assert.equal(blockedElevenLabs.body.code, 'elevenlabs-commercial-entitlement-required')
+  assert.match(blockedElevenLabs.body.error, /disabled pending commercial entitlement review/)
+  assert.equal(elevenLabsCalls, 0, 'ElevenLabs stays blocked even with credentials configured')
   reset('hosted')
   Object.assign(process.env, {
     NEXT_PUBLIC_SUPABASE_URL: 'https://muse-test.supabase.co',

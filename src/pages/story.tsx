@@ -661,8 +661,8 @@ export default function StoryPage() {
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent} requireAccount={accountConsentRequired}>
                 {flow('aiConsent')} {flow('attemptNote')}
               </ExplicitConsent>
-              {narrator.provider !== 'browser' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
-                Enable optional narration: send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
+              {narrator.provider === 'google' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
+                Enable optional narration: send story text to Google Cloud when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
               </ExplicitConsent> : null}
               <details style={{ marginTop: '1rem' }}>
                 <summary>Privacy and limits</summary>
@@ -700,7 +700,7 @@ export default function StoryPage() {
                   status: flow(journeyStatusLabels[story.journey.status])
                 })}</p> : null}
               </details>
-              {storyMode === 'listen' && narrator.provider !== 'browser' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
+              {storyMode === 'listen' && narrator.provider === 'google' && !narrator.cloudConsent ? <details open style={{ marginBottom: '1rem' }}>
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
                 <p>{interfaceCopy.listenDescription}</p>
                 <button type="button" onClick={() => {
@@ -708,7 +708,7 @@ export default function StoryPage() {
                   narrator.setDeviceOnly(true)
                 }}>{audioControlsCopy(interfaceLanguage).deviceChoice}</button>
                 <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
-                  Send story text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
+                  Send story text to Google Cloud when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}
               {!archiveReading && !rereading ? <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>

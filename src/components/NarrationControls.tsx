@@ -60,9 +60,9 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
   const preview = narrationPreview(narrator.language)
   const playingElsewhere = narrator.busy && narrator.activeText !== preview
   return <aside aria-label={copy.settings} className="muse-audio-settings" style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #d9cfc5', borderRadius: 12, boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
-    <p style={{ marginTop: 0 }}><strong>{narrator.provider === 'browser' ? copy.device : `${copy.cloud} · ${narrator.provider === 'google' ? 'Google' : 'ElevenLabs'}`}</strong></p>
+    <p style={{ marginTop: 0 }}><strong>{narrator.provider === 'browser' ? copy.device : `${copy.cloud} · Google`}</strong></p>
     {narrator.provider !== 'browser' || narrator.deviceOnly ? <label><input type="checkbox" checked={narrator.deviceOnly} onChange={event => narrator.setDeviceOnly(event.target.checked)} /> {copy.deviceChoice}</label> : null}
-    {showCloudConsent && narrator.provider !== 'browser' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>Send spoken text to {narrator.provider === 'google' ? 'Google Cloud' : 'ElevenLabs'} for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></ExplicitConsent> : null}
+    {showCloudConsent && narrator.provider === 'google' ? <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>Send spoken text to Google Cloud for paid narration. Saved recordings are reused when available. <a href="/privacy">Privacy</a></ExplicitConsent> : null}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 11rem), 1fr))', gap: '0.75rem 1rem', maxWidth: '100%', minWidth: 0 }}>
       <label style={fieldStyle}>{copy.style} <select style={selectStyle} value={narrator.styleOverride} onChange={(event) => narrator.setStyle(event.target.value as NarrationStyle | 'auto')}>
         <option value="auto">{copy.automatic}</option>

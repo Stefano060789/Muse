@@ -3,6 +3,7 @@ import { getBillingStatus, stripeClient } from '../../lib/billing'
 import { requireAccount } from '../../lib/accountAuth'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { apiSafety } from '../../lib/operations'
+import { sandboxMonthlyPriceId, requireSandboxMonthlyPrice, requireSandboxCheckout, requireSandboxAccount } from '../../lib/stripeSandbox'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store')
@@ -25,7 +26,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!account) return
     if (req.method === 'GET') return res.status(200).json({ billing: await getBillingStatus(account.id) })
     if (req.body?.action !== 'subscribe') return res.status(400).json({ error: 'Unsupported billing action.' })
-    const price = process.env.STRIPE_MONTHLY_PRICE_ID
+    if (req.body?.planId !== undefined && req.body.planId !== 'monthly') {
+      return res.status(400).json({ error: 'Only monthly sandbox checkout is supported. Annual and gift prices are catalogue-only.' })
+    }
+    const price = sandboxMonthlyPriceId()
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
     if (!price || !siteUrl) throw new SharedStoryError('Muse Plus checkout is not configured yet.', 503)
     let origin: URL
@@ -36,19 +40,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const current = await getBillingStatus(account.id)
     if (current.status === 'active') throw new SharedStoryError('Muse Plus is already active on this account.', 409)
     const stripe = stripeClient()
+    await requireSandboxAccount(stripe)
+    requireSandboxMonthlyPrice(await stripe.prices.retrieve(price))
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price, quantity: 1 }],
       client_reference_id: account.id,
       customer_email: account.email,
-      subscription_data: { metadata: { muse_owner_id: account.id } },
+      metadata: { muse_app: 'muse', muse_environment: 'sandbox' },
+      subscription_data: { metadata: { muse_owner_id: account.id, muse_app: 'muse', muse_environment: 'sandbox' } },
+      automatic_tax: { enabled: false },
       success_url: new URL('/billing?checkout=success', origin).toString(),
       cancel_url: new URL('/billing?checkout=cancelled', origin).toString()
     })
-    if (!session.url) throw new SharedStoryError('Stripe did not return a checkout link.', 503)
+    requireSandboxCheckout(session)
     return res.status(200).json({ url: session.url })
   } catch (error) {
     return res.status(error instanceof SharedStoryError ? error.status : 503)
-      .json({ error: error instanceof Error ? error.message : 'Billing is temporarily unavailable.' })
+      .json({ error: error instanceof SharedStoryError ? error.message : 'Billing is temporarily unavailable.' })
   }
 }

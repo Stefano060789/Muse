@@ -21,8 +21,9 @@ async function main() {
   Object.assign(process.env, {
     STORY_STORAGE: 'sqlite', MUSE_SQLITE_PATH: path.join(output, 'stories.sqlite'),
     MUSE_MEDIA_PATH: path.join(output, 'media'), MUSE_OPERATIONS_SQLITE_PATH: path.join(output, 'operations.sqlite'),
-    ELEVEN_API_KEY: 'fake-no-paid-calls',
-    ELEVEN_VOICE_ID: 'testVoice', MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS: '100000'
+    NEXT_PUBLIC_NARRATION_PROVIDER: 'elevenlabs', ELEVEN_API_KEY: 'fake-no-paid-calls',
+    ELEVEN_VOICE_ID: 'testVoice', GOOGLE_TTS_API_KEY: 'fake-google-key',
+    MUSE_GOOGLE_TTS_BUDGET_CHARACTERS: '100000', MUSE_GOOGLE_TTS_SQLITE_PATH: path.join(output, 'google-tts.sqlite')
   })
   delete process.env.VERCEL
   delete process.env.MUSE_STUDIO_NARRATION_ENABLED
@@ -34,23 +35,24 @@ async function main() {
   const store = new LocalMediaStore()
   const sessionToken = 'c'.repeat(64)
   const ownerKey = 'a'.repeat(64), playKey = 'b'.repeat(64)
-  const mp3 = Buffer.from('ID3fake-test-only-audio')
+  const mp3 = Buffer.alloc(192)
+  mp3.set([0xff, 0xf3, 0x84, 0xc0])
   let providerCalls = 0, mode = 'success', block, release
   const sentText = []
   global.fetch = async (url, options) => {
-    assert.ok(url.startsWith('https://api.elevenlabs.io/v1/text-to-speech/testVoice?'))
-    assert.equal(options.headers['xi-api-key'], 'fake-no-paid-calls')
+    assert.ok(String(url).startsWith('https://texttospeech.googleapis.com/v1/text:synthesize'))
+    assert.equal(options.headers['X-Goog-Api-Key'], 'fake-google-key')
     providerCalls++
     const request = JSON.parse(options.body)
-    assert.deepEqual(Object.keys(request).sort(), ['model_id', 'text'])
-    assert.equal(request.model_id, 'eleven_multilingual_v2')
-    sentText.push(request.text)
+    assert.deepEqual(Object.keys(request).sort(), ['audioConfig', 'input', 'voice'])
+    assert.equal(request.audioConfig.audioEncoding, 'MP3')
+    sentText.push(request.input.text)
     assert.ok(!JSON.stringify(request).includes('PRIVATE_'))
     if (block) await block
-    if (mode === 'failure') return new Response('failed', { status: 500 })
-    if (mode === 'invalid') return new Response('not audio', { headers: { 'Content-Type': 'audio/mpeg' } })
-    if (mode === 'oversize') return new Response(Buffer.alloc(studio.STUDIO_MAX_BYTES + 1), { headers: { 'Content-Type': 'audio/mpeg' } })
-    return new Response(mp3, { headers: { 'Content-Type': 'audio/mpeg' } })
+    if (mode === 'failure') return Response.json({ error: 'failed' }, { status: 500 })
+    if (mode === 'invalid') return Response.json({ audioContent: Buffer.from('not mp3').toString('base64') })
+    if (mode === 'oversize') return Response.json({ audioContent: Buffer.alloc(6 * 1024 * 1024).toString('base64') })
+    return Response.json({ audioContent: mp3.toString('base64') })
   }
   async function api(body) {
     const res = new Writable({ write(_chunk, _enc, callback) { callback() } })
@@ -78,7 +80,9 @@ async function main() {
       },
       content: {
         title: 'Story title', description: 'Story description', narrationStyle: 'warm', narrationLanguage: 'en-US',
-        scenes: Array.from({ length: 3 }, (_, i) => ({ title: `Scene ${i}`, body: `Body ${i}`, clue: `Clue ${i}` }))
+        scenes: Array.from({ length: 3 }, (_, i) => ({
+          title: `Scene ${i} ${id}`, body: `Body ${i} ${id}`, clue: `Clue ${i} ${id}`
+        }))
       },
       answer_normalized: 'private_answer', expires_at: new Date(Date.now() + 86400000).toISOString()
     }
@@ -96,18 +100,21 @@ async function main() {
     api({ action: 'studio-audio', token: story.token, sessionToken, sceneIndex, ...extra })
   const first = await insert()
   assert.equal((await status(first)).body.studio.available, false)
+  assert.equal(studio.studioConfiguration().reason, 'commercial-entitlement-required')
   assert.equal((await generate(first)).status, 503)
+  assert.equal(providerCalls, 0, 'Legacy ElevenLabs credentials do not trigger synthesis')
+  process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
   process.env.MUSE_STUDIO_NARRATION_ENABLED = 'TRUE'
   assert.equal((await generate(first)).status, 503)
   process.env.MUSE_STUDIO_NARRATION_ENABLED = 'true'
-  for (const budget of ['', '0', '-1', '1.5', 'NaN', 'Infinity', '100000001', '1e4']) {
-    process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = budget
+  for (const budget of ['', '0', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992', '1e4']) {
+    process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = budget
     assert.equal((await generate(first)).status, 503)
   }
-  process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = '100000'
-  delete process.env.ELEVEN_API_KEY
+  process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = '100000'
+  delete process.env.GOOGLE_TTS_API_KEY
   assert.equal((await generate(first)).status, 503)
-  process.env.ELEVEN_API_KEY = 'fake-no-paid-calls'
+  process.env.GOOGLE_TTS_API_KEY = 'fake-google-key'
   assert.equal((await api({ action: 'studio-generate', token: first.ownerToken, sceneIndex: 0 })).status, 400)
   assert.equal((await generate(first, 0, null)).status, 400)
   assert.equal((await api({ action: 'studio-generate', token: first.token, sceneIndex: 0, consentVersion: '2026-11-01' })).status, 404)
@@ -122,7 +129,7 @@ async function main() {
   console.log('PASS disabled-by-default, strict config, creator/capability/consent and bounded scene contract')
 
   assert.equal((await generate(first)).status, 200)
-  assert.equal(sentText[0], 'Scene 0\n\nBody 0\n\nClue 0')
+  assert.equal(sentText[0], `${first.content.scenes[0].title}\n\n${first.content.scenes[0].body}\n\n${first.content.scenes[0].clue}`)
   assert.equal(providerCalls, 1)
   assert.equal((await generate(first)).status, 200)
   assert.equal(providerCalls, 1)
@@ -145,12 +152,12 @@ async function main() {
   assert.equal((await audio(first, 0)).status, 200, 'Reached scenes replay freely')
   const beforeReplay = providerCalls
   delete process.env.MUSE_STUDIO_NARRATION_ENABLED
-  delete process.env.ELEVEN_API_KEY
+  delete process.env.GOOGLE_TTS_API_KEY
   assert.equal((await audio(first)).status, 200)
   assert.equal((await generate(first)).status, 200, 'Cache can be reused without provider enabled')
   assert.equal(providerCalls, beforeReplay)
   process.env.MUSE_STUDIO_NARRATION_ENABLED = 'true'
-  process.env.ELEVEN_API_KEY = 'fake-no-paid-calls'
+  process.env.GOOGLE_TTS_API_KEY = 'fake-google-key'
   assert.equal(await db.voiceReady(first.id), null, 'Studio never occupies gift voice slot')
   console.log('PASS private cached playback, no replay cost, owner preview and existing-session/progress gating')
 
@@ -177,18 +184,18 @@ async function main() {
   assert.equal((await active).status, 200)
   assert.equal(providerCalls, callsAtReservation)
   const used = () => Number(sql(c => c.prepare('SELECT used FROM muse_studio_budget WHERE id = 1').get()).used)
-  process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = String(used())
+  process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = String(used())
   const budgeted = await insert()
   const beforeBudget = providerCalls
   assert.equal((await generate(budgeted)).status, 429)
   assert.equal(providerCalls, beforeBudget)
   assert.equal((await db.studio({ operation: 'status', storyId: budgeted.id })).records.length, 0)
-  process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = '100000'
+  process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = '100000'
   for (const failedMode of ['failure', 'invalid', 'oversize']) {
     const failed = await insert()
     mode = failedMode
     const beforeUsed = used()
-    assert.equal((await generate(failed)).status, 502)
+    assert.equal((await generate(failed)).status, 503)
     assert.ok(used() > beforeUsed, 'Failures remain charged')
     const calls = providerCalls
     assert.equal((await generate(failed)).status, 409)
@@ -211,11 +218,11 @@ async function main() {
   assert.equal(providerCalls, callsBeforeReady, 'Storage readiness is checked before reservation/provider')
   assert.equal((await status(notReady)).body.studio.scenes.length, 0)
   const exactCost = studio.studioScene(notReady, 0).text.length
-  process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = String(used() + exactCost)
+  process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = String(used() + exactCost)
   const otherBudget = await insert()
   const parallelResults = await Promise.all([generate(notReady), generate(otherBudget)])
   assert.deepEqual(parallelResults.map(result => result.status).sort(), [200, 429], 'Only one concurrent story can consume the remaining budget')
-  process.env.MUSE_STUDIO_NARRATION_BUDGET_CHARACTERS = '100000'
+  process.env.MUSE_GOOGLE_TTS_BUDGET_CHARACTERS = '100000'
   console.log('PASS durable generation deduplication, atomic global budget and explicit non-retryable provider failures')
 
   const stale = await insert()

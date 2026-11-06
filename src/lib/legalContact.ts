@@ -9,6 +9,7 @@ export type PublicContactConfig = {
 }
 
 export const MUSE_AI_CONSENT_VERSION = '2026-11-01'
+export const DEFAULT_SUPPORT_EMAIL = 'hellogodwit@gmail.com'
 
 function operatorSetting(value: string | undefined): ContactSetting {
   const normalized = value?.trim() || ''
@@ -44,7 +45,7 @@ export function getPublicContactConfig(
 ): PublicContactConfig {
   return {
     operator: operatorSetting(operatorName),
-    supportEmail: supportSetting(supportEmail)
+    supportEmail: supportSetting(supportEmail?.trim() ? supportEmail : DEFAULT_SUPPORT_EMAIL)
   }
 }
 

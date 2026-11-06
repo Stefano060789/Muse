@@ -399,32 +399,20 @@ async function main() {
       assert.equal(noSpeech.render().speaking, false)
     } finally { noSpeech.dispose() }
   })
-  await check('ElevenLabs failure never downgrades to device speech; explicit device selection works', async () => {
+  await check('ElevenLabs configuration is forced to browser narration without a provider request', async () => {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
     let calls = 0
-    global.fetch = async () => { calls++; return new Response('private provider error', { status: 401 }) }
+    global.fetch = async () => { calls++; throw new Error('ElevenLabs must remain blocked') }
     const hook = mount({ narrationStyle: 'playful', narrationLanguage: 'en-US' })
     try {
-      hook.render().setCloudConsent(true)
+      assert.equal(hook.render().provider, 'browser')
       await hook.render().speak('Preview.')
-      assert.equal(calls, 1)
-      assert.match(hook.render().error, /No device voice was started/)
-      assert.ok(!hook.render().error.includes('private'))
-      assert.equal(hook.spoken.length, 0)
-      hook.render().stop()
-      global.fetch = (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('Abort'))))
-      const pending = hook.render().speak('Cancelled.')
-      hook.render().stop()
-      await pending
-      assert.equal(hook.spoken.length, 0)
-      assert.equal(hook.render().loading, false)
-      hook.render().setDeviceOnly(true)
-      await hook.render().speak('Explicit device voice.')
+      assert.equal(calls, 0)
       assert.equal(hook.spoken.length, 1)
     } finally { hook.dispose() }
   })
   await check('cloud narration consent starts unchecked and never sends text until explicitly accepted', async () => {
-    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
     let calls = 0
     global.fetch = async () => { calls++; return new Response('unavailable', { status: 503 }) }
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' })
@@ -937,7 +925,7 @@ async function main() {
   })
 
   await check('configured provider audio pauses/resumes the element and suspends its playback timeout', async () => {
-    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'google'
     const players = []
     global.Audio = class { constructor(src) { this.src = src; this.plays = 0; this.pauses = 0; players.push(this) } play() { this.plays++; return Promise.resolve() } pause() { this.pauses++ } }
     URL.createObjectURL = () => 'blob:test'
@@ -948,14 +936,14 @@ async function main() {
     const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { storage: memoryStorage() })
     try {
       hook.render().setCloudConsent(true)
-      await hook.render().speak('Cars pass along the street.')
+      await hook.render().speak('Cars pass along the street.', undefined, { autoPlay: true })
       assert.equal(hook.ambientCalls.at(-1)[1], 'traffic', 'Provider narration also starts the scene ambience on the Play action')
       assert.equal(hook.render().speaking, true)
       assert.equal(hook.render().canPause, true)
       players[0].duration = 10
       players[0].currentTime = 5
       players[0].ontimeupdate()
-      assert.equal(hook.render().textPosition, Math.floor('Cars pass along the street.'.length / 2), 'ElevenLabs audio advances read-along from playback time')
+      assert.equal(hook.render().textPosition, Math.floor('Cars pass along the street.'.length / 2), 'Google audio advances read-along from playback time')
       assert.deepEqual(clock.pending, [60000])
       clock.advance(20000)
       hook.render().pause()
@@ -967,7 +955,7 @@ async function main() {
       assert.equal(hook.render().error, '')
       hook.render().resume()
       await Promise.resolve()
-      assert.equal(players[0].plays, 2)
+      assert.equal(players[0].plays, 3, 'Google playback unlock, audio start and resume use the activated media element')
       assert.equal(hook.render().speaking, true)
       assert.deepEqual(clock.pending, [40000])
       assert.equal(hook.spoken.length, 0, 'no browser fallback while provider audio is fine')
@@ -975,7 +963,7 @@ async function main() {
       hook.render().stop()
       assert.equal(hook.render().status, 'idle')
       assert.ok(revoked >= 1)
-      await hook.render().speak('Provider text.')
+      await hook.render().speak('Provider text.', undefined, { autoPlay: true })
       players.at(-1).play = () => Promise.reject(new Error('NotAllowed'))
       hook.render().pause()
       hook.render().resume()
@@ -1090,17 +1078,18 @@ async function main() {
     process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'browser'
     global.fetch = async () => { throw new Error('Browser mode must not fetch') }
     assert.equal((await run({ text: 'Hello' })).status, 503)
-    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'elevenlabs'
+    process.env.NEXT_PUBLIC_NARRATION_PROVIDER = 'ElevenLabs'
     process.env.ELEVEN_API_KEY = 'fake-key'
     process.env.ELEVEN_VOICE_ID = 'fake-voice'
-    assert.equal((await run({ text: 'Hello', consentVersion: undefined })).status, 400)
-    let payload
-    global.fetch = async (_url, options) => { payload = JSON.parse(options.body); return new Response('private token detail', { status: 401 }) }
+    assert.equal((await run({ text: 'Hello', consentVersion: undefined })).status, 503)
+    let calls = 0
+    global.fetch = async () => { calls++; throw new Error('ElevenLabs must remain blocked') }
     const response = await run({ text: 'Hello', narrationStyle: 'playful', narrationLanguage: 'it-IT' })
     assert.equal(response.status, 503)
-    assert.ok(!JSON.stringify(response).includes('private'))
-    assert.equal(payload.voice_settings.style, 0.35)
-    assert.equal((await run({ text: 'Hello', narrationStyle: 'invalid' })).status, 400)
+    assert.equal(response.result.code, 'elevenlabs-commercial-entitlement-required')
+    assert.match(response.result.error, /disabled pending commercial entitlement review/)
+    assert.equal(calls, 0)
+    assert.equal((await run({ text: 'Hello', narrationStyle: 'invalid' })).status, 503)
   })
   console.log(`\n${passed} Narration checks passed.`)
 }

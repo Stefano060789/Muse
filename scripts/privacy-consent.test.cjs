@@ -85,10 +85,10 @@ const checks = [
     assert.equal(legal.hasExplicitConsent(true), true)
     assert.equal(legal.MUSE_AI_CONSENT_VERSION, '2026-11-01')
   }],
-  ['missing public contact settings remain explicitly unconfigured', () => {
+  ['owner-approved support address is available without an environment override', () => {
     assert.deepEqual(legal.getPublicContactConfig(undefined, ''), {
       operator: { value: null, status: 'missing' },
-      supportEmail: { value: null, status: 'missing' }
+      supportEmail: { value: 'hellogodwit@gmail.com', status: 'configured' }
     })
   }],
   ['operator name is trimmed and rejects unsafe values', () => {
@@ -123,7 +123,8 @@ const checks = [
     assert.match(privacyDisclosure, /readable, unencrypted text/)
     assert.match(privacyDisclosure, /random browser-session capability/)
     assert.match(privacyDisclosure, /up to 10 minutes/)
-    assert.match(privacyDisclosure, /Google Cloud Text-to-Speech or ElevenLabs/)
+    assert.match(privacyDisclosure, /Google Cloud Text-to-Speech/)
+    assert.doesNotMatch(privacyDisclosure, /Google Cloud Text-to-Speech or ElevenLabs/)
     assert.match(privacyDisclosure, /up to 30 days/)
     assert.match(privacyDisclosure, /60 seconds and 5 MB/)
     assert.match(privacyDisclosure, /120 general requests per minute/)

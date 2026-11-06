@@ -691,7 +691,20 @@ const copies = {
 } satisfies Record<StoryLanguageCode, PublicLegalCopy>
 
 export function publicLegalCopy(language: StoryLanguageCode): PublicLegalCopy {
-  return copies[language]
+  const copy = copies[language]
+  const media = copy.privacy.sections.media
+  const paragraphs = media.paragraphs.filter(paragraph => !paragraph.includes('ElevenLabs'))
+  if (paragraphs.length === media.paragraphs.length) return copy
+  return {
+    ...copy,
+    privacy: {
+      ...copy.privacy,
+      sections: {
+        ...copy.privacy.sections,
+        media: { ...media, paragraphs }
+      }
+    }
+  }
 }
 
 export function publicContactStatus(
