@@ -30,6 +30,7 @@ import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { interfaceFlowText as flowText, type InterfaceFlowKey } from '../lib/interfaceFlow'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
 import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
+import { createStoryRecap, storyRecapCopy, type StoryRecapChapter } from '../lib/storyRecap'
 import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
@@ -95,6 +96,9 @@ export default function StoryPage() {
   const [draftNotice, setDraftNotice] = useState('')
   const [draftError, setDraftError] = useState('')
   const [rereading, setRereading] = useState(false)
+  const [storyRecapOpen, setStoryRecapOpen] = useState(false)
+  const [storyRecap, setStoryRecap] = useState<StoryRecapChapter[]>([])
+  const [storyRecapError, setStoryRecapError] = useState('')
   const [archiveReading, setArchiveReading] = useState(false)
   const [experience, setExperience] = useState<{ key: string; mode: StoryMode } | null>(null)
   const experienceKey = JSON.stringify([story?.id, story?.currentStep, archiveReading, rereading])
@@ -126,6 +130,12 @@ export default function StoryPage() {
     sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
   })
   const stopSpeaking = narrator.stop
+  const recapCopy = storyRecapCopy(interfaceLanguage)
+  useEffect(() => {
+    setStoryRecapOpen(false)
+    setStoryRecap([])
+    setStoryRecapError('')
+  }, [story?.id])
   const interaction = useStoryInteraction(stopSpeaking, story?.language || language)
   const stopRecording = interaction.stopRecording
   const isRecording = Boolean(interaction.recordingTarget)
@@ -464,6 +474,24 @@ export default function StoryPage() {
     }
   }
 
+  const toggleStoryRecap = () => {
+    if (storyRecapOpen) {
+      setStoryRecapOpen(false)
+      return
+    }
+    if (!story) return
+    try {
+      const result = loadStoryLibrary()
+      if (result.error) throw new Error(result.error)
+      setStoryRecap(createStoryRecap(story, result.library.entries))
+      setStoryRecapError('')
+    } catch (error) {
+      setStoryRecap([])
+      setStoryRecapError(error instanceof Error ? error.message : recapCopy.loadError)
+    }
+    setStoryRecapOpen(true)
+  }
+
   const choose = async (choice: string) => {
     if (!story || requestLock.current || finished || archiveReading) return
     if (story.journey && (!reconciled || story.journey.pending)) {
@@ -687,6 +715,25 @@ export default function StoryPage() {
                 })}
                 {story.chapter?.parentId ? <> · <button type="button" onClick={openPreviousChapter}>{flow('readPreviousChapter')}</button></> : null}
               </p>
+              <button type="button" className="atelier-secondary" aria-expanded={storyRecapOpen}
+                aria-controls="story-recap" onClick={toggleStoryRecap}>
+                {storyRecapOpen ? recapCopy.hide : recapCopy.show}
+              </button>
+              {storyRecapOpen ? <section id="story-recap" aria-label={recapCopy.heading} className="atelier-card" style={{ margin: '1rem 0', padding: '1rem 1.25rem' }}>
+                <h2>{recapCopy.heading}</h2>
+                <p>{recapCopy.intro}</p>
+                {storyRecapError ? <p role="alert">{storyRecapError}</p> : storyRecap.length
+                  ? storyRecap.map(chapter => <article key={chapter.id}>
+                    <h3>{chapterLabel(chapter.number)} · {chapter.title}</h3>
+                    <ul>
+                      {chapter.highlights.map((highlight, index) => <li key={`${chapter.id}:${index}`}>
+                        <strong>{recapCopy[highlight.kind]}: </strong>{highlight.text}
+                      </li>)}
+                    </ul>
+                    {chapter.recentActions.length ? <p><strong>{recapCopy.actions}: </strong>{chapter.recentActions.join(' · ')}</p> : null}
+                  </article>)
+                  : <p>{recapCopy.noRecap}</p>}
+              </section> : null}
               <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
               {storyMode === 'listen' ? <details>
                 <summary>{flow('audioSettings')}</summary>

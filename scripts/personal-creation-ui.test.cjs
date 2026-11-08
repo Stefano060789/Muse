@@ -47,6 +47,7 @@ async function main() {
   let responseGate
   let accountRequest
   let chapterResponse
+  let recapEntries = []
   let failureStatus = 503, failureSnapshot
   const browserEvents = new Map()
   let interfaceLocale = 'en-US'
@@ -85,10 +86,14 @@ async function main() {
       loadMuseProfile: () => profile,
       saveMuseProfile: about => { profile = { about, keypoints: [about] }; return profile }
     }
-    if (id.endsWith('/storyLibrary')) return { removeLibraryEntry(kind, id) {
-      if (removalFails) throw new Error('Browser storage unavailable')
-      removals.push({ kind, id })
-    } }
+    if (id.endsWith('/storyLibrary')) return {
+      loadStoryLibrary: () => ({ library: { entries: recapEntries }, error: null }),
+      removeLibraryEntry(kind, id) {
+        if (removalFails) throw new Error('Browser storage unavailable')
+        removals.push({ kind, id })
+      }
+    }
+    if (id.endsWith('/storyRecap')) return plain('src/lib/storyRecap.ts')
     if (id.endsWith('/storyLanguage')) return plain('src/lib/storyLanguage.ts')
     if (id.endsWith('/interfacePages')) return plain('src/lib/interfacePages.ts')
     if (id.endsWith('/interfaceFlow')) return plain('src/lib/interfaceFlow.ts')
@@ -556,6 +561,7 @@ async function main() {
   loadedStory = { ...loadedStory, journey: {
     capability: 'parent-capability', revision: 3, maxTurns: 3, duration: 5, status: 'concluded', choiceMode: 'free'
   } }
+  loadedStory.chapter = { number: 1, rootId: loadedStory.id }
   slots.length = 0; effects.length = 0
   await flush()
   assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 · Complete'))
@@ -603,6 +609,15 @@ async function main() {
   assert.ok(nodes().some(node => node.type === 'button' && label(node) === 'Previous chapter'))
   assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Successful child creation clears preparation')
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, true, 'Confirmation covers the new chapter responses')
+  recapEntries = [{ kind: 'personal', id: parentStory.id, updatedAt: parentStory.createdAt, story: parentStory }]
+  const beforeRecap = requests.length
+  await click('Show story recap')
+  const recapText = label(tree)
+  assert.ok(recapText.includes('Previously in this story'), recapText)
+  assert.ok(recapText.includes(parentStory.title) && recapText.includes('Beyond the garden'),
+    'Optional local recap includes the previous and current chapter')
+  assert.equal(requests.length, beforeRecap, 'Showing a recap does not call an AI provider')
+  await click('Hide story recap')
   loadedStory = parentStory
   chapterResponse = undefined
   loadedStory = { ...parentStory, journey: { ...parentStory.journey, revision: 3, status: 'exhausted' } }

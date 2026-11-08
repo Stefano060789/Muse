@@ -68,8 +68,12 @@ export default function BillingPage() {
         {billing ? <section aria-label={copy.yourPlan} className="atelier-card" style={{ marginTop: '1rem' }}>
           <h2>{billing.status === 'trialing' ? copy.trialTitle : billing.status === 'active' ? copy.activeTitle : copy.inactiveTitle}</h2>
           {billing.status === 'trialing' ? <p>{formatBillingText(copy.trialEnds, { date: new Date(billing.trialEndsAt).toLocaleDateString(language) })}</p> : null}
-          <p>{formatBillingText(copy.usage, { stories: billing.storiesUsed, storyLimit: billing.storyLimit, interactions: billing.interactionsUsed, interactionLimit: billing.interactionLimit })}</p>
-          {billing.status === 'trialing' && (billing.storiesUsed >= billing.storyLimit || billing.interactionsUsed >= billing.interactionLimit)
+          <p>{formatBillingText(billing.interactionUnlimited ? copy.creatorUsage : copy.usage, {
+            stories: billing.storiesUsed, storyLimit: billing.storyLimit,
+            interactions: billing.interactionsUsed, interactionLimit: billing.interactionLimit
+          })}</p>
+          {billing.status === 'trialing' && (billing.storiesUsed >= billing.storyLimit ||
+            (!billing.interactionUnlimited && billing.interactionsUsed >= billing.interactionLimit))
             ? <p role="status">{copy.limit}</p> : null}
           {billing.status !== 'active' ? <button type="button" className="atelier-button" disabled={busy} onClick={() => void subscribe()}>{busy ? copy.opening : copy.subscribe}</button> : null}
         </section> : null}

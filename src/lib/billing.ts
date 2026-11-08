@@ -14,6 +14,7 @@ export type BillingStatus = {
   storyLimit: 10
   interactionsUsed: number
   interactionLimit: 120
+  interactionUnlimited: boolean
   canGenerate: boolean
 }
 
@@ -22,6 +23,25 @@ function billingDatabase() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new SharedStoryError('Subscription and trial storage is not configured. Apply supabase/billing.sql and configure Supabase.', 503)
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+}
+
+function creatorEmailAllowlist(): Set<string> {
+  const configured = process.env.MUSE_CREATOR_EMAILS
+  if (!configured?.trim()) return new Set()
+  const emails = configured.split(',').map(email => email.trim().toLowerCase()).filter(Boolean)
+  if (emails.some(email => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) {
+    throw new SharedStoryError('MUSE_CREATOR_EMAILS contains an invalid email address.', 503)
+  }
+  return new Set(emails)
+}
+
+async function isCreatorAccount(ownerId: string, database: ReturnType<typeof billingDatabase>): Promise<boolean> {
+  const allowedEmails = creatorEmailAllowlist()
+  if (!allowedEmails.size) return false
+  const { data, error } = await database.auth.admin.getUserById(ownerId)
+  if (error) throw new SharedStoryError('Could not verify the creator account. Please try again later.', 503)
+  const user = data.user
+  return Boolean(user?.email_confirmed_at && user.email && allowedEmails.has(user.email.trim().toLowerCase()))
 }
 
 export function stripeClient() {
@@ -41,19 +61,25 @@ export async function getBillingStatus(ownerId: string): Promise<BillingStatus> 
     return {
       tier: 'plus', status: 'trialing', trialStartedAt: now.toISOString(), trialEndsAt: ends.toISOString(),
       periodStartedAt: now.toISOString(), periodEndsAt: ends.toISOString(),
-      storiesUsed: 0, storyLimit: 10, interactionsUsed: 0, interactionLimit: 120, canGenerate: true
+      storiesUsed: 0, storyLimit: 10, interactionsUsed: 0, interactionLimit: 120,
+      interactionUnlimited: false, canGenerate: true
     }
   }
-  const { data, error } = await billingDatabase().rpc('muse_billing_status', { p_owner_id: ownerId })
+  const database = billingDatabase()
+  const { data, error } = await database.rpc('muse_billing_status', { p_owner_id: ownerId })
   if (error || !data || typeof data !== 'object') {
     throw new SharedStoryError('Could not load your plan and usage. Please try again later.', 503)
   }
-  return data as BillingStatus
+  const billing = data as BillingStatus
+  const interactionUnlimited = Boolean(billing.canGenerate && await isCreatorAccount(ownerId, database))
+  return { ...billing, interactionUnlimited }
 }
 
 export async function reserveBillingUsage(ownerId: string, requestId: string, kind: 'story' | 'interaction') {
   if (billingTrialMode()) return
-  const { data, error } = await billingDatabase().rpc('muse_reserve_billing_usage', {
+  const database = billingDatabase()
+  const creator = kind === 'interaction' && await isCreatorAccount(ownerId, database)
+  const { data, error } = await database.rpc('muse_reserve_billing_usage', {
     p_owner_id: ownerId, p_request_id: requestId, p_usage_kind: kind
   })
   if (error || !data || typeof data !== 'object') {
@@ -61,6 +87,7 @@ export async function reserveBillingUsage(ownerId: string, requestId: string, ki
   }
   const result = data as { allowed?: unknown; reason?: unknown }
   if (result.allowed === true) return
+  if (creator && kind === 'interaction' && result.reason === 'interaction_limit') return
   const benefit = 'Muse Plus includes 10 story creations and 120 AI interactions each month. Your saved stories remain available. Visit /billing to subscribe and keep creating.'
   const limit = result.reason === 'story_limit'
     ? 'You have used this period’s story creations. '
