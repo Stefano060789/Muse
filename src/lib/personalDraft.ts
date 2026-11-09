@@ -5,14 +5,18 @@ import { isStoryPreferences, type StoryPreferences } from './storyPreferences'
 
 export const PERSONAL_DRAFT_KEY = 'muse-personal-creation-draft'
 export type PersonalDraft = StoryPreferences & {
-  need: string; mood: PersonalStoryMood; choiceMode: StoryChoiceMode
+  storyIdea?: string; improvementGoal?: string; need?: string
+  mood: PersonalStoryMood; choiceMode: StoryChoiceMode
   romance?: StoryRomance; useProfile: boolean; profileDraft: string; step: number
 }
 export function isPersonalDraft(value: unknown): value is PersonalDraft {
   if (!value || typeof value !== 'object') return false
   const draft = value as Record<string, unknown>
   if (!isStoryPreferences(value)) return false
-  return typeof draft.need === 'string' && draft.need.length <= 1000 &&
+  const validText = (text: unknown) => typeof text === 'string' && text.length <= 1000
+  const hasLegacyIdea = validText(draft.need)
+  const hasSeparateIdeas = validText(draft.storyIdea) && validText(draft.improvementGoal)
+  return (hasLegacyIdea || hasSeparateIdeas) &&
     typeof draft.mood === 'string' && ['adventure', 'relaxed', 'curious', 'hopeful'].includes(draft.mood) &&
     typeof draft.choiceMode === 'string' && ['free', 'suggested'].includes(draft.choiceMode) &&
     (draft.romance === undefined || draft.romance === 'sweet' || draft.romance === 'spicy') &&

@@ -178,9 +178,9 @@ async function main() {
   interfaceLocale = 'it-IT'
   await flush()
   assert.equal(nodes().find(node => node.type === 'main').props.lang, 'it-IT')
-  assert.ok(nodes().some(node => node.type === 'label' &&
-    label(node).includes('Che storia hai in mente? Cosa vorresti cambiare o migliorare?')),
-    'The optional story prompt asks for an idea and what the user wants to improve in Italian')
+  assert.ok(nodes().some(node => node.type === 'label' && label(node).includes('Che storia hai in mente? (facoltativo)')) &&
+    nodes().some(node => node.type === 'label' && label(node).includes('Cosa vorresti cambiare o migliorare? (facoltativo)')),
+    'Italian creation presents separate story idea and improvement goal inputs')
   assert.equal(nodes().find(node => node.type === 'ol').props['aria-label'], 'Fasi della storia')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Lingua della storia').props.value, 'en-US',
     'Story language accessibility label follows the interface locale without changing story language')
@@ -193,15 +193,16 @@ async function main() {
   assert.equal(requests.length, 0)
   await click('Continue')
   assert.equal(visible().length, 1)
-  assert.ok(nodes().some(node => node.type === 'label' &&
-    label(node).includes('What story do you have in mind? What would you like to change or improve?')),
-    'The optional story prompt asks for an idea and what the user wants to improve in English')
+  assert.ok(nodes().some(node => node.type === 'label' && label(node).includes('What story do you have in mind? (optional)')) &&
+    nodes().some(node => node.type === 'label' && label(node).includes('What would you like to change or improve? (optional)')),
+    'English creation presents separate story idea and improvement goal inputs')
   assert.ok(!nodes().some(node => node.props.href === '/myself'), 'Personal touches stay inside creation')
   assert.ok(nodes().some(node => node.type === 'fieldset' && flatten(node).some(child => child?.type === '../components/RomanceOptions')),
     'Romance is in the mood step')
   const language = nodes().find(node => node.props['aria-label'] === 'Story language')
   language.props.onChange({ target: { value: 'ar-SA' } })
-  nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
+  nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
+  nodes().find(node => node.props['aria-label'] === 'What would you like to change or improve? (optional)').props.onChange({ target: { value: 'A gentle change in perspective.' } })
   nodes().find(node => node.props['aria-label'] === 'What should Muse remember?').props.onChange({ target: { value: 'I love gardens' } })
   await flush()
   const profileDictation = nodes().find(node => node.type === '../components/DictationButton')
@@ -215,7 +216,8 @@ async function main() {
   assert.equal(profile.about, 'I love gardens')
   assert.equal(nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.checked, true,
     'Saved memories are included by default')
-  assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.value, 'A fictional evening in a garden.')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What would you like to change or improve? (optional)').props.value, 'A gentle change in perspective.')
   await flush()
   await click('Continue')
   assert.equal(visible().length, 1)
@@ -228,7 +230,7 @@ async function main() {
   narrationConsent.props.onChange(true)
   cloudProvider = 'browser'
   await click('Back')
-  assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'A fictional evening in a garden.')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.value, 'A fictional evening in a garden.')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
   await click('Continue')
   await click('Create story')
@@ -245,7 +247,7 @@ async function main() {
   nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
   await flush()
   await click('Back')
-  nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'A changed fictional evening.' } })
+  nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.onChange({ target: { value: 'A changed fictional evening.' } })
   await flush()
   await click('Continue')
   assert.equal(nodes().find(node => node.type === '../components/RomanceOptions').props.confirmed, true,
@@ -258,7 +260,8 @@ async function main() {
   assert.equal(requests[0].language, 'ar-SA')
   assert.equal(requests[0].romance, 'spicy')
   assert.equal(requests[0].romanceConfirmed, true)
-  assert.equal(requests[0].need, 'A changed fictional evening.')
+  assert.equal(requests[0].storyIdea, 'A changed fictional evening.')
+  assert.equal(requests[0].improvementGoal, 'A gentle change in perspective.')
   assert.deepEqual(requests[0].profileKeypoints, ['I love gardens'])
   assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')))
   assert.equal(visible()[0].props.disabled, true, 'Saved pending preparation prevents accidental duplicate generation')
@@ -266,14 +269,23 @@ async function main() {
   await click('Discard draft')
   const savedCreation = JSON.parse(storage.get('muse-personal-creation-draft'))
   assert.equal(savedCreation.language, 'ar-SA')
-  assert.equal(savedCreation.need, 'A changed fictional evening.')
+  assert.equal(savedCreation.storyIdea, 'A changed fictional evening.')
+  assert.equal(savedCreation.improvementGoal, 'A gentle change in perspective.')
   assert.equal('aiConsent' in savedCreation, false, 'Drafts never persist AI authorization')
   assert.equal('creatorCode' in savedCreation, false, 'Drafts never persist creator credentials')
+  const legacyDraft = { ...savedCreation, need: savedCreation.storyIdea }
+  delete legacyDraft.storyIdea
+  delete legacyDraft.improvementGoal
+  storage.set('muse-personal-creation-draft', JSON.stringify(legacyDraft))
   const beforeRestore = requests.length
   slots.length = 0; effects.length = 0
   await flush()
   assert.equal(requests.length, beforeRestore, 'Restoring a creation draft never calls AI')
   assert.equal(nodes().find(node => node.props['aria-label'] === 'Story language').props.value, 'ar-SA')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.value, 'A changed fictional evening.',
+    'Legacy drafts restore their combined prompt as the story idea')
+  assert.equal(nodes().find(node => node.props['aria-label'] === 'What would you like to change or improve? (optional)').props.value, '',
+    'Legacy drafts leave the new improvement goal empty')
   assert.equal(nodes().find(node => node.type === '../components/ExplicitConsent').props.checked, false, 'Restored drafts require fresh consent')
   assert.equal(nodes().find(node => node.type === '../components/RomanceOptions').props.confirmed, false, 'Restored romance requires fresh acknowledgment')
   nodes().find(node => node.type === '../components/RomanceOptions').props.onConfirm(true)
@@ -292,7 +304,7 @@ async function main() {
   await click('Create story')
   assert.equal(visible()[0].props.disabled, false, 'A confirmed failed opening unlocks creation without manual abandonment')
   assert.equal(storage.has('muse-personal-journey-preparation'), false, 'Failed opening removes only its preparation marker')
-  assert.equal(JSON.parse(storage.get('muse-personal-creation-draft')).need, 'A changed fictional evening.',
+  assert.equal(JSON.parse(storage.get('muse-personal-creation-draft')).storyIdea, 'A changed fictional evening.',
     'Failed opening preserves the creation draft')
   assert.ok(!nodes().some(node => node.type === 'button' && label(node) === 'Discard draft'))
   const failedOpeningRequests = requests.length

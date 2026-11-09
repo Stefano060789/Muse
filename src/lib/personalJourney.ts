@@ -28,6 +28,8 @@ export type JourneyInput = {
   language?: StoryLanguageCode
   mood: PersonalStoryMood
   need: string
+  storyIdea?: string
+  improvementGoal?: string
   profileKeypoints: string[]
   duration: JourneyDuration
   choiceMode?: StoryChoiceMode
@@ -107,6 +109,8 @@ export function parseJourneyInput(body: Record<string, unknown>): JourneyInput {
     chapter: { number: 1, rootId: journeyIdentifier(body.id) },
     mood: parsed.mood,
     need: parsed.need,
+    storyIdea: parsed.storyIdea,
+    improvementGoal: parsed.improvementGoal,
     profileKeypoints: parsed.profileKeypoints,
     duration: body.duration as JourneyDuration,
     choiceMode
@@ -203,7 +207,9 @@ export function publicJourney(result: JourneyResult, capability: string) {
     ...(record.input.language ? { language: record.input.language } : {}),
     ...(record.input.romance ? { romance: record.input.romance } : {}),
     id: record.id, createdAt: record.createdAt, generation: 'ai', title: record.opening.title, description: record.opening.description,
-    mood: record.input.mood, need: record.input.need, profileKeypoints: record.input.profileKeypoints,
+    mood: record.input.mood, need: record.input.need,
+    storyIdea: record.input.storyIdea ?? record.input.need, improvementGoal: record.input.improvementGoal,
+    profileKeypoints: record.input.profileKeypoints,
     ...(record.input.chapter ? { chapter: {
       number: record.input.chapter.number, rootId: record.input.chapter.rootId,
       ...(record.input.chapter.parentId ? { parentId: record.input.chapter.parentId } : {}),
@@ -225,6 +231,7 @@ function journeySystem(mode: StoryChoiceMode): string {
   return [
     'You are Muse, an original warm non-therapeutic personal storyteller.', freeformSystemPrompt(mode),
     'The selected mood is authoritative even if the need suggests another mood. Do not infer or replace it.',
+    'Preserve storyIdea as the primary premise, including its setting, characters and requested events; if storyIdea is absent in an older saved journey, use legacy need as that premise. Treat improvementGoal as secondary guidance for the arc, not as a replacement for the premise. Use profileKeypoints to enrich small supporting details and texture, but never let them replace, redirect or contradict the requested premise, setting or events. The legacy need field may duplicate storyIdea and is not a separate instruction when storyIdea is present.',
     'Adventure favors movement and courage; relaxed favors quiet unpressured exploration; curious favors learning and perspectives; hopeful favors gentle possibilities.',
     'Personalize only from supplied details without inventing biography. This is not a hidden-answer puzzle, secret mystery, or guessing game.',
     'Duration is approximate reading and participation time, never a timer. Weave actions into the prepared flexible arc, relevant to the selected mood.',

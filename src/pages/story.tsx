@@ -68,7 +68,8 @@ export default function StoryPage() {
   const moodTitle = (mood: PersonalStoryMood) => flow(moodCopyKeys[mood].title)
   const moodDescription = (mood: PersonalStoryMood) => flow(moodCopyKeys[mood].description)
   const [story, setStory] = useState<PersonalStory | null>(null)
-  const [need, setNeed] = useState('')
+  const [storyIdea, setStoryIdea] = useState('')
+  const [improvementGoal, setImprovementGoal] = useState('')
   const [selectedMood, setSelectedMood] = useState<PersonalStoryMood>('curious')
   const [profileReady, setProfileReady] = useState(false)
   const [profileDraft, setProfileDraft] = useState('')
@@ -185,7 +186,9 @@ export default function StoryPage() {
       setLanguage(preferences.language); setDuration(preferences.duration)
       const draft = readDraft(PERSONAL_DRAFT_KEY, isPersonalDraft)
       if (draft) {
-        setNeed(draft.need); setSelectedMood(draft.mood); setChoiceMode(draft.choiceMode)
+        setStoryIdea(draft.storyIdea ?? draft.need ?? '')
+        setImprovementGoal(draft.improvementGoal ?? '')
+        setSelectedMood(draft.mood); setChoiceMode(draft.choiceMode)
         setLanguage(draft.language); setDuration(draft.duration); setRomance(draft.romance)
         setUseProfile(draft.useProfile); setProfileDraft(draft.profileDraft); setCreationStep(draft.step)
         setDraftNotice('Draft restored. Review your choices and consent before creating.')
@@ -200,14 +203,14 @@ export default function StoryPage() {
   useEffect(() => {
     if (!draftsReady || story || preparation || !draftWritable.current) return
     try {
-      writeDraft(PERSONAL_DRAFT_KEY, { need, mood: selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, step: creationStep })
+      writeDraft(PERSONAL_DRAFT_KEY, { storyIdea, improvementGoal, mood: selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, step: creationStep })
       saveStoryPreferences({ language, duration })
       setDraftNotice('Draft saved in this browser.')
       setDraftError('')
     } catch {
       setDraftError('Your draft or preferences could not be saved. Keep this page open or copy your writing before leaving.')
     }
-  }, [draftsReady, story, preparation, need, selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, creationStep])
+  }, [draftsReady, story, preparation, storyIdea, improvementGoal, selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, creationStep])
 
   useEffect(() => {
     setAnswerLoaded(null)
@@ -372,10 +375,11 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), need, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), storyIdea, improvementGoal, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
       removeDraft(PERSONAL_DRAFT_KEY)
       setRomanceConfirmed(false)
-      setNeed('')
+      setStoryIdea('')
+      setImprovementGoal('')
       setResponseDraft('')
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not generate your story.')
@@ -664,9 +668,13 @@ export default function StoryPage() {
                   <option value="suggested">{flow('suggestedInput')}</option>
                 </select>
               </label>
-              <label style={{ display: 'block', maxWidth: 700, marginTop: '1rem', fontWeight: 700 }}>{flow('need')}
-                <textarea value={need} onChange={(event) => { setNeed(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={3} placeholder={flow('needPlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.5rem', padding: '0.8rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+              <label style={{ display: 'block', maxWidth: 700, marginTop: '1rem', fontWeight: 700 }}>{flow('storyIdea')}
+                <textarea aria-label={flow('storyIdea')} value={storyIdea} onChange={(event) => { setStoryIdea(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={3} placeholder={flow('storyIdeaPlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.5rem', padding: '0.8rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
               </label>
+              <label style={{ display: 'block', maxWidth: 700, marginTop: '1rem', fontWeight: 700 }}>{flow('improvementGoal')}
+                <textarea aria-label={flow('improvementGoal')} value={improvementGoal} onChange={(event) => { setImprovementGoal(event.target.value); setAiConsent(false) }} maxLength={1000} disabled={isGenerating} rows={3} placeholder={flow('improvementGoalPlaceholder')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '0.5rem', padding: '0.8rem', font: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+              </label>
+              <p className="atelier-note">{flow('storyPriorityHelp')}</p>
               <details style={{ marginTop: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{flow('personalTouches')}</summary>
                 <p>{flow('touchesHelp')}</p>
@@ -684,7 +692,9 @@ export default function StoryPage() {
               <legend>{flow('lastLook')}</legend>
               <p><strong>{moodTitle(selectedMood)}</strong> · {flow('aboutDuration')} {duration} {flow('minutes')} · {storyLanguage(language).label}</p>
               <p>{choiceMode === 'suggested' ? flow('suggestedReview') : flow('freeReview')} {useProfile && profileReady ? flow('memoryIncluded') : flow('memoryExcluded')}</p>
-              {need ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{need}</p> : null}
+              {storyIdea ? <p><strong>{flow('storyIdea')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{storyIdea}</span></p> : null}
+              {improvementGoal ? <p><strong>{flow('improvementGoal')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{improvementGoal}</span></p> : null}
+              <p className="atelier-note">{flow('storyPriorityHelp')}</p>
               {romance ? <p>{romanceCopy(interfaceLanguage).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>{flow('changeTheme')}</button></p> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent} requireAccount={accountConsentRequired}>
                 {flow('aiConsent')} {flow('attemptNote')}

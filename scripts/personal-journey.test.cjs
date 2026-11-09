@@ -23,7 +23,7 @@ function inspect(run) {
 }
 function dayUsed() { return inspect(db => Number(db.prepare('SELECT used FROM muse_adventure_budgets WHERE bucket = ?').get(`day:${new Date(now).toISOString().slice(0, 10)}`)?.used || 0)) }
 function newCreation(duration = 5) {
-  return { mode: 'journey', action: 'create', id: randomUUID(), capability: randomBytes(32).toString('hex'), duration, mood: 'relaxed', need: 'I am restless and want an adventure, but I explicitly chose relaxed.', profileKeypoints: ['I enjoy gardens.'] }
+  return { mode: 'journey', action: 'create', id: randomUUID(), capability: randomBytes(32).toString('hex'), duration, mood: 'relaxed', need: 'I am restless and want an adventure, but I explicitly chose relaxed.', storyIdea: 'A quiet story about exploring a moonlit garden.', improvementGoal: 'Let the character find a new perspective.', profileKeypoints: ['I enjoy gardens.'] }
 }
 function responseBody(created, revision = created.snapshot.revision, requestId = randomUUID()) {
   return { mode: 'journey', action: 'respond', id: created.story.id, capability: created.story.journey.capability, revision, requestId, text: 'I thank the gardener and leave a light for the next visitor.' }
@@ -102,7 +102,7 @@ async function main() {
   })
   await check('creation validates all durations, mood, capabilities and bounded profile before any AI call', async () => {
     const before = calls
-    for (const patch of [{ duration: 6 }, { duration: '5' }, { duration: null }, { mood: 'angry' }, { profileKeypoints: Array(6).fill('x') }, { need: 'x'.repeat(1001) }, { capability: 'x' }, { id: 'invalid' }]) {
+    for (const patch of [{ duration: 6 }, { duration: '5' }, { duration: null }, { mood: 'angry' }, { profileKeypoints: Array(6).fill('x') }, { need: 'x'.repeat(1001) }, { storyIdea: 'x'.repeat(1001) }, { improvementGoal: 'x'.repeat(1001) }, { capability: 'x' }, { id: 'invalid' }]) {
       assert.equal((await api({ ...newCreation(), ...patch })).status, 400)
     }
     assert.equal(calls, before)
@@ -118,6 +118,8 @@ async function main() {
       assert.equal(calls, before + 1)
       assert.equal(dayUsed(), beforeBudget, 'Opening uses existing generation limits, not live action budget')
       assert.equal(initial.story.mood, 'relaxed')
+      assert.equal(initial.story.storyIdea, creation.storyIdea)
+      assert.equal(initial.story.improvementGoal, creation.improvementGoal)
       assert.equal(initial.snapshot.maxTurns, duration * 3 / 5)
       assert.equal(initial.story.journey.capability, creation.capability)
       assert.deepEqual(initial.story.chapter, { number: 1, rootId: creation.id }, 'Every new personal journey begins as Chapter 1')
@@ -125,6 +127,9 @@ async function main() {
       assert.equal(initial.story.scenes[0].choices.length, 0)
       const row = inspect(db => db.prepare('SELECT record, expires_at FROM muse_personal_journeys WHERE id = ?').get(creation.id))
       assert.equal(JSON.parse(row.record).input.continuation, undefined, 'Chapter 1 has identity metadata but no continuation context')
+      assert.equal(JSON.parse(row.record).input.storyIdea, creation.storyIdea)
+      assert.equal(JSON.parse(row.record).input.improvementGoal, creation.improvementGoal)
+      assert.ok(requests.at(-1).payload.messages[0].content.includes('Preserve storyIdea as the primary premise'))
       assert.ok(!row.record.includes(creation.capability), 'Database stores capability hash only')
       assert.equal(row.expires_at, 'infinity')
       assert.equal(JSON.parse(row.record).expiresAt, null)
@@ -139,6 +144,8 @@ async function main() {
         assert.equal(recent.payload.max_tokens, 1600)
         assert.equal(recent.input.mood, 'relaxed')
         assert.deepEqual(recent.input.profileKeypoints, ['I enjoy gardens.'])
+        assert.equal(recent.input.storyIdea, creation.storyIdea)
+        assert.equal(recent.input.improvementGoal, creation.improvementGoal)
         assert.deepEqual(recent.input.plan, opening.plan)
         assert.ok(!JSON.stringify(recent.input).includes('INJECTED_'))
         assert.ok(!JSON.stringify(recent.input).includes(creation.capability))
@@ -218,7 +225,7 @@ async function main() {
     assert.equal(duplicate.body.status, 'pending')
     assert.equal(duplicate.body.story, null)
     assert.equal(duplicate.body.snapshot.pending, true)
-    assert.equal((await api({ ...creation, need: 'changed' })).status, 409)
+    assert.equal((await api({ ...creation, storyIdea: 'changed' })).status, 409)
     assert.equal(calls, before + 1)
     release(); hold = null
     concurrency = (await pending).body
@@ -552,6 +559,8 @@ async function main() {
     assert.equal(child.journey.status, 'active')
     assert.deepEqual(child.chapter, { number: 2, rootId: parent.id, parentId: parent.id, parentTitle: original.body.story.title })
     assert.equal(child.mood, original.body.story.mood)
+    assert.equal(requests.at(-1).input.storyIdea, original.body.story.storyIdea)
+    assert.equal(requests.at(-1).input.improvementGoal, original.body.story.improvementGoal)
     assert.deepEqual(requests.at(-1).input.continuation.state, state)
     assert.equal(requests.at(-1).input.continuation.previousEnding, conclusion)
     assert.equal(requests.at(-1).input.continuation.recentActions.length, 3)

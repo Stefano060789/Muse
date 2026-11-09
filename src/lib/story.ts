@@ -56,6 +56,8 @@ export type PersonalStory = NarrationMetadata & {
   journey?: JourneySnapshot & { capability: string }
   generation?: 'ai'
   need?: string
+  storyIdea?: string
+  improvementGoal?: string
   profileKeypoints?: string[]
   id: string
   mood: PersonalStoryMood

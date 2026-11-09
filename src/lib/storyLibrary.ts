@@ -112,6 +112,8 @@ export function validatePersonalStory(value: unknown): PersonalStory {
     ...narration(input),
     ...(input.generation === 'ai' ? { generation: 'ai' } : {}),
     ...(input.need !== undefined ? { need: text(input.need) } : {}),
+    ...(input.storyIdea !== undefined ? { storyIdea: text(input.storyIdea, 1000) } : {}),
+    ...(input.improvementGoal !== undefined ? { improvementGoal: text(input.improvementGoal, 1000) } : {}),
     ...(input.profileKeypoints !== undefined ? { profileKeypoints: strings(input.profileKeypoints) } : {})
   }
 }
