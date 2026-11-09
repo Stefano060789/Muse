@@ -250,7 +250,7 @@ export async function generateJourneyOpening(input: JourneyInput): Promise<Journ
     ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."]}'
     : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false}'
   return parseJourneyOpening(await generateStoryJson(
-    system + '\nPrepare 3-5 compact arc points (each at most 180 characters) and the opening in ONE response. ' + choicePrompt + ' Return {"title":"...","description":"...","narrationStyle":"warm","narrationLanguage":"' + (input.language ?? 'en-US') + '","plan":["..."],"turn":' + turnJson + '}. Choose a valid narration style.', input, 1600), mode, input.language)
+    system + '\nPrepare 3-5 compact arc points (each at most 180 characters) and the opening in ONE response. ' + choicePrompt + ' Return {"title":"...","description":"...","narrationStyle":"warm","narrationLanguage":"' + (input.language ?? 'en-US') + '","plan":["..."],"turn":' + turnJson + '}. Choose a valid narration style.', input, 2600), mode, input.language)
 }
 export async function generateJourneyTurn(record: JourneyRecord): Promise<JourneyTurn> {
   if (!record.opening || !record.turn) throw new SharedStoryError('Journey is not ready.', 409)

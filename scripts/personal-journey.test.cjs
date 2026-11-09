@@ -116,6 +116,7 @@ async function main() {
       const initial = result.body
       savedCreations.push({ creation, initial })
       assert.equal(calls, before + 1)
+      assert.equal(requests.at(-1).payload.max_tokens, 2600, 'Opening generation has enough output budget for both the arc plan and narrated scene')
       assert.equal(dayUsed(), beforeBudget, 'Opening uses existing generation limits, not live action budget')
       assert.equal(initial.story.mood, 'relaxed')
       assert.equal(initial.story.storyIdea, creation.storyIdea)
