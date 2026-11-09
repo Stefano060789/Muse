@@ -91,6 +91,10 @@ export default function BillingPage() {
             {plan.id === 'trial' ? <p style={{ fontWeight: 700 }}>{copy.noCard}</p> : null}
           </article>)}
         </section>
+        <p style={{ lineHeight: 1.7 }}>
+          {copy.giftCreationHelp}{' '}
+          <Link href="/shared#new">{copy.giftCreationLink}</Link>
+        </p>
         <p style={{ lineHeight: 1.7 }}>{copy.checkoutHelp}</p>
         <p style={{ lineHeight: 1.7 }}>{copy.priceNotice}</p>
         <details style={{ borderTop: '1px solid #d9cfc5', paddingTop: '1rem', lineHeight: 1.75 }}>

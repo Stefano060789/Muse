@@ -1993,6 +1993,7 @@ export default function SharedStoryPage() {
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>{flow('aboutDuration')} {duration} {flow('minutes')}</option>)}
                   </select>
                 </label>
+                <p>{giftFormText('giftAllowanceNote', interfaceLanguage)}</p>
                 <fieldset aria-label={flow('interaction')} disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
                     <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? flow('groupInteraction') : flow('interaction')}</legend>
                     {[

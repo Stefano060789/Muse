@@ -53,9 +53,10 @@ for (const locale of locales) {
     for (const feature of plan.features) assert.ok(html.includes(textMarkup(feature)))
     assert.ok(plan.features.includes(copy.audioFeature))
   }
-  for (const key of ['trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'priceNotice', 'allowanceDefinition', 'freeActions', 'limits', 'plannedHelp', 'storageHelp']) {
+  for (const key of ['trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'giftCreationHelp', 'giftCreationLink', 'priceNotice', 'allowanceDefinition', 'freeActions', 'limits', 'plannedHelp', 'storageHelp']) {
     assert.ok(html.includes(textMarkup(copy[key])), `${locale} must show ${key}`)
   }
+  assert.ok(html.includes('href="/shared#new"'), `${locale} must link to the standard gift creation flow`)
   assert.equal(/<(form|input|button|iframe)\b/.test(html), false, 'No signed-out purchase controls')
   assert.equal((html.match(new RegExp(textMarkup(copy.planned).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 2)
   const footer = renderToStaticMarkup(React.createElement(SiteFooter))
