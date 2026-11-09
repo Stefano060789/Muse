@@ -396,7 +396,8 @@ export default function StoryPage() {
   const recoveryCopy = chapterRecoveryCopy(interfaceLanguage)
   const readyForClosing = Boolean(story?.journey && story.journey.status !== 'concluded' &&
     story.journey.revision >= story.journey.maxTurns - 1 &&
-    story.journey.revision < story.journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS)
+    story.journey.revision < story.journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS &&
+    (story.journey.status === 'exhausted' || story.currentStep >= story.journey.maxTurns - 1))
   const writeClosingScene = async () => {
     if (!story?.journey || !readyForClosing || archiveReading || requestLock.current) return
     if (!reconciled || story.journey.pending) {

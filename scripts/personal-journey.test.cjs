@@ -56,7 +56,10 @@ async function main() {
     if (providerMode === 'network') throw new Error('private-provider-error-with-secret')
     if (providerMode === 'status') return new Response('private-api-key', { status: 401 })
     let value
-    if (providerMode === 'invalid') value = { narration: 'short', state, concluded: false }
+    if (providerMode === 'invalid-once') {
+      value = { narration: 'short', state, concluded: false }
+      providerMode = 'ok'
+    } else if (providerMode === 'invalid') value = { narration: 'short', state, concluded: false }
     else if (providerMode === 'extra') value = input.responsesRemaining === undefined
       ? { ...opening, providerNote: 'ignored', turn: { ...opening.turn, providerNote: 'ignored', state: { ...state, providerNote: 'ignored' } } }
       : { narration, state: { ...state, providerNote: 'ignored' }, concluded: false, providerNote: 'ignored' }
@@ -261,6 +264,8 @@ async function main() {
       providerMode = 'ok'
       assert.ok(failed.status >= 400)
       if (failure === 'invalid') {
+        assert.match(failed.body.error, /Muse tried once automatically/,
+          'The user is told when Muse has already retried an incomplete reply')
         assert.match(failed.body.error, /Your answer is still in the box\. Click Send response again to retry\./,
           'Malformed response explains how to retry with the preserved answer')
         assert.match(failed.body.error, /This attempt was used; trying again will use another attempt\./,
@@ -276,9 +281,25 @@ async function main() {
       assert.equal(dayUsed(), beforeBudget + 1)
       const repeat = await api(action)
       assert.equal(repeat.body.status, 'failed')
-      assert.equal(calls, before + 1)
+      assert.equal(calls, before + (failure === 'invalid' ? 2 : 1))
       concurrency = failed.body
     }
+  })
+  await check('incomplete AI replies get one automatic retry within the same reserved response', async () => {
+    const created = await api(newCreation(10))
+    assert.equal(created.status, 200)
+    const action = responseBody(created.body)
+    const before = calls, beforeBudget = dayUsed()
+    providerMode = 'invalid-once'
+    const retried = await api(action)
+    providerMode = 'ok'
+    assert.equal(retried.status, 200)
+    assert.equal(retried.body.status, 'done')
+    assert.equal(retried.body.snapshot.revision, created.body.snapshot.revision + 1,
+      'The automatic provider retry consumes only the already-reserved player response')
+    assert.equal(retried.body.story.responses.length, 1)
+    assert.equal(calls, before + 2, 'The incomplete model output is followed by one automatic provider retry')
+    assert.equal(dayUsed(), beforeBudget + 1, 'The player action budget is charged once for the automatic retry')
   })
   await check('abandoned reservation survives restart, expires as consumed, and late completion cannot overwrite', async () => {
     const op = { operation: 'reserve', id: concurrency.story.id, accountId: 'local-development', capabilityHash: journey.journeyHash(concurrency.story.journey.capability), cap: 1000, ...journey.parseJourneyAction(responseBody(concurrency)) }
@@ -307,7 +328,7 @@ async function main() {
     assert.notEqual(failed.body.story.scenes.at(-1).body, conclusion)
     assert.equal((await api(responseBody(failed.body))).status, 409)
     assert.equal((await api(action)).body.status, 'failed')
-    assert.equal(calls, before + 1)
+    assert.equal(calls, before + 2)
   })
   await check('failed opening creation is durable, consumes generation allowance and never automatically regenerates', async () => {
     const creation = newCreation()

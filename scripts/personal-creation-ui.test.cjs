@@ -483,12 +483,23 @@ async function main() {
     ],
     journey: { ...loadedStory.journey, revision: 2, maxTurns: 3, status: 'active' }
   }
-  const beforeClosingStory = structuredClone(loadedStory)
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'))
+  assert.ok(!nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'),
+    'The optional ending control stays hidden at Scene 2 of 4 even when an earlier failed attempt consumed a turn')
   assert.ok(responseField(), 'The final available turn keeps the response box available')
   assert.ok(find('button', 'Send response'), 'The player can use the last turn to respond')
+  const beforeClosingStory = structuredClone(loadedStory)
+  loadedStory = {
+    ...loadedStory, currentStep: 2,
+    scenes: [...loadedStory.scenes, { title: 'The path ahead', body: 'The garden opens.', question: 'Where next?', choices: [] }]
+  }
+  slots.length = 0; effects.length = 0
+  await flush()
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 3 of 4')))
+  assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'),
+    'The optional ending control becomes available at the last available scene')
+  const lastAvailableScene = structuredClone(loadedStory)
   responseField().props.onChange({ target: { value: 'I answer on the final turn.' } })
   await flush()
   nodes().find(node => node.type === '../components/ExplicitConsent').props.onChange(true)
@@ -500,7 +511,7 @@ async function main() {
   assert.equal(requests.at(-1).action, 'respond', 'The final-turn response is sent as a normal story action')
   assert.equal(requests.at(-1).revision, 2)
   assert.equal(requests.at(-1).text, 'I answer on the final turn.')
-  loadedStory = beforeClosingStory
+  loadedStory = lastAvailableScene
   slots.length = 0; effects.length = 0
   await flush()
   const closingRequests = requests.length

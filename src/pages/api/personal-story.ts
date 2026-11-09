@@ -128,15 +128,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } else throw new SharedStoryError('Unsupported personal journey action.')
       const reserved = await db.personalJourney(operation)
       if (reserved.status !== 'reserved') return res.status(200).json(publicJourney(reserved, capability))
+      let automaticRetryAttempted = false
       try {
         storyProviderConfig()
         await reserveBillingUsage(account.id,
           operation.operation === 'create' ? `story:${operation.id}` : `interaction:${operation.id}:${operation.requestId}`,
           operation.operation === 'create' ? 'story' : 'interaction')
         if (operation.operation === 'create') await reserveStoryRequest(db, req, 'generate')
-        const generated = operation.operation === 'create'
-          ? { opening: await generateJourneyOpening(reserved.record.input) }
-          : { turn: await generateJourneyTurn(reserved.record) }
+        let generated
+        if (operation.operation === 'create') {
+          generated = { opening: await generateJourneyOpening(reserved.record.input) }
+        } else {
+          try {
+            generated = { turn: await generateJourneyTurn(reserved.record) }
+          } catch (error) {
+            const retryableStoryOutput = error instanceof SharedStoryError && [
+              'The AI provider returned invalid story JSON. Please try again.',
+              'The AI response failed story validation.',
+              'The AI provider did not finish the story. Please try again.'
+            ].includes(error.message)
+            if (body.action !== 'respond' || !retryableStoryOutput) throw error
+            automaticRetryAttempted = true
+            generated = { turn: await generateJourneyTurn(reserved.record) }
+          }
+        }
         const finished = await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, ...generated })
         if (operation.operation === 'create') await reportOperation('story-created')
         return res.status(200).json(publicJourney(finished, capability))
@@ -159,14 +174,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ].includes(error.message)
         const invalidResponse = body.action === 'respond' && retryableResponseError
         const retryGuidance = current?.snapshot.status === 'exhausted'
-          ? 'This attempt was used, and no regular responses remain. Your saved scenes are safe. Click Retry closing scene to finish this chapter; that retry will use another attempt.'
+          ? `${automaticRetryAttempted ? 'Muse tried once automatically. ' : ''}This attempt was used, and no regular responses remain. Your saved scenes are safe. Click Retry closing scene to finish this chapter; that retry will use another attempt.`
           : current?.snapshot.choiceMode === 'suggested'
-            ? 'This attempt was used. Choose a story action again to retry; another attempt will be used.'
-            : 'Your answer is still in the box. Click Send response again to retry. This attempt was used; trying again will use another attempt.'
+            ? `${automaticRetryAttempted ? 'Muse tried once automatically. ' : ''}This attempt was used. Choose a story action again to retry; another attempt will be used.`
+            : `${automaticRetryAttempted ? 'Muse tried once automatically, but could not complete the reply. ' : ''}Your answer is still in the box. Click Send response again to retry. This attempt was used; trying again will use another attempt.`
         return res.status(error instanceof SharedStoryError ? error.status : 503).json({
           error: invalidResponse
             ? `The AI could not prepare a story reply this time. ${retryGuidance}`
-            : `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} No automatic retry was made. Your draft and any saved scenes are kept.`,
+            : `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} ${automaticRetryAttempted ? 'One automatic retry was made, but no further retry was made.' : 'No automatic retry was made.'} Your draft and any saved scenes are kept.`,
           ...current
         })
       }
