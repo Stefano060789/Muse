@@ -53,10 +53,18 @@ for (const locale of locales) {
     for (const feature of plan.features) assert.ok(html.includes(textMarkup(feature)))
     assert.ok(plan.features.includes(copy.audioFeature))
   }
-  for (const key of ['trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'giftCreationHelp', 'giftCreationLink', 'priceNotice', 'allowanceDefinition', 'freeActions', 'limits', 'plannedHelp', 'storageHelp']) {
+  for (const key of [
+    'trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'packageHeading', 'packageIntro',
+    'personalOptionName', 'sharedGiftOptionName', 'packageAccessHeading', 'packageAccessIntro',
+    'oneTimeHeading', 'oneTimeIntro', 'otherOptionsHeading', 'priceNotice', 'allowanceDefinition',
+    'freeActions', 'limits', 'plannedHelp', 'storageHelp'
+  ]) {
     assert.ok(html.includes(textMarkup(copy[key])), `${locale} must show ${key}`)
   }
-  assert.ok(html.includes('href="/shared#new"'), `${locale} must link to the standard gift creation flow`)
+  assert.ok(html.includes('href="/my-stories"'), `${locale} must link to My Story`)
+  assert.ok(html.includes('href="/shared#new"'), `${locale} must link to the standard Shared Gift Story flow`)
+  assert.ok(html.includes(textMarkup(plans.find(plan => plan.id === 'gift').price)), `${locale} must show the separate gift price`)
+  assert.ok(html.includes(textMarkup(copy.giftDescription)), `${locale} must explain the separate gift is not available yet`)
   assert.equal(/<(form|input|button|iframe)\b/.test(html), false, 'No signed-out purchase controls')
   assert.equal((html.match(new RegExp(textMarkup(copy.planned).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 2)
   const footer = renderToStaticMarkup(React.createElement(SiteFooter))

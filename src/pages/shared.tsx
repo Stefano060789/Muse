@@ -1839,6 +1839,7 @@ export default function SharedStoryPage() {
           <section>
             <p className="atelier-eyebrow">{pageText('giftEyebrow', interfaceLanguage)}</p>
             <h1 className="atelier-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 3.6rem)' }}>{pageText('giftTitle', interfaceLanguage)}</h1>
+            <p style={cardStyle}>{giftFormText('giftAllowanceNote', interfaceLanguage)}</p>
             {pendingDraft ? <aside style={cardStyle} aria-label="Saved draft">
               <h2>Pick up where you left off?</h2>
               <p>A draft is saved on this device from {new Date(pendingDraft.savedAt).toLocaleString()}. Voice recordings and media are not saved in drafts.</p>
@@ -1993,7 +1994,6 @@ export default function SharedStoryPage() {
                     {SHARED_STORY_DURATIONS.map((duration) => <option key={duration} value={duration}>{flow('aboutDuration')} {duration} {flow('minutes')}</option>)}
                   </select>
                 </label>
-                <p>{giftFormText('giftAllowanceNote', interfaceLanguage)}</p>
                 <fieldset aria-label={flow('interaction')} disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
                     <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? flow('groupInteraction') : flow('interaction')}</legend>
                     {[

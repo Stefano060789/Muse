@@ -16,6 +16,19 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<keyof BillingCopy | null>(null)
+  const renderPlanCards = (planIds: readonly string[]) => plans.filter(plan => planIds.includes(plan.id)).map(plan => (
+    <article key={plan.id} aria-labelledby={`plan-${plan.id}`} style={{ padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 20, background: '#fffaf6', minWidth: 0 }}>
+      <p style={{ fontSize: '0.85rem', marginTop: 0 }}>{copy[plan.availability]}</p>
+      <h3 id={`plan-${plan.id}`} style={{ fontSize: '1.4rem' }}>{plan.name}</h3>
+      <p style={{ marginBottom: 4 }}><strong style={{ fontSize: '2rem' }}>{plan.price}</strong></p>
+      <p style={{ marginTop: 0 }}>{plan.period}</p>
+      <p style={{ lineHeight: 1.7 }}>{plan.description}</p>
+      <ul style={{ paddingInlineStart: '1.2rem', lineHeight: 1.7 }}>
+        {plan.features.map(feature => <li key={feature} style={{ marginBottom: '0.6rem' }}>{feature}</li>)}
+      </ul>
+      {plan.id === 'trial' ? <p style={{ fontWeight: 700 }}>{copy.noCard}</p> : null}
+    </article>
+  ))
   useEffect(() => {
     let active = true
     void accountFetch('/api/billing').then(async response => {
@@ -78,23 +91,40 @@ export default function BillingPage() {
           {!billing.creatorUnlimited && billing.status !== 'active' ? <button type="button" className="atelier-button" disabled={busy} onClick={() => void subscribe()}>{busy ? copy.opening : copy.subscribe}</button> : null}
         </section> : null}
         {error ? <p role="alert">{copy[error]}</p> : null}
-        <section aria-label={copy.planList} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '2rem 0' }}>
-          {plans.map(plan => <article key={plan.id} aria-labelledby={`plan-${plan.id}`} style={{ padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 20, background: '#fffaf6', minWidth: 0 }}>
-            <p style={{ fontSize: '0.85rem', marginTop: 0 }}>{copy[plan.availability]}</p>
-            <h2 id={`plan-${plan.id}`} style={{ fontSize: '1.4rem' }}>{plan.name}</h2>
-            <p style={{ marginBottom: 4 }}><strong style={{ fontSize: '2rem' }}>{plan.price}</strong></p>
-            <p style={{ marginTop: 0 }}>{plan.period}</p>
-            <p style={{ lineHeight: 1.7 }}>{plan.description}</p>
-            <ul style={{ paddingInlineStart: '1.2rem', lineHeight: 1.7 }}>
-              {plan.features.map(feature => <li key={feature} style={{ marginBottom: '0.6rem' }}>{feature}</li>)}
-            </ul>
-            {plan.id === 'trial' ? <p style={{ fontWeight: 700 }}>{copy.noCard}</p> : null}
-          </article>)}
+        <section aria-labelledby="package-heading" style={{ margin: '2rem 0' }}>
+          <h2 id="package-heading">{copy.packageHeading}</h2>
+          <p style={{ lineHeight: 1.7 }}>{copy.packageIntro}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1.25rem 0 2rem' }}>
+            <article style={{ padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 20, background: '#fffaf6' }}>
+              <h3>{copy.personalOptionName}</h3>
+              <p style={{ lineHeight: 1.7 }}>{copy.personalOptionDescription}</p>
+              <Link href="/my-stories">{copy.personalOptionName}</Link>
+            </article>
+            <article style={{ padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 20, background: '#fffaf6' }}>
+              <h3>{copy.sharedGiftOptionName}</h3>
+              <p style={{ lineHeight: 1.7 }}>{copy.sharedGiftOptionDescription}</p>
+              <Link href="/shared#new">{copy.sharedGiftOptionName}</Link>
+            </article>
+          </div>
+          <h3>{copy.packageAccessHeading}</h3>
+          <p style={{ lineHeight: 1.7 }}>{copy.packageAccessIntro}</p>
+          <div aria-label={copy.planList} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1rem 0' }}>
+            {renderPlanCards(['trial', 'monthly'])}
+          </div>
         </section>
-        <p style={{ lineHeight: 1.7 }}>
-          {copy.giftCreationHelp}{' '}
-          <Link href="/shared#new">{copy.giftCreationLink}</Link>
-        </p>
+        <section aria-labelledby="one-time-heading" style={{ margin: '2rem 0', padding: '1.25rem', border: '1px solid #ac8450', borderRadius: 20, background: '#fffaf6' }}>
+          <h2 id="one-time-heading">{copy.oneTimeHeading}</h2>
+          <p style={{ lineHeight: 1.7 }}>{copy.oneTimeIntro}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 420px))', gap: 16, margin: '1rem 0' }}>
+            {renderPlanCards(['gift'])}
+          </div>
+        </section>
+        <section aria-labelledby="other-options-heading" style={{ margin: '2rem 0' }}>
+          <h2 id="other-options-heading">{copy.otherOptionsHeading}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1rem 0' }}>
+            {renderPlanCards(['free', 'annual'])}
+          </div>
+        </section>
         <p style={{ lineHeight: 1.7 }}>{copy.checkoutHelp}</p>
         <p style={{ lineHeight: 1.7 }}>{copy.priceNotice}</p>
         <details style={{ borderTop: '1px solid #d9cfc5', paddingTop: '1rem', lineHeight: 1.75 }}>

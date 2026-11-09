@@ -359,7 +359,7 @@ async function main() {
   duration.props.onChange({ target: { value: '20' } })
   await preferenceCreator.flush()
   assert.deepEqual(JSON.parse(preferenceValues.get('muse-preferences')), { language: 'ar-SA', duration: 20 })
-  assert.ok(preferenceCreator.nodes().some(node => node.type === 'p' && label(node).includes('This is a standard gift story')),
+  assert.ok(preferenceCreator.nodes().some(node => node.type === 'p' && label(node).includes('This standard Shared Gift Story')),
     'Gift creation explains that a 20-minute gift uses the shared story allowance')
   assert.equal(consent().props.checked, false, 'Changing remembered language or duration never preserves AI consent')
   console.log('PASS gift creation remembers validated language and duration without remembering consent')
