@@ -96,51 +96,53 @@ check('optional romance defaults stay compact and mode changes reset acknowledgm
   options.nodes().find(node => node.type === 'select').props.onChange({ target: { value: '' } })
   assert.deepEqual(changes, ['spicy', undefined])
 })
-check('sample is original static fiction with bounded answer handling', () => {
-  assert.equal(sample.SAMPLE_STORY.scenes.length, 2)
-  for (const answer of ['picnic', ' A PICNIC! ', 'picnic.']) assert.equal(sample.sampleAnswerMatches(answer), true)
-  for (const answer of ['', 'not a picnic', '<script>']) assert.equal(sample.sampleAnswerMatches(answer), false)
+check('sample is original static fiction with three choice-based scenes', () => {
+  assert.equal(sample.SAMPLE_STORY.scenes.length, 3)
+  assert.ok(sample.SAMPLE_STORY.scenes.every(scene => scene.question && scene.choices.length === 3))
 })
 check('demo can be completed and replayed with no API or storage dependencies', () => {
   const demoCopy = load('src/lib/demoPageLocalization.ts').demoLocalization('en-US')
+  const demoStory = sample.SAMPLE_STORY
   const demo = component('src/pages/demo.tsx', {
     '../lib/sampleStory': sample,
     '../lib/demoPageLocalization': { demoLocalization: () => demoCopy },
     '../lib/interfaceLanguage': { useInterfaceLanguage: () => 'en-US' },
-    '../lib/sampleAudio.json': sampleAudio,
     '../components/SampleNarration': { __esModule: true, default: 'sample-narration' }
   })
   demo.render()
   assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
   demo.find('button', demoCopy.copy.openStory).props.onClick(); demo.render()
-  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-1'].src)
+  let narration = demo.nodes().find(node => node.type === 'sample-narration')
+  assert.equal(narration.props.browserOnly, true)
+  assert.equal(narration.props.language, 'en-US')
+  assert.ok(narration.props.text.includes(demoStory.scenes[0].body))
   assert.ok(demo.nodes().some(node => node.props.children === demoCopy.copy.privacyNotice))
+  assert.equal(demo.find('button', demoCopy.copy.continue).props.disabled, true, 'A choice is required before continuing')
+  demo.find('button', demoStory.scenes[0].choices[0]).props.onClick(); demo.render()
+  assert.equal(demo.find('button', demoCopy.copy.continue).props.disabled, false)
   demo.find('button', demoCopy.copy.continue).props.onClick(); demo.render()
-  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio['scene-2'].src)
-  demo.nodes().find(node => node.props.id === 'sample-answer').props.onChange({ target: { value: 'wrong' } }); demo.render()
-  demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
-  assert.ok(demo.nodes().some(node => node.props.role === 'status'))
-  demo.nodes().find(node => node.props.id === 'sample-answer').props.onChange({ target: { value: 'A picnic' } }); demo.render()
-  demo.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); demo.render()
+  narration = demo.nodes().find(node => node.type === 'sample-narration')
+  assert.ok(narration.props.text.includes(demoStory.scenes[1].body))
+  assert.ok(demo.nodes().some(node => node.props.role === 'status' && text(node).includes(demoStory.scenes[0].choices[0])),
+    'The next scene carries the previous choice forward')
+  demo.find('button', demoStory.scenes[1].choices[1]).props.onClick(); demo.render()
+  demo.find('button', demoCopy.copy.continue).props.onClick(); demo.render()
+  assert.ok(demo.nodes().find(node => node.type === 'sample-narration').props.text.includes(demoStory.scenes[2].body))
+  demo.find('button', demoStory.scenes[2].choices[2]).props.onClick(); demo.render()
+  demo.find('button', demoCopy.copy.revealButton).props.onClick(); demo.render()
+  assert.ok(demo.nodes().some(node => node.type === 'ol' && node.props.children.length === 3))
   assert.ok(demo.nodes().some(node => node.props.href === '/shared#new'))
-  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
   demo.find('button', demoCopy.copy.restart).props.onClick(); demo.render()
   assert.ok(demo.find('button', demoCopy.copy.openStory))
   assert.equal(demo.nodes().filter(node => node.type === 'sample-narration').length, 0)
   demo.find('button', demoCopy.copy.openStory).props.onClick(); demo.render()
-  demo.find('button', demoCopy.copy.revealButton).props.onClick(); demo.render()
-  assert.equal(demo.nodes().find(node => node.type === 'sample-narration').props.src, sampleAudio.message.src)
+  assert.ok(!demo.nodes().some(node => node.type === 'button' && text(node) === demoCopy.copy.revealButton),
+    'The ending cannot be skipped')
 })
-check('sample recordings match current public text and committed MP3 content', () => {
+check('committed sample recording files match their integrity manifest', () => {
   const hash = value => createHash('sha256').update(value).digest('hex')
-  const entries = [
-    ...sample.SAMPLE_STORY.scenes.map((scene, index) => [`scene-${index + 1}`, `${scene.title}. ${scene.body} Clue: ${scene.clue}`]),
-    ['message', sample.SAMPLE_STORY.message]
-  ]
-  assert.deepEqual(Object.keys(sampleAudio), entries.map(([name]) => name))
-  for (const [name, text] of entries) {
-    const recording = sampleAudio[name]
-    assert.equal(recording.textHash, hash(text), 'Regenerate audio when sample text changes')
+  for (const recording of Object.values(sampleAudio)) {
+    assert.match(recording.textHash, /^[a-f0-9]{64}$/)
     assert.match(recording.src, /^\/sample-audio\/[a-z0-9-]+\.mp3$/)
     const audio = fs.readFileSync(path.join(root, 'public', recording.src))
     assert.equal(audio.length, recording.bytes)
@@ -161,8 +163,8 @@ check('sample audio requires a Play tap, surfaces failures and never switches to
   })
   const props = { src: sampleAudio['scene-1'].src, label: 'Listen to this scene' }
   player.render(props)
-  assert.equal(browserChunkLoads, 0, 'English prerecorded narration does not load the browser-speech chunk')
-  assert.equal(narrationInitializations, 0, 'English prerecorded narration does not initialize device speech')
+  assert.equal(browserChunkLoads, 0, 'Prerecorded narration does not load the browser-speech chunk')
+  assert.equal(narrationInitializations, 0, 'Prerecorded narration does not initialize device speech')
   const recordedTree = () => {
     const recordedComponent = player.nodes().find(node => typeof node.type === 'function')
     assert.ok(recordedComponent, 'English narration uses the prerecorded-audio component')

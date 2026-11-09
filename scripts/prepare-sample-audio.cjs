@@ -21,7 +21,10 @@ async function main() {
   const { synthesizeGoogleNarration } = require(path.join(output, 'lib', 'googleNarration.js'))
   const { SAMPLE_STORY } = require(path.join(output, 'lib', 'sampleStory.js'))
   const entries = [
-    ...SAMPLE_STORY.scenes.map((scene, index) => [`scene-${index + 1}`, `${scene.title}. ${scene.body} Clue: ${scene.clue}`]),
+    ...SAMPLE_STORY.scenes.map((scene, index) => [
+      `scene-${index + 1}`,
+      `${scene.title}. ${scene.body} ${scene.question} ${scene.choices.join('. ')}`
+    ]),
     ['message', SAMPLE_STORY.message]
   ]
   const manifest = {}

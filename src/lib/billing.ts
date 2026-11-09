@@ -14,7 +14,7 @@ export type BillingStatus = {
   storyLimit: 10
   interactionsUsed: number
   interactionLimit: 120
-  interactionUnlimited: boolean
+  creatorUnlimited: boolean
   canGenerate: boolean
 }
 
@@ -62,7 +62,7 @@ export async function getBillingStatus(ownerId: string): Promise<BillingStatus> 
       tier: 'plus', status: 'trialing', trialStartedAt: now.toISOString(), trialEndsAt: ends.toISOString(),
       periodStartedAt: now.toISOString(), periodEndsAt: ends.toISOString(),
       storiesUsed: 0, storyLimit: 10, interactionsUsed: 0, interactionLimit: 120,
-      interactionUnlimited: false, canGenerate: true
+      creatorUnlimited: false, canGenerate: true
     }
   }
   const database = billingDatabase()
@@ -71,14 +71,14 @@ export async function getBillingStatus(ownerId: string): Promise<BillingStatus> 
     throw new SharedStoryError('Could not load your plan and usage. Please try again later.', 503)
   }
   const billing = data as BillingStatus
-  const interactionUnlimited = Boolean(billing.canGenerate && await isCreatorAccount(ownerId, database))
-  return { ...billing, interactionUnlimited }
+  const creatorUnlimited = await isCreatorAccount(ownerId, database)
+  return { ...billing, creatorUnlimited, canGenerate: billing.canGenerate || creatorUnlimited }
 }
 
 export async function reserveBillingUsage(ownerId: string, requestId: string, kind: 'story' | 'interaction') {
   if (billingTrialMode()) return
   const database = billingDatabase()
-  const creator = kind === 'interaction' && await isCreatorAccount(ownerId, database)
+  const creator = await isCreatorAccount(ownerId, database)
   const { data, error } = await database.rpc('muse_reserve_billing_usage', {
     p_owner_id: ownerId, p_request_id: requestId, p_usage_kind: kind
   })
@@ -87,7 +87,8 @@ export async function reserveBillingUsage(ownerId: string, requestId: string, ki
   }
   const result = data as { allowed?: unknown; reason?: unknown }
   if (result.allowed === true) return
-  if (creator && kind === 'interaction' && result.reason === 'interaction_limit') return
+  const planLimitReasons = ['story_limit', 'interaction_limit', 'trial_or_subscription_ended', 'subscription_period_unavailable']
+  if (creator && typeof result.reason === 'string' && planLimitReasons.includes(result.reason)) return
   const benefit = 'Muse Plus includes 10 story creations and 120 AI interactions each month. Your saved stories remain available. Visit /billing to subscribe and keep creating.'
   const limit = result.reason === 'story_limit'
     ? 'You have used this period’s story creations. '

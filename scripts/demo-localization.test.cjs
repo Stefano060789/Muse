@@ -48,7 +48,7 @@ function load(relative) {
 }
 
 const { demoLocalization } = load('src/lib/demoPageLocalization.ts')
-const { SAMPLE_STORY, sampleAnswerMatches, sampleStoryForLanguage } = load('src/lib/sampleStory.ts')
+const { SAMPLE_STORY, sampleStoryForLanguage } = load('src/lib/sampleStory.ts')
 const DemoPage = load('src/pages/demo.tsx').default
 
 function renderPage(language, state) {
@@ -58,7 +58,7 @@ function renderPage(language, state) {
   React.useState = initial => [state[stateIndex++], () => {}]
   let tree
   try { tree = DemoPage() } finally { React.useState = originalUseState }
-  assert.equal(stateIndex, 6, 'The demo uses the expected six local state values')
+  assert.equal(stateIndex, 4, 'The demo uses the expected four local state values')
   return renderToStaticMarkup(tree)
 }
 
@@ -71,43 +71,32 @@ for (const language of languages) {
   const { story, copy } = demoLocalization(language)
   const localizedStory = sampleStoryForLanguage(language)
   assert.deepEqual(localizedStory, story)
-  assert.equal(story.scenes.length, 2)
-  assert.ok(story.title && story.dedication && story.answer && story.message)
-  assert.ok(story.scenes.every(scene => scene.title && scene.body && scene.clue))
+  assert.equal(story.scenes.length, 3)
+  assert.ok(story.title && story.dedication && story.message)
+  assert.ok(story.scenes.every(scene => scene.title && scene.body && scene.question && scene.choices.length === 3))
   assert.ok(Object.entries(copy).filter(([key]) => key !== 'sceneCount').every(([, value]) => typeof value === 'string' && value.length > 0))
   assert.ok(copy.sceneCount(1, 2).length > 0)
-  assert.equal(sampleAnswerMatches(story.answer, language), true, `${language} accepts its localized answer`)
-  assert.equal(sampleAnswerMatches('picnic', language), true, `${language} accepts the English answer`)
 
-  const introMarkup = renderPage(language, [false, 0, '', false, false, ''])
+  const introMarkup = renderPage(language, [false, 0, false, []])
   assert.ok(containsText(introMarkup, story.title))
   assert.ok(containsText(introMarkup, copy.openStory))
 
-  const sceneMarkup = renderPage(language, [true, 0, '', false, false, ''])
+  const sceneMarkup = renderPage(language, [true, 0, false, []])
   assert.ok(sceneMarkup.includes(`lang="${language}"`), `${language} is set on the page`)
   assert.ok(containsText(sceneMarkup, story.scenes[0].title))
   assert.ok(containsText(sceneMarkup, story.scenes[0].body))
-  assert.ok(containsText(sceneMarkup, story.scenes[0].clue))
+  assert.ok(containsText(sceneMarkup, story.scenes[0].question))
+  for (const choice of story.scenes[0].choices) assert.ok(containsText(sceneMarkup, choice))
   assert.ok(containsText(sceneMarkup, copy.privacyNotice))
   if (language === 'ar-SA') assert.ok(sceneMarkup.includes('dir="rtl"'))
-  if (language === 'en-US') {
-    assert.ok(sceneMarkup.includes('/sample-audio/scene-1-'))
-    assert.ok(sceneMarkup.includes('prerecorded Google WaveNet voice'))
-  } else {
-    assert.ok(!sceneMarkup.includes('<audio'))
-    assert.ok(containsText(sceneMarkup, copy.narrationNotice))
-  }
+  assert.ok(!sceneMarkup.includes('<audio'))
+  assert.ok(containsText(sceneMarkup, copy.narrationNotice))
 
-  const revealMarkup = renderPage(language, [true, 1, '', true, false, ''])
+  const revealMarkup = renderPage(language, [true, 2, true, story.scenes.map(scene => scene.choices[0])])
   assert.ok(containsText(revealMarkup, story.message), `${language} renders the translated reveal`)
-  if (language === 'en-US') assert.ok(revealMarkup.includes('/sample-audio/message-'))
-  else assert.ok(!revealMarkup.includes('<audio'), `${language} never plays the English recording`)
+  for (const scene of story.scenes) assert.ok(containsText(revealMarkup, scene.choices[0]))
+  assert.ok(!revealMarkup.includes('<audio'), `${language} never plays a recording`)
 }
 
 assert.equal(SAMPLE_STORY.title, demoLocalization('en-US').story.title)
-assert.equal(sampleAnswerMatches('A PICNIC!'), true)
-assert.equal(sampleAnswerMatches('野餐', 'zh-CN'), true)
-assert.equal(sampleAnswerMatches('पिकनिक', 'hi-IN'), true)
-assert.equal(sampleAnswerMatches('пікнік', 'uk-UA'), true)
-assert.equal(sampleAnswerMatches('نزهة', 'ar-SA'), true)
-console.log(`PASS localized Muse demo copy, two-scene stories, browser-only audio, reveals and answers (${languages.length} locales)`)
+console.log(`PASS localized Muse demo copy, three-scene choices, browser-only narration and endings (${languages.length} locales)`)
