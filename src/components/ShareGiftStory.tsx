@@ -9,6 +9,7 @@ export default function ShareGiftStory({
   localOnly = false,
   whatsappUrl,
   showWhatsapp = true,
+  buttonLabel = 'Share',
   beforeShare,
   onShareStart,
   previewContent
@@ -20,6 +21,7 @@ export default function ShareGiftStory({
   localOnly?: boolean
   whatsappUrl?: string
   showWhatsapp?: boolean
+  buttonLabel?: string
   beforeShare?: () => boolean
   onShareStart?: () => void
   previewContent?: ReactNode
@@ -63,7 +65,7 @@ export default function ShareGiftStory({
 
   return <section aria-label="Share gift story">
     <button type="button" className="atelier-button" disabled={disabled} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(value => !value)}>
-      Share
+      {buttonLabel}
     </button>
     {open ? <div id={panelId} role="region" aria-label="Gift story sharing options" style={{ marginTop: '0.75rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 16 }}>
       {localOnly ? <p role="note">Local link: works only on this computer. External sharing and printable QR are disabled.</p> : null}

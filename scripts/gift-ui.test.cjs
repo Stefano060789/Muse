@@ -174,7 +174,12 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     if (id.endsWith('/storyRomance')) return romance
     if (id.endsWith('/registrationCopy')) return plainModule('src/lib/registrationCopy.ts')
     if (id.endsWith('/storyRetention')) return plainModule('src/lib/storyRetention.ts')
-    if (id.endsWith('/sharedStorySharing')) return { recipientShareDetails: () => null, sharedStoryPreviewText: () => 'Public scenes only' }
+    if (id.endsWith('/sharedStorySharing')) return {
+      recipientShareDetails: (origin, token) => token ? {
+        url: `${origin}/shared#play=${token}`, text: 'A story for you', localOnly: false, whatsappUrl: 'https://wa.me/'
+      } : null,
+      sharedStoryPreviewText: () => 'Public scenes only'
+    }
     if (id.endsWith('/sharedStoryTranslation')) return { parseSharedStoryTranslation: value => value }
     if (id.endsWith('/storyLibrary')) return { loadStoryLibrary: () => ({ library: { entries: [] }, error: null }), latestCreatorStory: () => null, saveLibraryCreatorStory(story) {
       if (failures.library) throw new Error('Browser library is full')
@@ -783,53 +788,24 @@ async function main() {
   console.log('PASS recipient Studio is gated behind fresh romance acceptance and cover, loads bytes with session, never exposes generation')
   const owner = await mount('#manage=fixture', null, {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
-    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: null
+    content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: null, playToken: 'gift-play-token'
   })
-  assert.ok(owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'Management access is independent of pre-send checks')
   const tools = owner.nodes().find(node => node.props['aria-label'] === 'Sender tools')
-  assert.ok(tools && !tools.props.open, 'Sharing and management stay in a collapsed sender panel')
-  assert.ok(flatten(tools).some(node => node?.type === '../components/PreSendCheck'), 'Sharing safeguards stay available')
+  assert.ok(tools && !tools.props.open, 'Advanced sender tools stay collapsed')
+  assert.ok(!owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'The management link is not shown on the post-create screen')
+  assert.ok(!owner.nodes().some(node => node.type === '../components/GiftProgress'), 'Progress is not presented as part of the creator review')
+  assert.ok(!owner.nodes().some(node => node.type === '../components/PreSendCheck'), 'Reviewing the visible story no longer requires a second checklist')
   assert.ok(!owner.nodes().some(node => node.type === 'button' && ['Create new story', 'Reuse this brief'].includes(label(node))))
   const sceneArticle = owner.nodes().find(node => node.props['aria-label'] === 'Story scene 1')
   assert.ok(sceneArticle && !flatten(tools).includes(sceneArticle), 'The story is visible outside sender tools')
   const readingPanel = owner.nodes().find(node => node.props['aria-label'] === 'Read prepared story')
   assert.ok(readingPanel && readingPanel.props.open && flatten(readingPanel).includes(sceneArticle),
     'Read mode prints the full story without another click')
-  assert.ok(owner.nodes().some(node => node.props.href === '/library#shared-stories-heading'),
-    'Ready screen links directly to saved gift stories')
-  assert.equal(owner.button('Save title').props.disabled, true, 'Unchanged title does not offer a redundant save')
-  owner.field('creator-story-title').props.onChange({ target: { value: '  A new gift title  ' } })
-  await owner.flush()
-  const submitTitle = async view => {
-    const form = view.nodes().find(node => node.props['aria-label'] === 'Edit story title')
-    form.props.onSubmit({ preventDefault() {} }); await view.flush()
-  }
-  await submitTitle(owner)
-  assert.equal(owner.requests.at(-1).title, 'A new gift title')
-  assert.equal(owner.field('creator-story-title').props.value, 'A new gift title')
-  assert.ok(owner.nodes().some(node => node.type === 'h1' && label(node) === 'A new gift title'))
-  assert.equal(owner.savedStories.at(-1).content.title, 'A new gift title', 'Saved library copy receives the changed title')
-  assert.ok(owner.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'status' && label(node) === 'Title saved.'),
-    'Successful save is announced beside the button')
-  assert.equal(owner.button('Save title').props.disabled, true)
-  const failedTitle = await mount('#manage=failed', null, {
-    brief: { message: 'A surprise', durationMinutes: 5 }, content: { title: 'Original', scenes: [player.scene] }
-  }, { title: true })
-  failedTitle.field('creator-story-title').props.onChange({ target: { value: 'Keep my edit' } })
-  await failedTitle.flush()
-  await submitTitle(failedTitle)
-  assert.equal(failedTitle.field('creator-story-title').props.value, 'Keep my edit', 'Failed save retains editable title')
-  assert.ok(failedTitle.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'alert'))
-  assert.ok(failedTitle.nodes().some(node => node.type === 'h1' && label(node) === 'Original'), 'Failed save never changes the saved heading')
-  const failedLibrary = await mount('#manage=storage-failed', null, {
-    brief: { message: 'A surprise', durationMinutes: 5 }, content: { title: 'Original', scenes: [player.scene] }
-  }, { library: true })
-  failedLibrary.field('creator-story-title').props.onChange({ target: { value: 'Remote title' } })
-  await failedLibrary.flush()
-  await submitTitle(failedLibrary)
-  assert.ok(failedLibrary.nodes().some(node => node.props.id === 'title-save-feedback' && node.props.role === 'alert' && label(node).includes('saved to your account')),
-    'A failed local cache update is not presented as full success or as a failed remote save')
-  console.log('PASS title saving confirms success beside the form, updates heading/library, and retains edits on failure')
+  const sharePanel = owner.nodes().find(node => node.type === '../components/ShareGiftStory')
+  assert.ok(sharePanel, 'The share action follows the full visible story review')
+  assert.equal(sharePanel.props.buttonLabel, 'Share your story')
+  assert.ok(!owner.nodes().some(node => node.type === 'button' && ['Review and share', 'Save title'].includes(label(node))),
+    'The title prompt and extra review step are removed')
   owner.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
   await owner.flush()
   const ownerStudio = owner.nodes().find(node => node.type === '../components/StudioNarration')
@@ -847,25 +823,18 @@ async function main() {
   await ownerStudio.props.load(0, new AbortController().signal)
   assert.deepEqual(owner.requests.at(-1), { action: 'studio-audio', token: 'fixture', preview: true, sceneIndex: 0 })
   const rotateLabel = 'Replace recipient link (invalidates the previous one)'
-  assert.equal(owner.nodes().some(node => node.type === 'button' && label(node) === rotateLabel), false)
-  const check = owner.nodes().find(node => node.type === '../components/PreSendCheck')
-  check.props.onReady(true); await owner.flush()
-  assert.ok(owner.button(rotateLabel))
+  assert.ok(owner.button(rotateLabel), 'Advanced sender tools retain recipient-link replacement')
   const voiceComponent = owner.nodes().find(node => node.type === '../components/GiftVoiceRecorder')
   assert.ok(voiceComponent)
   voiceComponent.props.onChange(new File([new Uint8Array(32044)], 'test.wav', { type: 'audio/wav' }))
   await owner.flush()
-  assert.equal(owner.nodes().some(node => node.type === 'button' && label(node) === rotateLabel), false, 'Pending replacement immediately closes recipient sharing')
+  const sharePanelWithPendingVoice = owner.nodes().find(node => node.type === '../components/ShareGiftStory')
+  assert.equal(sharePanelWithPendingVoice.props.disabled, true, 'Sharing is disabled while an upload is pending')
   await owner.click('Upload replacement recording')
   assert.deepEqual(owner.requests.filter(request => request.action.startsWith('voice-')).map(request => request.action), ['voice-start', 'voice-finish'])
   const initialRequests = owner.requests.length
   await owner.flush()
   assert.equal(owner.requests.length, initialRequests, 'No background reply polling')
-  const progressPanel = owner.nodes().find(node => node.type === '../components/GiftProgress')
-  assert.ok(progressPanel)
-  const progress = await progressPanel.props.load()
-  assert.deepEqual(progress, { opened: 2, inProgress: 1, solved: 1, skipped: 0, furthestScene: 0 })
-  assert.deepEqual(owner.requests.at(-1), { action: 'progress', token: 'fixture' })
   await owner.click('Refresh replies')
   assert.ok(owner.nodes().some(node => label(node) === 'A voluntary thanks'))
   await owner.click('Use this reply for a follow-up')

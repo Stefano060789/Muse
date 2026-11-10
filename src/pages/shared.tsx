@@ -17,12 +17,9 @@ import SharedStoryReveal, { type RevealMedia } from '../components/SharedStoryRe
 import ExplicitConsent from '../components/ExplicitConsent'
 import { useAccountPermissions } from '../lib/useAccountPermissions'
 import GiftVoiceRecorder from '../components/GiftVoiceRecorder'
-import PreSendCheck from '../components/PreSendCheck'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
 import { storyHasAccess } from '../lib/storyRetention'
-import GiftProgress from '../components/GiftProgress'
-import type { SharedStoryProgress } from '../lib/sharedStoryProgress'
 import StudioNarration, { type StudioSceneStatus } from '../components/StudioNarration'
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
@@ -36,7 +33,7 @@ import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { loadProfileDisplayName } from '../lib/profilePreferences'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
-import { collectionCopy, giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
+import { giftFormText, interfacePageText as pageText, type GiftFormCopyKey } from '../lib/interfacePages'
 import { interfaceFlowText } from '../lib/interfaceFlow'
 import { hasExplicitConsent, MUSE_AI_CONSENT_VERSION } from '../lib/legalContact'
 import {
@@ -217,7 +214,6 @@ async function putFile(target: UploadTarget, file: File, onProgress: (percent: n
 
 export default function SharedStoryPage() {
   const interfaceLanguage = useInterfaceLanguage()
-  const collectionText = collectionCopy(interfaceLanguage)
   const flow = (key: Parameters<typeof interfaceFlowText>[0]) => interfaceFlowText(key, interfaceLanguage)
   const creation = sharedCreationCopy(interfaceLanguage)
   const interfaceCopy = recipientCopy(interfaceLanguage)
@@ -225,8 +221,6 @@ export default function SharedStoryPage() {
   const [assistanceHintsText, setAssistanceHintsText] = useState('')
   const [alternativeAnswersText, setAlternativeAnswersText] = useState('')
   const [creator, setCreator] = useState<CreatorStory | null>(null)
-  const [titleDraft, setTitleDraft] = useState('')
-  const [titleFeedback, setTitleFeedback] = useState<{ message: string; failed: boolean } | null>(null)
   const [player, setPlayer] = useState<SharedStoryPlayer | null>(null)
   const [sourcePlayer, setSourcePlayer] = useState<SharedStoryPlayer | null>(null)
   const [readerLanguage, setReaderLanguage] = useState<StoryLanguageCode | null>(null)
@@ -302,7 +296,6 @@ export default function SharedStoryPage() {
   const [draftUnreadable, setDraftUnreadable] = useState(false)
   const [preferencesError, setPreferencesError] = useState('')
   const [creatorStep, setCreatorStep] = useState(0)
-  const [sendReady, setSendReady] = useState('')
   const giftDraftSnapshot = useRef({ brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy })
   giftDraftSnapshot.current = { brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy }
   const creatorForm = useRef<HTMLFormElement>(null)
@@ -366,11 +359,18 @@ export default function SharedStoryPage() {
     narrationText={narrator.activeText || studioReadAlong.text}
     position={narrator.activeText ? narrator.textPosition : studioReadAlong.position}
     active={storyMode === 'listen' && (narrator.speaking || narrator.paused || studioReadAlong.active)} />
-  const markSendReady = useCallback((ready: boolean) => setSendReady(ready ? creator?.ownerToken || '' : ''), [creator?.ownerToken])
   const confirmShareReady = () => {
-    if (creator && sendReady === creator.ownerToken && storyHasAccess(creator.expiresAt) && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading') return true
-    setError('Review the pre-send checks and finish uploads before sharing this story.')
-    return false
+    if (!creator) return false
+    if (!storyHasAccess(creator.expiresAt)) {
+      setError('This story is no longer available to share.')
+      return false
+    }
+    if (mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading') {
+      setError('Finish or remove the selected uploads before sharing this story.')
+      return false
+    }
+    setError('')
+    return true
   }
   const activeReaderLanguage = readerLanguage || player?.language || romanceNotice?.language || 'en-US'
   const activeReaderTranslation = readerTranslation?.language === activeReaderLanguage ? readerTranslation : null
@@ -482,8 +482,6 @@ export default function SharedStoryPage() {
     }
   }
   useEffect(() => { setRomanceConfirmed(false) }, [brief])
-  useEffect(() => { setTitleDraft(creator?.content.title ?? '') }, [creator?.ownerToken, creator?.content.title])
-  useEffect(() => { setTitleFeedback(null) }, [creator?.ownerToken])
   useEffect(() => {
     interaction.cancelRecording()
   }, [player?.language, brief.language])
@@ -877,7 +875,6 @@ export default function SharedStoryPage() {
     }
     setCreator(null)
     setRomanceConfirmed(false)
-    setSendReady('')
     setOwnerMedia(null)
     setOwnerPreview(null)
     setMediaFile(null)
@@ -1064,7 +1061,7 @@ export default function SharedStoryPage() {
         setReplies([])
         setFollowUpReply(null); setFollowUpConsent(false)
         setFollowUpRomanceConfirmed(false)
-        setCreatorStep(0); setSendReady('')
+        setCreatorStep(0)
         storeCreator(story)
         window.history.replaceState(null, '', `/shared#manage=${story.ownerToken}`)
         setNotice('Follow-up story prepared. Review its clues and recipient experience before sharing.')
@@ -1246,39 +1243,17 @@ export default function SharedStoryPage() {
       }
   }
 
-  const copy = async (value: string, recipient = false) => {
-    if (recipient && !confirmShareReady()) return
-    try {
-      if (!navigator.clipboard) throw new Error('Clipboard is unavailable. Select and copy the link below.')
-      await navigator.clipboard.writeText(value)
-      setNotice('Link copied.')
-      setError('')
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not copy the link. Select and copy it manually.')
-    }
-  }
-
-  const creatorAction = async (action: 'share' | 'title' | 'delete') => {
+  const creatorAction = async (action: 'share' | 'delete') => {
     if (!creator || busy) return
     if (action === 'share' && !confirmShareReady()) return
-    if (action === 'title' && (!titleDraft.trim() || titleDraft.trim().length > 120)) {
-      setTitleFeedback({ message: 'The title must be between 1 and 120 characters.', failed: true })
-      return
-    }
     setBusy(true)
     setError('')
-    if (action === 'title') setTitleFeedback(null)
     narrator.stop()
     try {
       if (action === 'share') {
         const result = await request<{ playToken: string }>({ action, token: creator.ownerToken })
         const saved = storeCreator({ ...creator, playToken: result.playToken })
         if (saved) setNotice('New recipient link created. Any previous recipient link no longer works.')
-      } else if (action === 'title') {
-        const result = await request<{ content: CreatorStory['content'] }>({ action, token: creator.ownerToken, title: titleDraft.trim() })
-        const saved = storeCreator({ ...creator, content: result.content })
-        setTitleDraft(result.content.title)
-        setTitleFeedback({ message: saved ? 'Title saved.' : 'Title saved to your account, but this browser could not update its saved copy.', failed: !saved })
       } else {
         await request({ action, token: creator.ownerToken })
         setCreator(null)
@@ -1296,8 +1271,7 @@ export default function SharedStoryPage() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update the story.'
-      if (action === 'title') setTitleFeedback({ message, failed: true })
-      else setError(message)
+      setError(message)
     } finally {
       setBusy(false)
     }
@@ -1332,7 +1306,6 @@ export default function SharedStoryPage() {
   const audioButton = (text: string) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label={interfaceCopy.listen} beforeSpeak={beforeDeviceListen} /> : null
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
-  const managementLink = creator ? `${origin}/shared#manage=${creator.ownerToken}` : ''
   const selectedOccasion = GIFT_OCCASIONS.find(item => item.id === brief.gift?.occasion)
   const showGiftCover = Boolean(player?.gift && !giftOpened)
   const adventureCanSubmit = Boolean(player?.adventure &&
@@ -1618,23 +1591,6 @@ export default function SharedStoryPage() {
             <p className="atelier-eyebrow">Private creator preview</p>
             <h1>{creator.content.title}</h1>
             {creator.brief.romance ? <p>{romanceCopy(interfaceLanguage).title(creator.brief.romance)}. {flow('romanceRecipientNotice')}</p> : null}
-            <form onSubmit={event => { event.preventDefault(); void creatorAction('title') }} style={cardStyle} aria-label="Edit story title">
-              <label htmlFor="creator-story-title" style={{ display: 'block', fontWeight: 700 }}>Story title
-                <input id="creator-story-title" value={titleDraft} onChange={event => { setTitleDraft(event.target.value); setTitleFeedback(null) }} maxLength={120} required aria-describedby={titleFeedback ? 'title-save-feedback' : undefined} style={fieldStyle} disabled={busy} />
-              </label>
-              <button type="submit" style={buttonStyle} disabled={busy || titleDraft.trim() === creator.content.title}>Save title</button>
-              {titleFeedback ? <p id="title-save-feedback" role={titleFeedback.failed ? 'alert' : 'status'}>{titleFeedback.message}</p> : null}
-            </form>
-            <section className="atelier-card" aria-label="Story ready to share">
-              <p>For {creator.brief.recipientName} · About {creator.brief.durationMinutes} minutes</p>
-              <button type="button" className="atelier-button" onClick={() => {
-                const shareSection = document.getElementById('gift-story-share')
-                if (!shareSection) return
-                shareSection.closest('details')?.setAttribute('open', '')
-                shareSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}>Review and share</button>
-              <p><Link href="/library#shared-stories-heading">Go to archive</Link></p>
-            </section>
             <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
             {storyMode === 'listen' ? <article style={cardStyle} aria-label="Listen before sending">
               <h2>Listen before sending</h2>
@@ -1679,6 +1635,14 @@ export default function SharedStoryPage() {
               </article>
             ))}
             </details>
+            {!creator.brief.message && !ownerMedia
+              ? <p role="status" style={cardStyle}>Attach a photo or video in sender tools to complete the story before sharing.</p>
+              : shareDetails ? <div id="gift-story-share" style={{ marginTop: '1rem' }}>
+                <ShareGiftStory recipientUrl={shareDetails.url} shareText={shareDetails.text} expiresAt={creator.expiresAt}
+                  disabled={busy || voiceRecording || voiceUploading || Boolean(mediaFile || voiceFile) || upload.phase === 'uploading'} localOnly={shareDetails.localOnly}
+                  whatsappUrl={shareDetails.whatsappUrl} buttonLabel="Share your story" beforeShare={confirmShareReady}
+                  onShareStart={() => narrator.stop()} previewContent={<GiftStoryPreview brief={creator.brief} content={creator.content} />} />
+              </div> : null}
             <details style={{ marginTop: '1rem' }} aria-label="Sender tools">
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Share and sender tools</summary>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
@@ -1748,14 +1712,9 @@ export default function SharedStoryPage() {
                 {voiceUploading ? <p role="status">Uploading your voice message privately...</p> : voiceFile ? <button type="button" disabled={busy || voiceRecording} onClick={() => void uploadVoice(creator, voiceFile)} style={primaryStyle}>{ownerVoice ? 'Upload replacement recording' : 'Attach recording'}</button> : null}
               </details>
             </details>
-            <GiftProgress key={creator.ownerToken} copy={collectionText} sceneCount={creator.content.scenes.length} adventure={Boolean(creator.brief.adventure)}
-              load={async () => {
-                const result = await request<{ progress: SharedStoryProgress }>({ action: 'progress', token: creator.ownerToken })
-                return result.progress
-              }} />
             {creator.brief.gift?.allowReply ? <details style={cardStyle}>
               <summary>Private replies ({replies.length})</summary>
-              <p>Only messages recipients choose to send. Replies are separate from the anonymous progress overview above; recipient identities are not verified.</p>
+              <p>Only messages recipients choose to send. Recipient identities are not verified.</p>
               <button type="button" disabled={busy} style={buttonStyle} onClick={() => void refreshReplies()}>Refresh replies</button>
               {!replies.length ? <p>No replies yet.</p> : replies.map((reply, index) => <article key={index} style={{ borderTop: '1px solid #d9cfc5', marginTop: 12 }}>
                 <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reply.message}</p>
@@ -1799,52 +1758,26 @@ export default function SharedStoryPage() {
                 </section> : null}
               </article>)}
             </details> : null}
-            {!creator.brief.message && !ownerMedia ? <article id="gift-story-share" style={cardStyle}>
-              <h2>Share story</h2>
-              <p role="status">Attach your photo or video above to unlock sharing.</p>
-            </article> : <article id="gift-story-share" style={cardStyle}>
-              <h2>Share story</h2>
-              <PreSendCheck key={creator.ownerToken} story={creator} hasMedia={Boolean(ownerMedia)} hasVoice={Boolean(ownerVoice)} uploadPending={Boolean(mediaFile || voiceFile || voiceUploading || upload.phase === 'uploading')} onReady={markSendReady} />
-              {sendReady === creator.ownerToken && !mediaFile && !voiceFile && !voiceUploading && upload.phase !== 'uploading' && storyHasAccess(creator.expiresAt) ? <>
-              <p>{creator.brief.adventure?.cooperative
-                ? 'Only signed-in participants can join this cooperative story. Everyone uses the same recipient link and sees shared progress. Keep the management link to yourself.'
-                : 'Anyone with the recipient link can play. Keep the management link to yourself.'} {creator.expiresAt === null ? 'No automatic expiry; deleting the story or replacing its recipient link disables old links and printed QR codes.' : `Links expire on ${new Date(creator.expiresAt).toLocaleDateString()}.`}</p>
-              <details style={{ marginBottom: '1rem' }}>
-                <summary>Local testing: HTTPS tunnel</summary>
-                <p>Start the recipient gateway and Cloudflare Quick Tunnel, then paste its HTTPS address. Keep Muse running and this computer awake. Restarting changes the address; it is not saved. Use non-sensitive stories: traffic passes through Cloudflare.</p>
-                <label>Temporary tunnel address<input type="url" value={tunnelAddress} placeholder="https://your-tunnel.trycloudflare.com" onChange={event => setTunnelAddress(event.target.value)} style={fieldStyle} /></label>
-                <button style={{ ...buttonStyle, marginTop: '0.75rem' }} onClick={() => {
-                  try {
-                    const url = new URL(tunnelAddress.trim())
-                    if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-                      throw new Error('Paste only the HTTPS trycloudflare.com address printed by your running tunnel.')
-                    }
-                    setPublicOrigin(url.origin)
-                    setError('')
-                    setNotice('Recipient sharing now uses the temporary public address. Management stays local. Check the link before sending.')
-                  } catch (error) {
-                    setError(error instanceof Error ? error.message : 'Invalid tunnel address.')
-                  }
-                }}>Use tunnel for recipient links</button>
-                {publicOrigin ? <><p role="status">Temporary recipient address: {publicOrigin}</p><button style={buttonStyle} onClick={() => { setPublicOrigin(''); setTunnelAddress(''); setNotice('Recipient links now use the local address again.') }}>Return to local links</button></> : null}
-              </details>
-              {shareDetails ? (
-                <>
-                  <ShareGiftStory recipientUrl={shareDetails.url} shareText={shareDetails.text} expiresAt={creator.expiresAt}
-                    disabled={busy || voiceRecording} localOnly={shareDetails.localOnly}
-                    whatsappUrl={shareDetails.whatsappUrl} beforeShare={confirmShareReady} onShareStart={() => narrator.stop()}
-                    previewContent={<GiftStoryPreview brief={creator.brief} content={creator.content} />} />
-                  <p>Confirm sending in your sharing app. Device voices vary; Studio audio is available only when separately prepared.</p>
-                </>
-              ) : null}
-              <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>
-              </> : null}
-            </article>}
             <details style={cardStyle}>
-              <summary>Your private management link</summary>
-              <input aria-label="Private management link" readOnly value={managementLink} style={fieldStyle} onFocus={(event) => event.target.select()} />
-              <button onClick={() => copy(managementLink)} style={{ ...buttonStyle, marginTop: '0.5rem' }}>Copy management link</button>
+              <summary>Local testing: HTTPS tunnel</summary>
+              <p>Start the recipient gateway and Cloudflare Quick Tunnel, then paste its HTTPS address. Keep Muse running and this computer awake. Restarting changes the address; it is not saved. Use non-sensitive stories: traffic passes through Cloudflare.</p>
+              <label>Temporary tunnel address<input type="url" value={tunnelAddress} placeholder="https://your-tunnel.trycloudflare.com" onChange={event => setTunnelAddress(event.target.value)} style={fieldStyle} /></label>
+              <button style={{ ...buttonStyle, marginTop: '0.75rem' }} onClick={() => {
+                try {
+                  const url = new URL(tunnelAddress.trim())
+                  if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+                    throw new Error('Paste only the HTTPS trycloudflare.com address printed by your running tunnel.')
+                  }
+                  setPublicOrigin(url.origin)
+                  setError('')
+                  setNotice('Recipient sharing now uses the temporary public address. Management stays local.')
+                } catch (error) {
+                  setError(error instanceof Error ? error.message : 'Invalid tunnel address.')
+                }
+              }}>Use tunnel for recipient links</button>
+              {publicOrigin ? <><p role="status">Temporary recipient address: {publicOrigin}</p><button style={buttonStyle} onClick={() => { setPublicOrigin(''); setTunnelAddress(''); setNotice('Recipient links now use the local address again.') }}>Return to local links</button></> : null}
             </details>
+            <button disabled={busy} onClick={() => creatorAction('share')} style={{ ...buttonStyle, marginTop: '1rem' }}>Replace recipient link (invalidates the previous one)</button>
             <details style={{ marginTop: '1.5rem' }}>
               <summary>Delete this story</summary>
               <p>This permanently removes the story and disables both links.</p>
