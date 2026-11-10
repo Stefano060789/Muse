@@ -262,7 +262,7 @@ async function main() {
   assert.deepEqual(freeform.parseSuggestedChoices(['Open the door', 'Follow the stars', 'Ask the keeper']),
     ['Open the door', 'Follow the stars', 'Ask the keeper'])
   assert.throws(() => freeform.parseSuggestedChoices(['Only one']), /3 to 5 distinct choices/)
-  assert.throws(() => freeform.parseSuggestedChoices(['Open the door', 'Open the door', 'Ask the keeper']), /AI response failed story validation/)
+  assert.throws(() => freeform.parseSuggestedChoices(['Open the door', 'Open the door', 'Ask the keeper']), /3 to 5 distinct choices/)
   const expectedCompleteLabels = {
     'en-US': 'Story complete',
     'it-IT': 'Storia completata',

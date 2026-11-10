@@ -1,8 +1,11 @@
 import { parseNarrationMetadata, type NarrationMetadata } from './narration'
 import type { SharedMediaKind, SharedMediaMime, SharedVoiceSummary } from './sharedStoryMedia'
-import { parseStoryChoiceMode, parseSuggestedChoices, type StoryChoiceMode } from './freeformStory'
+import { parseStoryChoiceMode, parseSuggestedChoices, SuggestedChoicesError, type StoryChoiceMode } from './freeformStory'
 import { assertStoryNarrationLanguage, parseStoryLanguage, recipientCopy, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { parseStoryRomance, type StoryRomance } from './storyRomance'
+import { SharedStoryError } from './sharedStoryError'
+
+export { SharedStoryError } from './sharedStoryError'
 
 export const SHARED_STORY_DURATIONS = [5, 10, 15, 20] as const
 
@@ -76,13 +79,6 @@ export type SharedStoryPlayer = NarrationMetadata & {
   voice?: { mime: 'audio/wav'; size: number }
   adventure?: import('./sharedAdventure').AdventureView
   cooperative?: import('./storyRepository').CooperativeView
-}
-
-export class SharedStoryError extends Error {
-  constructor(message: string, public status: number = 400) {
-    super(message)
-    this.name = 'SharedStoryError'
-  }
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -264,17 +260,19 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
   if (!Array.isArray(input.scenes) || input.scenes.length !== count) {
     throw new SharedStoryError('The AI must return exactly ' + count + ' scenes.', 502)
   }
-  const scenes = input.scenes.map((value) => {
+  const scenes = input.scenes.map((value, index) => {
     const scene = record(value)
+    const unusedChoices = index === count - 1 || (brief.adventure && brief.adventure.choiceMode !== 'suggested')
+    const emptyUnusedChoices = unusedChoices && (scene.choices === null || (Array.isArray(scene.choices) && scene.choices.length === 0))
     return {
       title: text(scene.title, 'Scene title', 160),
       body: text(scene.body, 'Scene narration', 6000),
       clue: text(scene.clue, 'Scene clue', 600),
-      ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) })
+      ...(scene.choices === undefined || emptyUnusedChoices ? {} : { choices: parseSharedSceneChoices(scene.choices) })
     }
   })
   if (brief.adventure?.choiceMode === 'suggested' && scenes.slice(0, -1).some(scene => !scene.choices)) {
-    throw new SharedStoryError('Suggested-choice stories need 3 to 5 distinct actions on every non-final prepared scene.', 502)
+    throw new SuggestedChoicesError('Suggested-choice stories need 3 to 5 distinct actions on every non-final prepared scene.')
   }
   const publicText = normalizeSharedAnswer([title, description, ...scenes.flatMap((scene) => [scene.title, scene.body, scene.clue, ...(scene.choices || [])])].join(' '))
   const solutions = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer).filter(Boolean)

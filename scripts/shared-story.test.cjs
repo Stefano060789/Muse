@@ -291,6 +291,50 @@ async function main() {
     const final = sharedStoryPlayerView(suggested, { ...prepared, scenes: prepared.scenes.map(scene => ({ ...scene, choices })) }, { current_scene: 2, solved: false })
     assert.equal(final.scene.choices, undefined)
   })
+  await check('unused final-scene and free-action choices accept empty provider arrays without weakening required menus', () => {
+    const choices = ['Inspect the arch', 'Examine the stream', 'Listen at the gate']
+    const suggested = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 6, choiceMode: 'suggested' } })
+    for (const empty of [[], null]) {
+      const prepared = { ...content, scenes: content.scenes.map((scene, index) => ({ ...scene, choices: index < 2 ? choices : empty })) }
+      assert.equal(parseGeneratedStory(prepared, suggested).scenes[2].choices, undefined)
+      const free = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 6, choiceMode: 'free' } })
+      assert.ok(parseGeneratedStory({ ...content, scenes: content.scenes.map(scene => ({ ...scene, choices: empty })) }, free).scenes.every(scene => scene.choices === undefined))
+      assert.throws(() => parseGeneratedStory({ ...prepared, scenes: prepared.scenes.map((scene, index) => index === 0 ? { ...scene, choices: empty } : scene) }, suggested))
+    }
+  })
+  await check('invalid generated actions retry once automatically, with no retry on unrelated validation failures', async () => {
+    const previousFetch = global.fetch
+    const suggested = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 6, choiceMode: 'suggested' } })
+    const choices = ['Inspect the arch', 'Examine the stream', 'Listen at the gate']
+    const valid = { ...content, scenes: content.scenes.map((scene, index) => ({ ...scene, choices: index < 2 ? choices : [] })) }
+    const invalid = { ...valid, scenes: valid.scenes.map((scene, index) => index === 0 ? { ...scene, choices: ['Only one option'] } : scene) }
+    let calls = 0
+    try {
+      global.fetch = async (_url, options) => {
+        calls++
+        if (calls === 2) assert.match(JSON.parse(options.body).messages[0].content, /previous response failed action-choice validation/)
+        return json({ choices: [{ message: { content: JSON.stringify(calls === 1 ? invalid : valid) } }] })
+      }
+      const result = await generateSharedStory(suggested)
+      assert.equal(calls, 2)
+      assert.deepEqual(result.scenes[0].choices, choices)
+      assert.equal(result.scenes[2].choices, undefined)
+      calls = 0
+      global.fetch = async () => {
+        calls++
+        return json({ choices: [{ message: { content: JSON.stringify(invalid) } }] })
+      }
+      await assert.rejects(() => generateSharedStory(suggested), /after an automatic retry/)
+      assert.equal(calls, 2, 'Never loop indefinitely on malformed choices')
+      calls = 0
+      global.fetch = async () => {
+        calls++
+        return json({ choices: [{ message: { content: JSON.stringify({ ...valid, description: brief.message }) } }] })
+      }
+      await assert.rejects(() => generateSharedStory(suggested), /exposed/)
+      assert.equal(calls, 1, 'Privacy failures are not choice-retried')
+    } finally { global.fetch = previousFetch }
+  })
   await check('exhausted live actions stop local exploration without concluding or exposing future prepared scenes', async () => {
     const { generateAdventureTurn, adventureChoiceView } = require(path.join(output, 'lib', 'sharedAdventure.js'))
     const originalMock = global.fetch

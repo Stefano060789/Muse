@@ -4,6 +4,8 @@ import { NARRATION_AI_INSTRUCTION } from './narration'
 import { assertAdventurePrivacy } from './sharedAdventure'
 import { storyLanguageInstruction } from './storyLanguage'
 import { romanceInstruction } from './storyRomance'
+import { SuggestedChoicesError } from './freeformStory'
+import { reportOperation } from './operations'
 
 export { storyProviderConfig as sharedStoryProviderConfig } from './storyProvider'
 
@@ -81,15 +83,26 @@ export async function generateSharedStory(
     storyLanguageInstruction(brief.language)
   ].join('\n')
   const { gift: _gift, ...generationBrief } = brief
-  const generated = await generateStoryJson(system, followUpContext
+  const input = followUpContext
     ? { brief: generationBrief, followUpContext }
-    : generationBrief, Math.min(9000, brief.durationMinutes * 400 + 1000))
-  try {
-    const content = parseGeneratedStory(generated, brief)
-    if (brief.adventure) assertAdventurePrivacy(JSON.stringify(content), brief)
-    return content
-  } catch (error) {
-    if (error instanceof SharedStoryError) throw new SharedStoryError(error.message, 502)
-    throw error
+    : generationBrief
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const generated = await generateStoryJson(system + (attempt === 1
+      ? '\nYour previous response failed action-choice validation. Return a complete corrected story. Every requested choices array must contain 3 to 5 nonempty, distinct strings, each at most 160 characters. Use different investigative approaches, not rewordings. Omit choices entirely wherever they are not requested.'
+      : ''), input, Math.min(9000, brief.durationMinutes * 400 + 1000))
+    try {
+      const content = parseGeneratedStory(generated, brief)
+      if (brief.adventure) assertAdventurePrivacy(JSON.stringify(content), brief)
+      return content
+    } catch (error) {
+      if (error instanceof SuggestedChoicesError) {
+        await reportOperation('provider-failure')
+        if (attempt === 0) continue
+        throw new SharedStoryError('The AI could not prepare valid story actions after an automatic retry. Your draft is saved; please try preparing it again.', 502)
+      }
+      if (error instanceof SharedStoryError) throw new SharedStoryError(error.message, 502)
+      throw error
+    }
   }
+  throw new SharedStoryError('The AI could not prepare the story.', 502)
 }

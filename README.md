@@ -79,6 +79,11 @@ separate cooperative setup. Existing cooperative stories remain playable.
 Five difficulty levels range from very easy to expert. Narrative style belongs
 with the story settings; optional answer hints belong with the final-answer setup.
 Suggested actions contain 3 to 5 distinct choices.
+If the provider returns malformed scene actions during preparation, Muse makes
+one automatic regeneration attempt before returning an error. Each provider
+attempt counts toward the server AI budget. Empty choices on a final scene or
+in free-action mode are treated as an omitted, unused menu, not an invalid
+exploration choice list. Required exploration menus remain strictly validated.
 
 Endings unlock only on reaching the last prepared scene, including live-AI
 stories. Creators can require a final answer, offer 3 to 5 final choices (each

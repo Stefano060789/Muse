@@ -1,4 +1,4 @@
-import { SharedStoryError } from './sharedStory'
+import { SharedStoryError } from './sharedStoryError'
 
 export type StoryChoiceMode = 'free' | 'suggested'
 export type FreeformState = { inventory: string[]; discoveries: string[]; relationships: string[]; progress: string }
@@ -34,15 +34,25 @@ export function parseStoryChoiceMode(value: unknown): StoryChoiceMode {
   if (value === 'suggested') return 'suggested'
   throw new SharedStoryError("Interaction must be 'free' or 'suggested'.")
 }
+export class SuggestedChoicesError extends SharedStoryError {
+  constructor(message = 'Suggested actions must contain 3 to 5 distinct choices.') {
+    super(message, 502)
+    this.name = 'SuggestedChoicesError'
+  }
+}
 export function parseSuggestedChoices(value: unknown): string[] {
   if (!Array.isArray(value) || value.length < 3 || value.length > 5) {
-    throw new SharedStoryError('Suggested actions must contain 3 to 5 distinct choices.', 502)
+    throw new SuggestedChoicesError()
   }
-  const result = boundedStoryList(value, 5, 160)
+  let result: string[]
+  try { result = boundedStoryList(value, 5, 160) } catch (error) {
+    if (error instanceof SharedStoryError) throw new SuggestedChoicesError()
+    throw error
+  }
   const normalized = result.map(item => item.normalize('NFKD').replace(/\p{M}/gu, '')
     .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim())
   if (new Set(normalized).size !== result.length) {
-    throw new SharedStoryError('Suggested actions must be distinct.', 502)
+    throw new SuggestedChoicesError('Suggested actions must be distinct.')
   }
   return result
 }
