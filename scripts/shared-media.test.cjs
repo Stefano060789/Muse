@@ -163,6 +163,8 @@ async function main() {
     const before = prompts.length
     assert.equal((await api({ action: 'media', token, sessionToken }, { code: '' })).status, 403)
     assert.equal((await api({ action: 'skip', token, sessionToken }, { code: '' })).status, 400)
+    assert.equal((await api({ action: 'skip', token, sessionToken, confirmSkip: true }, { code: '' })).status, 409)
+    for (let i = 1; i < 3; i++) await api({ action: 'next', token, sessionToken }, { code: '' })
     const skipped = await api({ action: 'skip', token, sessionToken, confirmSkip: true }, { code: '' })
     assert.equal(skipped.status, 200)
     assert.equal(skipped.body.player.skipped, true)
@@ -235,6 +237,7 @@ async function main() {
       assert.equal(denied.bytes.length, 0)
     }
     assert.equal((await api({ action: 'media', token: photoStory.ownerToken, sessionToken: session }, { code: '' })).status, 404, 'Owner token is not a player token')
+    for (let i = 1; i < opened.body.player.sceneCount; i++) await api({ action: 'next', token: photoStory.playToken, sessionToken: session }, { code: '' })
     const wrong = await api({ action: 'guess', token: photoStory.playToken, sessionToken: session, guess: 'under the bed' }, { code: '' })
     assert.equal(wrong.body.player.media, undefined)
     assert.equal((await api({ action: 'media', token: photoStory.playToken, sessionToken: session }, { code: '' })).status, 403)
@@ -325,6 +328,7 @@ async function main() {
       const opened = await api({ action: 'open', token: story.playToken }, { code: '' })
       assert.equal(opened.status, 200)
       assert.equal(opened.body.player.message, undefined)
+      for (let i = 1; i < opened.body.player.sceneCount; i++) await api({ action: 'next', token: story.playToken, sessionToken: opened.body.sessionToken }, { code: '' })
       now += 60 * 1000
       const solved = await api({ action: 'guess', token: story.playToken, sessionToken: opened.body.sessionToken, guess: 'behind the blue notebook' }, { code: '' })
       assert.equal(solved.body.player.message, story === both ? 'Look at this photo!' : 'Only words.')

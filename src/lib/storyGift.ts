@@ -33,8 +33,20 @@ export function parseGiftDraft(value: unknown): GiftDraft {
   if (![5, 10, 15, 20].includes(Number(source.durationMinutes))) throw new Error('This draft has an invalid duration.')
   const brief: SharedStoryBrief = { ...fields, durationMinutes: Number(source.durationMinutes) }
   const difficulty = source.puzzleDifficulty ?? 'balanced'
-  if (!['gentle', 'balanced', 'challenging'].includes(String(difficulty))) throw new Error('This draft has an invalid puzzle difficulty.')
+  if (!['gentle', 'easy', 'balanced', 'challenging', 'expert'].includes(String(difficulty))) throw new Error('This draft has an invalid story difficulty.')
   brief.puzzleDifficulty = difficulty as NonNullable<SharedStoryBrief['puzzleDifficulty']>
+  if (source.participants !== undefined) {
+    if (source.participants !== 'recipient' && source.participants !== 'together') throw new Error('This draft has an invalid participant option.')
+    brief.participants = source.participants
+  }
+  if (source.endingMode !== undefined) {
+    if (!['answer', 'choice', 'automatic'].includes(String(source.endingMode))) throw new Error('This draft has an invalid ending mode.')
+    brief.endingMode = source.endingMode as NonNullable<SharedStoryBrief['endingMode']>
+  }
+  if (source.endingChoices !== undefined) {
+    if (!Array.isArray(source.endingChoices) || source.endingChoices.length > 10) throw new Error('This draft has invalid ending choices.')
+    brief.endingChoices = source.endingChoices.map(choice => text(choice, 160))
+  }
   if (source.answerType !== undefined) {
     if (!['clue', 'word', 'phrase', 'action'].includes(String(source.answerType))) throw new Error('This draft has an invalid final answer type.')
     brief.answerType = source.answerType as NonNullable<SharedStoryBrief['answerType']>

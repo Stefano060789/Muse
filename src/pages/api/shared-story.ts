@@ -5,7 +5,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { generateSharedStory, sharedStoryProviderConfig } from '../../lib/sharedStoryGenerator'
 import { normalizeSharedAnswer, parseSharedStoryBrief, sharedStoryPlayerView, SharedStoryError } from '../../lib/sharedStory'
 import { storyDatabase as database, reserveStoryRequest as reserveRequest } from '../../lib/storyRequestLimits'
-import type { CooperativeView, StoryRepository, StoredStory } from '../../lib/storyRepository'
+import type { CooperativeView, SharedStoryAction, StoryRepository, StoredStory } from '../../lib/storyRepository'
 import { requireAccount, type AccountUser } from '../../lib/accountAuth'
 import { adventureGlobalCap, adventureChoiceView, generateAdventureTurn, parseAdventureAction, type AdventureRequest } from '../../lib/sharedAdventure'
 import {
@@ -29,7 +29,7 @@ export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration:
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'translate', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
+const PLAYER_ACTIONS = ['open', 'translate', 'next', 'guess', 'ending-choice', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
 const OWNER_ACTIONS = ['library', 'activity', 'manage', 'progress', 'share', 'title', 'follow-up', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function followUpField(value: unknown, label: string, maximum: number): string {
@@ -316,14 +316,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!savedReply) throw new SharedStoryError('That reply has changed or is no longer available. Refresh replies and try again.', 409)
       const direction = followUpField(body.direction, 'Next chapter idea', 600)
       const goal = followUpField(body.goal, 'What the recipient should discover', 600)
-      const solution = followUpField(body.solution, 'Secret answer', 200)
+      const endingMode = body.endingMode ?? story.brief.endingMode ?? 'answer'
+      const solution = endingMode === 'answer' ? followUpField(body.solution, 'Secret answer', 200) : body.solution ?? ''
       const message = followUpField(body.message, 'Final message', 2000)
       const nextBrief = parseSharedStoryBrief({
         ...(story.brief.romance ? { romance: story.brief.romance } : {}),
         ...(story.brief.language ? { language: story.brief.language } : {}),
         creatorName: story.brief.creatorName, recipientName: story.brief.recipientName,
+        ...(story.brief.participants ? { participants: story.brief.participants } : {}),
         narration: story.brief.narration, setting: direction, recipientHints: '',
         goal, solution, answerType: story.brief.answerType, message,
+        endingMode, endingChoices: endingMode === 'choice' ? body.endingChoices ?? story.brief.endingChoices : undefined,
+        puzzleDifficulty: body.puzzleDifficulty ?? story.brief.puzzleDifficulty,
         durationMinutes: story.brief.durationMinutes,
         assistanceHints: [], alternativeAnswers: [],
         ...(story.brief.unlockPolicy ? { unlockPolicy: story.brief.unlockPolicy } : {}),
@@ -364,7 +368,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!title || title.length > 120) throw new SharedStoryError('The title must be between 1 and 120 characters.')
       const normalizedTitle = normalizeSharedAnswer(title)
       if (!normalizedTitle) throw new SharedStoryError('The title must include letters or numbers.')
-      const privateValues = [story.brief.solution, story.brief.message, ...(story.brief.alternativeAnswers ?? []), ...(story.brief.assistanceHints ?? [])]
+      const privateValues = [story.brief.solution, story.brief.message, ...(story.brief.alternativeAnswers ?? []), ...(story.brief.assistanceHints ?? []), ...(story.brief.endingChoices ?? [])]
       if (privateValues.some(value => {
         const normalized = normalizeSharedAnswer(value)
         return normalized.length > 0 && normalizedTitle.includes(normalized)
@@ -629,13 +633,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!guess) throw new SharedStoryError('Enter an answer before submitting.')
       await reserveRequest(db, req, 'guess')
     }
-    if (story.brief.adventure && action === 'next') throw new SharedStoryError('Use a freeform adventure action instead of Next.')
+    if (action === 'ending-choice') {
+      if (!Number.isInteger(body.choiceIndex) || Number(body.choiceIndex) < 0 ||
+          Number(body.choiceIndex) >= (story.brief.endingChoices?.length ?? 0) || story.brief.endingMode !== 'choice') {
+        throw new SharedStoryError('Choose an authoritative final option.')
+      }
+      guess = String(body.choiceIndex)
+    }
     if (action === 'cooperative-pass') {
       if (!cooperative) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
       await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'pass', sessionHash })
     }
     const state = await db.advance(id, sessionHash,
-      action === 'adventure' || action === 'cooperative-pass' ? 'open' : action as 'open' | 'next' | 'guess' | 'hint' | 'skip',
+      action === 'adventure' || action === 'cooperative-pass' ? 'open' : action as SharedStoryAction,
       guess, story.play_hash, cooperative ? cooperativeParticipantId : undefined)
     if (action === 'adventure' && (state.solved || state.skipped)) throw new SharedStoryError('The surprise is already revealed. Reopen to refresh your story.', 409)
     const feedback = state.skipped ? 'Revealed without solving' : action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
@@ -643,13 +653,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (action === 'adventure' && !story.brief.adventure) throw new SharedStoryError('This story does not enable live adventure actions.')
     if (story.brief.adventure) {
       const base: AdventureRequest = {
-        storyId: id, sessionHash, playHash: story.play_hash, operation: 'view', cap: adventureGlobalCap(),
+        storyId: id, sessionHash, playHash: story.play_hash, operation: 'view', cap: adventureGlobalCap(), sceneIndex: state.current_scene,
         ...(cooperative ? { cooperativeUserId: cooperativeParticipantId } : {})
       }
       player.scene = { ...player.scene, choices: undefined }
       if (action === 'adventure') {
-        const currentView = (await db.adventure(base)).view
-        const authoritativeChoices = currentView.turn ? currentView.turn.choices : story.content.scenes[0]?.choices
+        const currentView = adventureChoiceView((await db.adventure(base)).view, story, state.current_scene)
+        const authoritativeChoices = currentView.choices
         let actionLanguage: ReturnType<typeof parseStoryLanguage>
         try { actionLanguage = parseStoryLanguage(body.language) } catch (error) {
           throw new SharedStoryError(error instanceof Error ? error.message : 'Choose a supported story language.')
@@ -666,24 +676,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sharedStoryProviderConfig()
         const reservation = { ...base, ...submission, operation: 'reserve' as const }
         const reserved = await db.adventure(reservation)
-        player.adventure = adventureChoiceView(reserved.view, story)
+        player.adventure = adventureChoiceView(reserved.view, story, state.current_scene)
         if (reserved.status === 'pending' || reserved.status === 'failed') {
           return res.status(409).json({ error: reserved.status === 'pending' ? 'This action is still processing. Reopen to refresh; do not submit it again with a new ID.' : 'This action attempt failed and was charged. Review progress before submitting a new action.', player, sessionToken })
         }
         if (reserved.status === 'reserved') {
           try {
-            const turn = await generateAdventureTurn(story, reserved.view, submission.text, actionLanguage)
-            player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', turn })).view, story)
+            const turn = await generateAdventureTurn(story, adventureChoiceView(reserved.view, story, state.current_scene), submission.text, actionLanguage, state.current_scene)
+            player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', turn })).view, story, state.current_scene)
           } catch (error) {
             if (!(error instanceof SharedStoryError) || error.status >= 500) await reportOperation('request-failure')
-            try { player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', failed: true })).view, story) } catch { /* Reservation stays charged, and expires without retry. */ }
+            try { player.adventure = adventureChoiceView((await db.adventure({ ...reservation, operation: 'finish', failed: true })).view, story, state.current_scene) } catch { /* Reservation stays charged, and expires without retry. */ }
             return res.status(error instanceof SharedStoryError ? error.status : 502).json({
               error: `${error instanceof SharedStoryError ? error.message : 'The adventure action failed.'} The reserved attempt remains charged. Reopen to refresh before a new action.`, player, sessionToken
             })
           }
         }
       } else {
-        player.adventure = adventureChoiceView((await db.adventure(base)).view, story)
+        player.adventure = adventureChoiceView((await db.adventure(base)).view, story, state.current_scene)
       }
     }
     if (cooperative) player.cooperative = await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'view' })

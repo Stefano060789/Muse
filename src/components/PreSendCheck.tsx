@@ -55,7 +55,11 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
       </>}
     </section> : null}
     {previewed ? <p role="status">Clue preview reviewed. <a href="/library#shared-stories-heading">Go to archive</a></p> : null}
-    <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={answerChecked} onChange={event => setAnswerChecked(event.target.checked)} /> The clues lead to my intended answer, and I checked its wording and accepted alternatives.</label>
+    <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={answerChecked} onChange={event => setAnswerChecked(event.target.checked)} /> {story.brief.endingMode === 'automatic'
+      ? 'I checked the final scene and the automatic reveal that follows it.'
+      : story.brief.endingMode === 'choice'
+        ? 'I checked the final choices. Each reveals the same message, only at the final scene.'
+        : 'The clues lead to my intended answer, and I checked its wording and accepted alternatives.'}</label>
     <label style={{ display: 'block', padding: '0.75rem 0' }}><input type="checkbox" checked={attachmentsChecked} onChange={event => setAttachmentsChecked(event.target.checked)} /> I checked the final message{hasMedia ? ', attached photo/video' : ''}{hasVoice ? ', and voice recording' : ''}. Nothing I want to send is still waiting to upload.</label>
     {uploadPending ? <p role="status">Finish or remove the selected upload before sharing.</p> : null}
     {!storyHasAccess(story.expiresAt) ? <p role="alert">This story link is unavailable. Reopen the story before sending.</p> : null}

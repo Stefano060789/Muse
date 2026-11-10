@@ -138,6 +138,8 @@ async function main() {
     session = opened.body.sessionToken
     const next = await api({ action: 'next', token: created.body.playToken, sessionToken: session })
     assert.equal(next.body.player.sceneIndex, 1)
+    assert.equal((await api({ action: 'guess', token: created.body.playToken, sessionToken: session, guess: brief.solution })).status, 409)
+    await api({ action: 'next', token: created.body.playToken, sessionToken: session })
     const wrong = await api({ action: 'guess', token: created.body.playToken, sessionToken: session, guess: 'wrong answer' })
     assert.equal(wrong.status, 200)
     for (const response of [opened, next, wrong]) {
@@ -152,7 +154,7 @@ async function main() {
     assert.equal(solved.body.player.message, brief.message)
     assert.ok(!JSON.stringify(solved.body).includes(brief.solution))
     const state = await storyRepository().advance(id, hash(session), 'next', '')
-    assert.deepEqual(state, { current_scene: 1, solved: true, skipped: false, revealed_hints: 0 })
+    assert.deepEqual(state, { current_scene: content.scenes.length - 1, solved: true, skipped: false, revealed_hints: 0 })
     const reopened = JSON.parse(execFileSync(process.execPath, ['-e',
       `require(${JSON.stringify(repositoryModule)}).storyRepository().advance(${JSON.stringify(id)}, ${JSON.stringify(hash(session))}, 'open', '').then(s => console.log(JSON.stringify(s)))`
     ], { cwd: root, env: process.env, encoding: 'utf8' }))
@@ -175,6 +177,9 @@ async function main() {
       await api({ action: 'next', token, sessionToken: sessions[0] })
     }
     assert.equal((await summary()).body.progress.solved, 0, 'Last scene reached is not a completion')
+    for (const sessionToken of sessions.slice(1)) {
+      for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token, sessionToken })
+    }
     assert.equal((await api({ action: 'guess', token, sessionToken: sessions[1], guess: brief.solution })).status, 200)
     assert.equal((await api({ action: 'skip', token, sessionToken: sessions[2], confirmSkip: true })).status, 200)
     await api({ action: 'open', token, sessionToken: sessions[0] })
@@ -230,6 +235,7 @@ async function main() {
   await check('30 guesses per session are durable and solved sessions do not consume more attempts', async () => {
     const opened = await api({ action: 'open', token: created.body.playToken })
     const token = opened.body.sessionToken
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: created.body.playToken, sessionToken: token })
     for (let i = 0; i < 30; i++) {
       now += 2000
       assert.equal((await api({ action: 'guess', token: created.body.playToken, sessionToken: token, guess: 'wrong' })).status, 200)
@@ -317,12 +323,14 @@ async function main() {
     assert.equal(inspect(db => db.prepare('SELECT attempts FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(storyId, hash(playerToken))).attempts, 0)
     for (const guess of ['  UNDER the azure JOURNAL!!! ', 'CAFÉ étoile']) {
       const fresh = await api({ action: 'open', token })
+      for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token, sessionToken: fresh.body.sessionToken })
       const solved = await api({ action: 'guess', token, sessionToken: fresh.body.sessionToken, guess })
       assert.equal(solved.body.player.solved, true)
       assert.equal(solved.body.player.message, brief.message)
       assert.deepEqual((await api({ action: 'hint', token, sessionToken: fresh.body.sessionToken })).body.player.revealedHints, [])
     }
     const fresh = await api({ action: 'open', token })
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token, sessionToken: fresh.body.sessionToken })
     assert.equal((await api({ action: 'guess', token, sessionToken: fresh.body.sessionToken, guess: 'azure journal' })).body.player.solved, false)
     const expectedHash = hash(token.split('.')[1])
     await storyRepository().rotate(storyId, hash('e'.repeat(64)))
@@ -341,12 +349,14 @@ async function main() {
     const storyId = token.split('.')[0]
     const opened = await api({ action: 'open', token })
     const sessionToken = opened.body.sessionToken
-    assert.equal(opened.body.player.canSkip, true)
+    assert.equal(opened.body.player.canSkip, false)
     const before = providerCalls
     const args = { action: 'skip', token, sessionToken }
     assert.equal((await api(args)).status, 400)
     assert.equal((await api({ ...args, confirmSkip: 'true' })).status, 400)
     assert.equal((await api({ ...args, sessionToken: 'e'.repeat(64), confirmSkip: true })).status, 400)
+    assert.equal((await api({ ...args, confirmSkip: true })).status, 409, 'Opted-in skip cannot reveal before the final scene')
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token, sessionToken })
     const repo = storyRepository()
     const reservation = { storyId, sessionHash: hash(sessionToken), playHash: hash(token.split('.')[1]), cap: 100,
       requestId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', fingerprint: 'fixture', revision: 0 }
@@ -377,6 +387,79 @@ async function main() {
     await repo.rotate(storyId, hash('replacement'))
     assert.equal((await api({ ...args, confirmSkip: true })).status, 404)
     await repo.delete(storyId)
+  })
+  await check('all ending modes are final-scene gated, durable, session-bound and free of AI costs', async () => {
+    const repo = storyRepository()
+    const { parseSharedStoryBrief } = require(path.join(output, 'lib', 'sharedStory.js'))
+    const base = await repo.findUnexpired(id)
+    const calls = providerCalls
+    const choices = ['Open the cedar door', 'Follow the silver river', 'Wait beside the lantern']
+    for (const endingMode of ['answer', 'choice', 'automatic']) {
+      const fixture = { ...base, id: randomUUID(), brief: parseSharedStoryBrief({
+        ...brief, endingMode, solution: endingMode === 'answer' ? brief.solution : '',
+        endingChoices: endingMode === 'choice' ? choices : undefined,
+        unlockPolicy: 'allow-skip', adventure: { actionBudget: 1 }
+      }) }
+      fixture.answer_normalized = fixture.brief.solution
+      await repo.insert(fixture)
+      const token = `${fixture.id}.${created.body.playToken.split('.')[1]}`
+      const opened = await api({ action: 'open', token })
+      const sessionToken = opened.body.sessionToken
+      assert.equal(opened.body.player.endingMode, endingMode)
+      assert.equal(opened.body.player.endingChoices, undefined)
+      assert.equal(opened.body.player.message, undefined)
+      for (const submission of [
+        { action: 'guess', guess: brief.solution },
+        { action: 'skip', confirmSkip: true },
+        ...(endingMode === 'choice' ? [{ action: 'ending-choice', choiceIndex: 0 }] : [])
+      ]) assert.equal((await api({ token, sessionToken, ...submission })).status, 409)
+      assert.equal((await repo.advance(fixture.id, hash(sessionToken), 'open', '')).solved, false)
+      const reservation = { storyId: fixture.id, sessionHash: hash(sessionToken), playHash: fixture.play_hash,
+        requestId: randomUUID(), revision: 0, fingerprint: 'ending-budget', cap: 100 }
+      await repo.adventure({ ...reservation, operation: 'reserve' })
+      await assert.rejects(() => repo.advance(fixture.id, hash(sessionToken), 'next', '', fixture.play_hash), /action in progress/)
+      assert.equal((await repo.advance(fixture.id, hash(sessionToken), 'open', '')).current_scene, 0)
+      await repo.adventure({ ...reservation, operation: 'finish', failed: true })
+      await assert.rejects(() => repo.adventure({ ...reservation, requestId: randomUUID(), revision: 1, operation: 'reserve' }), /AI budget reached/)
+      let final
+      for (let i = 1; i < content.scenes.length; i++) {
+        final = await api({ action: 'next', token, sessionToken })
+        assert.equal(final.status, 200, JSON.stringify(final.body))
+        assert.equal(final.body.player.sceneIndex, i)
+        if (i < content.scenes.length - 1) {
+          assert.equal(final.body.player.message, undefined)
+          assert.equal(final.body.player.endingChoices, undefined)
+        }
+      }
+      assert.equal(final.body.player.solved, endingMode === 'automatic')
+      if (endingMode === 'choice') {
+        assert.deepEqual(final.body.player.endingChoices, choices)
+        for (const choiceIndex of [-1, 3, 0.1, '0', null]) {
+          assert.equal((await api({ action: 'ending-choice', token, sessionToken, choiceIndex })).status, 400)
+        }
+        await assert.rejects(() => repo.advance(fixture.id, hash(sessionToken), 'ending-choice', '3', fixture.play_hash), /Invalid ending choice/)
+        for (let choiceIndex = 0; choiceIndex < choices.length; choiceIndex++) {
+          const fresh = await api({ action: 'open', token })
+          for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token, sessionToken: fresh.body.sessionToken })
+          const selected = await api({ action: 'ending-choice', token, sessionToken: fresh.body.sessionToken, choiceIndex })
+          assert.equal(selected.body.player.message, brief.message, 'Every final choice has the same payoff')
+        }
+      }
+      const completed = endingMode === 'automatic' ? final : await api({
+        action: endingMode === 'choice' ? 'ending-choice' : 'guess', token, sessionToken, choiceIndex: 1, guess: brief.solution
+      })
+      assert.equal(completed.body.player.message, brief.message)
+      const persisted = JSON.parse(execFileSync(process.execPath, ['-e',
+        `const r=require(${JSON.stringify(repositoryModule)}).storyRepository();Promise.all([r.findUnexpired(${JSON.stringify(fixture.id)}),r.advance(${JSON.stringify(fixture.id)},${JSON.stringify(hash(sessionToken))},'open','')]).then(([s,p])=>console.log(JSON.stringify({brief:s.brief,state:p})))`
+      ], { cwd: root, env: process.env, encoding: 'utf8' }))
+      assert.equal(persisted.brief.endingMode, endingMode)
+      assert.deepEqual(persisted.brief.endingChoices, endingMode === 'choice' ? choices : undefined)
+      assert.equal(persisted.state.solved, true)
+      const fresh = await api({ action: 'open', token })
+      assert.equal(fresh.body.player.message, undefined)
+      await repo.delete(fixture.id)
+    }
+    assert.equal(providerCalls, calls)
   })
   await check('account library restores only owned gifts without changing capabilities or progress', async () => {
     const callsBefore = providerCalls

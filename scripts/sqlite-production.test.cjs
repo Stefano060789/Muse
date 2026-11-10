@@ -152,6 +152,7 @@ async function main() {
   assert.equal(locked.status, 403)
   assert.equal((await api({ action: 'voice', token: `${id}.${'c'.repeat(64)}`, sessionToken })).status, 403)
   assert.equal((await api({ action: 'reply', token: `${id}.${'c'.repeat(64)}`, sessionToken, reply: 'Thanks!' })).status, 403)
+  for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: `${id}.${'c'.repeat(64)}`, sessionToken })
   const solved = await api({ action: 'guess', token: `${id}.${'c'.repeat(64)}`, sessionToken, guess: 'APPROVED equivalent!' })
   assert.equal(solved.body.player.solved, true)
   assert.equal(solved.body.player.message, brief.message)

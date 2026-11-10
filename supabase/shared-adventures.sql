@@ -106,9 +106,12 @@ begin
   end if;
   if player.solved then raise exception 'Adventure: already solved'; end if;
   if pending then raise exception 'Adventure: action in progress; reopen to refresh'; end if;
+  if input ? 'sceneIndex' and (input->>'sceneIndex')::integer is distinct from player.current_scene then
+    raise exception 'Adventure: stale scene; reopen to refresh';
+  end if;
   if (input->>'revision')::integer is distinct from state.used then raise exception 'Adventure: stale state; reopen to refresh'; end if;
-  if state.used >= 12 then raise exception 'Adventure: 12-action cap reached. Final guesses, hints and audio remain available.'; end if;
-  if total >= budget or daily >= cap then raise exception 'Adventure: AI budget reached. Final guesses, hints and audio remain available.'; end if;
+  if state.used >= 12 then raise exception 'Adventure: 12-action cap reached. Continue through the remaining prepared scenes using Next without AI cost.'; end if;
+  if total >= budget or daily >= cap then raise exception 'Adventure: AI budget reached. Continue through the remaining prepared scenes using Next without AI cost.'; end if;
   update public.muse_adventure_budgets set used = used + 1 where bucket in (sb, day_bucket);
   update public.muse_adventure_sessions set used = used + 1 where story_id = sid and player_hash = ph;
   insert into public.muse_adventure_requests(story_id, player_hash, request_id, fingerprint, status, revision)

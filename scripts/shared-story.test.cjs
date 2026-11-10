@@ -55,6 +55,19 @@ async function main() {
     }
   }
   const content = contentFor(5)
+  await check('fresh-install and incremental Supabase schemas have identical guarded ending functions and service-only RPCs', () => {
+    const baseline = fs.readFileSync(path.join(root, 'supabase', 'shared-stories.sql'), 'utf8')
+    const migration = fs.readFileSync(path.join(root, 'supabase', 'shared-story-endings.sql'), 'utf8')
+    const definition = sql => sql.match(/create or replace function public\.advance_shared_story\([\s\S]*?\n\$\$;/)[0]
+      .replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim()
+    assert.equal(definition(baseline), definition(migration))
+    for (const sql of [baseline, migration]) {
+      assert.match(sql, /create or replace function public\.advance_shared_story_ending/)
+      assert.match(sql, /create or replace function public\.muse_cooperative_ending_advance/)
+      assert.match(sql, /from public, anon, authenticated/)
+      assert.match(sql, /to service_role/)
+    }
+  })
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
   let providerRequest
   const providerMock = async (_url, options) => {
@@ -107,7 +120,7 @@ async function main() {
   })
   await check('puzzle difficulty defaults to balanced and validates supported levels', () => {
     assert.equal(parseSharedStoryBrief(brief).puzzleDifficulty, 'balanced')
-    for (const puzzleDifficulty of ['gentle', 'balanced', 'challenging']) {
+    for (const puzzleDifficulty of ['gentle', 'easy', 'balanced', 'challenging', 'expert']) {
       assert.equal(parseSharedStoryBrief({ ...brief, puzzleDifficulty }).puzzleDifficulty, puzzleDifficulty)
     }
     for (const puzzleDifficulty of [null, '', 'impossible']) {
@@ -157,7 +170,7 @@ async function main() {
     assert.equal(view.scenes, undefined)
   })
   await check('only solved projection reveals the exact creator message', () => {
-    const view = sharedStoryPlayerView(brief, content, { current_scene: 0, solved: true })
+    const view = sharedStoryPlayerView(brief, content, { current_scene: content.scenes.length - 1, solved: true })
     assert.equal(view.message, brief.message)
     assert.equal(view.solution, undefined)
   })
@@ -167,9 +180,9 @@ async function main() {
     for (const unlockPolicy of [null, true, 'skip', '']) assert.throws(() => parseSharedStoryBrief({ ...brief, unlockPolicy }))
     const enabled = { ...brief, unlockPolicy: 'allow-skip' }
     const locked = sharedStoryPlayerView(enabled, content, { current_scene: 0, solved: false })
-    assert.equal(locked.canSkip, true)
+    assert.equal(locked.canSkip, false)
     assert.equal(locked.message, undefined)
-    const skipped = sharedStoryPlayerView(enabled, content, { current_scene: 0, solved: false, skipped: true })
+    const skipped = sharedStoryPlayerView(enabled, content, { current_scene: content.scenes.length - 1, solved: false, skipped: true })
     assert.equal(skipped.solved, false)
     assert.equal(skipped.skipped, true)
     assert.equal(skipped.canSkip, false)
@@ -217,13 +230,106 @@ async function main() {
     process.env.LLM_API_KEY = 'test-key'
     process.env.LLM_PROVIDER = 'GROQ'
     for (const [puzzleDifficulty, expected] of [
-      ['gentle', /Story difficulty: easy.*one simple inference/],
+      ['gentle', /Story difficulty: gentle.*one simple inference/],
+      ['easy', /Story difficulty: easy.*two obvious details/],
       ['balanced', /Story difficulty: standard.*few clear details/],
-      ['challenging', /Story difficulty: challenging but fair.*several concrete details/]
+      ['challenging', /Story difficulty: challenging but fair.*several concrete details/],
+      ['expert', /Story difficulty: expert but fair.*layered deductions/]
     ]) {
       await generateSharedStory(parseSharedStoryBrief({ ...brief, puzzleDifficulty }))
       assert.match(providerRequest.messages[0].content, expected)
     }
+  })
+  await check('ending modes validate authored options and allow no solution only outside answer mode', () => {
+    const choices = ['Open the cedar door', 'Follow the silver river', 'Wait beside the lantern']
+    for (const participants of ['recipient', 'together']) {
+      const parsed = parseSharedStoryBrief({ ...brief, participants })
+      assert.equal(parsed.participants, participants)
+      assert.equal(parsed.adventure, undefined, 'Participation never forces live, turn-taking or cooperative mode')
+      assert.equal(sharedStoryPlayerView(parsed, content, { current_scene: 0, solved: false }).participants, participants)
+    }
+    assert.throws(() => parseSharedStoryBrief({ ...brief, participants: 'unsupported' }), /participant/)
+    for (const endingMode of ['choice', 'automatic']) {
+      const ending = parseSharedStoryBrief({ ...brief, solution: undefined, endingMode, ...(endingMode === 'choice' ? { endingChoices: choices } : {}) })
+      assert.equal(ending.solution, '')
+      assert.equal(parseGeneratedStory(content, ending).scenes.length, content.scenes.length)
+      const early = sharedStoryPlayerView(ending, content, { current_scene: 0, solved: true, skipped: true })
+      assert.equal(early.solved, false)
+      assert.equal(early.skipped, false)
+      assert.equal(early.message, undefined)
+      assert.equal(early.endingChoices, undefined)
+      const final = sharedStoryPlayerView(ending, content, { current_scene: 2, solved: false })
+      assert.equal(final.endingMode, endingMode)
+      assert.deepEqual(final.endingChoices, endingMode === 'choice' ? choices : undefined)
+      assert.equal(final.message, undefined)
+      const completed = sharedStoryPlayerView(ending, content, { current_scene: 2, solved: true })
+      assert.equal(completed.message, brief.message)
+      assert.deepEqual(completed.scene, content.scenes[2], 'Solved view retains the final prepared scene for rendering above the reveal')
+      assert.equal(completed.scene.body, content.scenes[2].body)
+    }
+    for (const change of [
+      { endingMode: 'invalid' }, { endingMode: null }, { solution: undefined },
+      { endingMode: 'automatic', goal: '' }, { endingMode: 'choice', endingChoices: choices.slice(0, 2) },
+      { endingMode: 'choice', endingChoices: [...choices, ...choices] },
+      { endingMode: 'choice', endingChoices: ['Open!', 'open', 'Wait'] },
+      { endingMode: 'choice', endingChoices: ['!!!', 'Wait', 'Go'] },
+      { endingMode: 'choice', endingChoices: [brief.message, ...choices.slice(1)] },
+      { endingMode: 'choice', endingChoices: ['x'.repeat(161), ...choices.slice(1)] }
+    ]) assert.throws(() => parseSharedStoryBrief({ ...brief, ...change }))
+    const ending = parseSharedStoryBrief({ ...brief, endingMode: 'choice', endingChoices: choices })
+    assert.throws(() => parseGeneratedStory({ ...content, description: choices[0] }, ending), /exposed/)
+  })
+  await check('suggested prepared scenes require distinct actions on every non-final scene, with separate final controls', () => {
+    const suggested = parseSharedStoryBrief({ ...brief, adventure: { actionBudget: 6, choiceMode: 'suggested' } })
+    const choices = ['Inspect the arch', 'Examine the stream', 'Listen at the gate']
+    const prepared = { ...content, scenes: content.scenes.map((scene, index) => ({ ...scene, ...(index < content.scenes.length - 1 ? { choices } : {}) })) }
+    assert.equal(parseGeneratedStory(prepared, suggested).scenes.length, 3)
+    for (const index of [0, 1]) {
+      assert.throws(() => parseGeneratedStory({ ...prepared, scenes: prepared.scenes.map((scene, i) => i === index ? { ...scene, choices: undefined } : scene) }, suggested), /every non-final/)
+      assert.throws(() => parseGeneratedStory({ ...prepared, scenes: prepared.scenes.map((scene, i) => i === index ? { ...scene, choices: ['Inspect!', 'inspect', 'Wait'] } : scene) }, suggested))
+    }
+    const final = sharedStoryPlayerView(suggested, { ...prepared, scenes: prepared.scenes.map(scene => ({ ...scene, choices })) }, { current_scene: 2, solved: false })
+    assert.equal(final.scene.choices, undefined)
+  })
+  await check('exhausted live actions stop local exploration without concluding or exposing future prepared scenes', async () => {
+    const { generateAdventureTurn, adventureChoiceView } = require(path.join(output, 'lib', 'sharedAdventure.js'))
+    const originalMock = global.fetch
+    const turn = { narration: Array(40).fill('wonder').join(' '), state: { inventory: [], discoveries: [], relationships: [], progress: 'Pause here and continue through the prepared scenes.' } }
+    let request
+    global.fetch = async (_url, options) => {
+      request = JSON.parse(options.body)
+      return json({ choices: [{ message: { content: JSON.stringify(turn) } }] })
+    }
+    try {
+      const story = {
+        brief: { ...brief, participants: 'together', adventure: { actionBudget: 1 } },
+        content: { ...content, scenes: content.scenes.map((scene, index) => ({ ...scene, title: `Future marker ${index}` })) }
+      }
+      const view = { revision: 1, actionsUsed: 1, actionsRemaining: 0, budget: 1, budgetRemaining: 0, pending: true, turn: null }
+      await generateAdventureTurn(story, view, 'Look around', undefined, 0)
+      assert.match(request.messages[0].content, /Budget exhaustion is never a journey ending/)
+      assert.match(request.messages[0].content, /Never narrate reaching future scenes/)
+      assert.match(request.messages[0].content, /narrative context only/)
+      const input = JSON.parse(request.messages[1].content)
+      assert.equal(input.participants, 'together')
+      assert.equal(input.sceneIndex, 0)
+      assert.equal(input.sceneCount, 3)
+      assert.equal(input.plan.length, 1)
+      assert.ok(!JSON.stringify(input).includes('Future marker 1'))
+      assert.ok(!JSON.stringify(input).includes(brief.message))
+      const state = { inventory: ['A map'], discoveries: [], relationships: [], progress: 'Found a map' }
+      const activeView = { ...view, actionsRemaining: 3, budgetRemaining: 3, pending: false, turn: { ...turn, state, sceneIndex: 0 } }
+      const continued = adventureChoiceView(activeView, story, 1)
+      assert.equal(continued.turn, null, 'A previous scene narration is not displayed after Next')
+      assert.equal(continued.sceneIndex, 1)
+      assert.deepEqual(continued.state, state, 'Durable discoveries survive Next')
+      const currentChoices = ['Inspect the arch', 'Examine the stream', 'Listen at the gate']
+      const suggestedStory = {
+        ...story, brief: { ...story.brief, adventure: { actionBudget: 6, choiceMode: 'suggested' } },
+        content: { ...story.content, scenes: story.content.scenes.map((scene, index) => ({ ...scene, choices: index === 1 ? currentChoices : ['Search the desk', 'Read the map', 'Ask the guide'] })) }
+      }
+      assert.deepEqual(adventureChoiceView(activeView, suggestedStory, 1).choices, currentChoices)
+    } finally { global.fetch = originalMock }
   })
   await check('translation validates target language and sends only public story content', async () => {
     const translatedContent = {
@@ -252,6 +358,18 @@ async function main() {
       assert.ok(!serializedInput.includes(privateValue), `translation prompt excluded ${privateValue}`)
     }
     assert.throws(() => parseSharedStoryTranslation({ ...translation, language: 'en-US' }, 'it-IT'), /invalid/)
+  })
+  await check('automatic messages and final-choice options cannot leak through translated public scenes', async () => {
+    const originalMock = global.fetch
+    const endingChoices = ['Open the cedar door', 'Follow the silver river', 'Wait beside the lantern']
+    try {
+      for (const secret of [brief.message, endingChoices[0]]) {
+        global.fetch = async () => json({ choices: [{ message: { content: JSON.stringify({
+          ...content, description: secret, narrationLanguage: 'it-IT'
+        }) } }] })
+        await assert.rejects(() => translateSharedStory({ ...brief, solution: '', endingMode: 'choice', endingChoices }, content, 'it-IT'), /privacy validation/)
+      }
+    } finally { global.fetch = originalMock }
   })
   await check('explicit OpenAI selection preserves its key, endpoint and model', async () => {
     process.env.LLM_PROVIDER = 'OPENAI'
@@ -449,10 +567,18 @@ async function main() {
     }
     if (location.pathname === '/rest/v1/shared_story_voice') return json([])
     if (location.pathname.endsWith('/rpc/reserve_shared_story_request')) return json(allowRequest)
-    if (location.pathname.endsWith('/rpc/advance_shared_story')) {
+    if (location.pathname.endsWith('/rpc/advance_shared_story_ending')) {
       assert.equal(body.expected_play_hash, stored.play_hash)
+      if (['guess', 'skip', 'ending-choice'].includes(body.action_name) && state.current_scene < content.scenes.length - 1) return json({ message: 'Reach the final scene first' }, 400)
+      const endingMode = stored.brief.endingMode ?? 'answer'
+      if ((['guess', 'skip'].includes(body.action_name) && endingMode !== 'answer') ||
+          (body.action_name === 'ending-choice' && endingMode !== 'choice')) return json({ message: 'This ending requires a different action' }, 400)
+      if (body.action_name === 'ending-choice' && (!/^[0-4]$/.test(body.guess_normalized) || !stored.brief.endingChoices?.[Number(body.guess_normalized)])) return json({ message: 'Invalid ending choice' }, 400)
       if (body.action_name === 'next') state.current_scene = Math.min(state.current_scene + 1, content.scenes.length - 1)
       if (body.action_name === 'guess') state.solved = body.guess_normalized === stored.answer_normalized || stored.alternative_answers_normalized.includes(body.guess_normalized)
+      if (body.action_name === 'ending-choice') state.solved = true
+      if (body.action_name === 'skip') state.skipped = true
+      if (endingMode === 'automatic' && ['open', 'next'].includes(body.action_name) && state.current_scene === content.scenes.length - 1) state.solved = true
       if (body.action_name === 'hint') state.revealed_hints = Math.min(state.revealed_hints + 1, stored.brief.assistanceHints.length)
       return json(legacyRpc ? { current_scene: state.current_scene, solved: state.solved } : state)
     }
@@ -621,26 +747,79 @@ async function main() {
     })
     assert.equal(unconsentedTranslation.status, 403, 'The server requires explicit translation consent')
     assert.equal(runtimeProviderCalls, callsBeforeUnconsentedTranslation, 'Unconsented translation never reaches the AI provider')
-    const wrong = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: `not ${brief.solution}` })
+    const early = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: brief.solution })
+    assert.equal(early.status, 409)
     const next = await api({ action: 'next', token: created.body.playToken, sessionToken: playerSession })
-    for (const result of [opened, wrong, next]) {
+    for (const result of [opened, next]) {
       assert.equal(result.status, 200)
       assert.ok(!JSON.stringify(result.body).includes(brief.message))
       assert.ok(!JSON.stringify(result.body).includes(brief.solution))
     }
-    assert.equal(wrong.body.player.solved, false)
     assert.equal(next.body.player.sceneIndex, 1)
   })
   await check('a correct normalized guess reveals the final message through the API', async () => {
+    await api({ action: 'next', token: created.body.playToken, sessionToken: playerSession })
     const solved = await api({ action: 'guess', token: created.body.playToken, sessionToken: playerSession, guess: 'BEHIND THE BLUE NOTEBOOK!' })
     assert.equal(solved.status, 200)
     assert.equal(solved.body.player.solved, true)
     assert.equal(solved.body.player.message, brief.message)
     assert.ok(!JSON.stringify(solved.body).includes(brief.solution))
   })
+  await check('hosted endings fail closed rather than using an older early-unlock RPC', async () => {
+    const originalMock = global.fetch
+    global.fetch = async (url, options) => String(url).endsWith('/rpc/advance_shared_story_ending')
+      ? json({ code: 'PGRST202', message: 'Function is not installed' }, 404)
+      : originalMock(url, options)
+    try {
+      const result = await api({ action: 'open', token: created.body.playToken })
+      assert.equal(result.status, 503)
+      assert.match(result.body.error, /shared-story-endings.sql/)
+      assert.ok(!JSON.stringify(result.body).includes(brief.message))
+    } finally { global.fetch = originalMock }
+  })
+  await check('hosted JSON persistence and versioned RPC round-trip choice/automatic endings without early leakage', async () => {
+    const original = stored
+    const originalState = state
+    const choices = ['Open the cedar door', 'Follow the silver river', 'Wait beside the lantern']
+    for (const endingMode of ['choice', 'automatic']) {
+      state = { current_scene: 0, solved: false, skipped: false, revealed_hints: 0 }
+      const made = await api({ action: 'create', brief: { ...brief, solution: '', endingMode, endingChoices: endingMode === 'choice' ? choices : undefined } })
+      assert.equal(made.status, 201)
+      assert.equal(stored.brief.endingMode, endingMode)
+      assert.equal(stored.answer_normalized, '')
+      const managed = await api({ action: 'manage', token: made.body.ownerToken })
+      assert.equal(managed.body.brief.endingMode, endingMode)
+      assert.deepEqual(managed.body.brief.endingChoices, endingMode === 'choice' ? choices : undefined)
+      const opened = await api({ action: 'open', token: made.body.playToken })
+      const sessionToken = opened.body.sessionToken
+      const token = made.body.playToken
+      assert.equal(opened.body.player.endingChoices, undefined)
+      assert.equal(opened.body.player.message, undefined)
+      if (endingMode === 'choice') assert.equal((await api({ action: 'ending-choice', token, sessionToken, choiceIndex: 0 })).status, 409)
+      assert.equal((await api({ action: 'guess', token, sessionToken, guess: brief.solution })).status, 409)
+      await api({ action: 'next', token, sessionToken })
+      const final = await api({ action: 'next', token, sessionToken })
+      if (endingMode === 'choice') {
+        assert.deepEqual(final.body.player.endingChoices, choices)
+        assert.equal(final.body.player.message, undefined)
+        assert.equal((await api({ action: 'ending-choice', token, sessionToken, choiceIndex: 3 })).status, 400)
+        const selected = await api({ action: 'ending-choice', token, sessionToken, choiceIndex: 2 })
+        assert.equal(selected.body.player.message, brief.message)
+      } else {
+        assert.equal(final.body.player.message, brief.message)
+        assert.equal(final.body.player.endingChoices, undefined)
+        assert.deepEqual(final.body.player.scene, content.scenes[content.scenes.length - 1])
+      }
+      const reopened = await api({ action: 'open', token, sessionToken })
+      assert.equal(reopened.body.player.solved, true)
+      assert.equal(reopened.body.player.message, brief.message)
+    }
+    stored = original
+    state = originalState
+  })
   await check('creator-approved follow-up uses an exact stored reply and fresh consent, without changing the original', async () => {
     const original = stored
-    stored = { ...stored, brief: { ...stored.brief, gift: { occasion: 'surprise', dedication: '', allowReply: true } } }
+    stored = { ...stored, brief: { ...stored.brief, participants: 'together', gift: { occasion: 'surprise', dedication: '', allowReply: true } } }
     const payload = {
       action: 'follow-up', token: created.body.ownerToken,
       reply: followUpReply.message, replyCreatedAt: followUpReply.createdAt,
@@ -659,6 +838,7 @@ async function main() {
     assert.equal(result.body.brief.goal, payload.goal)
     assert.equal(result.body.brief.solution, payload.solution)
     assert.equal(result.body.brief.message, payload.message)
+    assert.equal(result.body.brief.participants, 'together')
     assert.equal(result.body.brief.recipientHints, '', 'Previous private profile hints are not carried forward')
     const sent = JSON.parse(providerRequest.messages[0].content)
     assert.equal(sent.followUpContext.recipientReply, followUpReply.message)

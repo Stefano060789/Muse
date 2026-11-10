@@ -27,7 +27,8 @@ import StudioNarration, { type StudioSceneStatus } from '../components/StudioNar
 import RomanceOptions from '../components/RomanceOptions'
 import { romanceCopy, requireRomanceConfirmation, type StoryRomance } from '../lib/storyRomance'
 import { registrationCopy } from '../lib/registrationCopy'
-import { togetherStoryBrief, togetherStoryCopy } from '../lib/togetherStory'
+import { sharedCreationCopy } from '../lib/sharedCreationCopy'
+import { parseSuggestedChoices } from '../lib/freeformStory'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy, type StoryLanguageCode } from '../lib/storyLanguage'
 import { parseSharedStoryTranslation, type SharedStoryTranslation } from '../lib/sharedStoryTranslation'
 import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
@@ -218,6 +219,7 @@ export default function SharedStoryPage() {
   const interfaceLanguage = useInterfaceLanguage()
   const collectionText = collectionCopy(interfaceLanguage)
   const flow = (key: Parameters<typeof interfaceFlowText>[0]) => interfaceFlowText(key, interfaceLanguage)
+  const creation = sharedCreationCopy(interfaceLanguage)
   const interfaceCopy = recipientCopy(interfaceLanguage)
   const [brief, setBrief] = useState<SharedStoryBrief>(blankBrief)
   const [assistanceHintsText, setAssistanceHintsText] = useState('')
@@ -300,7 +302,6 @@ export default function SharedStoryPage() {
   const [draftUnreadable, setDraftUnreadable] = useState(false)
   const [preferencesError, setPreferencesError] = useState('')
   const [creatorStep, setCreatorStep] = useState(0)
-  const [quickTogether, setQuickTogether] = useState(false)
   const [sendReady, setSendReady] = useState('')
   const giftDraftSnapshot = useRef({ brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy })
   giftDraftSnapshot.current = { brief, assistanceHintsText, alternativeAnswersText, draftReady, pendingDraft, draftUnreadable, loading, creator, playToken, busy }
@@ -344,7 +345,10 @@ export default function SharedStoryPage() {
     setStoryMode(mode)
     if (mode === 'listen') {
       if (player?.solved || player?.skipped) {
-        if (player.message) void narrator.speak(player.message, { progress: 1, ending: true }, { autoPlay: true })
+        const endingText = player.endingMode === 'automatic'
+          ? `${player.scene.title}. ${player.scene.body}${player.message ? `\n\n${player.message}` : ''}`
+          : player.message
+        if (endingText) void narrator.speak(endingText, { progress: 1, ending: true }, { autoPlay: true })
       } else if (player?.adventure) {
         void narrator.speak(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`, undefined, { autoPlay: true })
       } else if (creator?.brief.adventure) {
@@ -372,6 +376,7 @@ export default function SharedStoryPage() {
   const activeReaderTranslation = readerTranslation?.language === activeReaderLanguage ? readerTranslation : null
   const recipientText = recipientCopy(activeReaderLanguage)
   const recipientLanguage = storyLanguage(activeReaderLanguage)
+  const recipientEnding = sharedCreationCopy(recipientLanguage.code)
   const romanceText = romanceCopy(romanceNotice?.language || player?.language)
   const recipientRequest = <T,>(body: Record<string, unknown>) => request<T>({ ...body, ...(romanceAccepted ? { romanceConfirmed: true } : {}) })
   const applyRecipientPlayer = (next: SharedStoryPlayer, session = sessionToken, restoreCached = false) => {
@@ -451,21 +456,6 @@ export default function SharedStoryPage() {
     const nextBrief = update(giftDraftSnapshot.current.brief)
     setBrief(nextBrief)
     persistGiftDraftNow(nextBrief)
-  }
-  const startTogetherStory = () => {
-    if (busy || voiceRecording || voiceUploading || pendingDraft || draftUnreadable || mediaFile || voiceFile) return
-    const copy = togetherStoryCopy(interfaceLanguage)
-    if (hasGiftDraftWriting(brief) && !window.confirm(copy.confirm)) return
-    interaction.cancelRecording()
-    narrator.stop()
-    const next = togetherStoryBrief(brief)
-    setBrief(next)
-    setAssistanceHintsText('')
-    setAlternativeAnswersText('')
-    persistGiftDraftNow(next, '', '')
-    setAiConsent(false)
-    setRomanceConfirmed(false)
-    setQuickTogether(true)
   }
   const updateGiftDraftText = (key: 'assistanceHintsText' | 'alternativeAnswersText', value: string) => {
     const current = giftDraftSnapshot.current
@@ -880,7 +870,6 @@ export default function SharedStoryPage() {
     }
     interaction.stopRecording()
     narrator.stop()
-    setQuickTogether(false)
     if (!reuseBrief) {
       setBrief({ ...blankBrief })
       setAssistanceHintsText('')
@@ -1122,7 +1111,7 @@ export default function SharedStoryPage() {
 
   const generate = async (event: FormEvent) => {
     event.preventDefault()
-    if (!quickTogether && creatorStep < 2) { nextCreatorStep(); return }
+    if (creatorStep < 2) { nextCreatorStep(); return }
     if (busy) return
     if (voiceRecording || voiceUploading || pendingDraft || draftUnreadable) {
       setError('Finish the recording and restore or discard any saved draft before preparing the story.')
@@ -1146,8 +1135,9 @@ export default function SharedStoryPage() {
       if (voiceFile) validateVoiceBytes(new Uint8Array(await voiceFile.arrayBuffer()))
       const declaration = mediaFile ? parseMediaDeclaration({ mime: mediaFile.type, size: mediaFile.size }) : null
       if (!declaration && !brief.message.trim()) throw new Error('Write a final message, attach a photo or video, or both.')
-      const assistanceHints = assistanceLines(assistanceHintsText)
-      const alternativeAnswers = assistanceLines(alternativeAnswersText)
+      const answerEnding = !brief.endingMode || brief.endingMode === 'answer'
+      const assistanceHints = answerEnding ? assistanceLines(assistanceHintsText) : []
+      const alternativeAnswers = answerEnding ? assistanceLines(alternativeAnswersText) : []
       if (assistanceHints.length > 3 || assistanceHints.some(hint => hint.length > 600)) {
         throw new Error('Enter up to 3 assistance hints, with at most 600 characters each.')
       }
@@ -1157,7 +1147,11 @@ export default function SharedStoryPage() {
       if (brief.adventure && !(Number.isInteger(brief.adventure.actionBudget) && brief.adventure.actionBudget >= 1 && brief.adventure.actionBudget <= 1000)) {
         throw new Error('Under Advanced options, approve an adventure AI action budget from 1 to 1000.')
       }
-      const preparedBrief = { ...brief, narration: brief.narration.trim() || DEFAULT_NARRATION, assistanceHints, alternativeAnswers }
+      const preparedBrief: SharedStoryBrief = {
+        ...brief, narration: brief.narration.trim() || DEFAULT_NARRATION, assistanceHints, alternativeAnswers,
+        solution: answerEnding ? brief.solution : '',
+        endingChoices: brief.endingMode === 'choice' ? parseSuggestedChoices((brief.endingChoices ?? []).map(choice => choice.trim()).filter(Boolean)) : undefined
+      }
       try { saveGiftDraft({ version: 1, brief: preparedBrief, assistanceHintsText, alternativeAnswersText, savedAt: new Date().toISOString() }) }
       catch { setDraftStatus('Draft could not be saved on this device. Keep the page open if preparation fails.') }
       const { media: _media, mediaRequired: _required, voice: _voice, replies: _replies, ...story } = await request<CreatorStory & MediaState & GiftState>({
@@ -1183,14 +1177,14 @@ export default function SharedStoryPage() {
     }
   }
 
-  const act = async (action: 'guess' | 'next' | 'hint' | 'skip' | 'cooperative-pass') => {
+  const act = async (action: 'guess' | 'next' | 'hint' | 'skip' | 'cooperative-pass' | 'ending-choice', choiceIndex?: number) => {
     if (action === 'skip' && !window.confirm(recipientText.skipConfirm)) return
     setBusy(true)
     setError('')
     interaction.cancelRecording()
     narrator.stop()
     try {
-      const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}) })
+      const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}), ...(action === 'ending-choice' ? { choiceIndex } : {}) })
       applyRecipientPlayer(result.player)
       if (action !== 'hint') setGuess('')
     } catch (error) {
@@ -1309,7 +1303,7 @@ export default function SharedStoryPage() {
     }
   }
 
-  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | 'answerType' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
+  const textField = (key: Exclude<keyof SharedStoryBrief, 'durationMinutes' | 'adventure' | 'unlockPolicy' | 'gift' | 'language' | 'romance' | 'answerType' | 'participants' | 'endingMode' | 'endingChoices' | AssistanceField>, label: string, placeholder: string, max: number, optional = false) => (
     <div style={{ marginBottom: '1.2rem' }}>
       <label htmlFor={`brief-${key}`} style={{ fontWeight: 700 }}>{label}{optional ? ` ${flow('optional')}` : ''}</label>
       {key === 'creatorName' || key === 'recipientName' ? <input id={`brief-${key}`} type="text" required={!optional} value={brief[key]} onFocus={() => interaction.cancelRecording()} onChange={event => { interaction.cancelRecording(); updateBrief(current => ({ ...current, [key]: event.target.value })); setAiConsent(false) }} maxLength={max} placeholder={placeholder} style={fieldStyle} disabled={busy} /> :
@@ -1455,7 +1449,13 @@ export default function SharedStoryPage() {
             </> : null}
             {player.solved || player.skipped ? (
               <article style={cardStyle}>
-                <p><strong>{player.skipped ? recipientText.skipped : recipientText.solved}</strong></p>
+                {player.endingMode === 'automatic' ? <section aria-label={recipientText.scene(player.sceneIndex + 1, player.sceneCount)}>
+                  <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
+                  <h2>{passage(player.scene.title)}</h2>
+                  <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
+                  {storyMode === 'listen' ? audioButton(`${player.scene.title}. ${player.scene.body}`) : null}
+                </section> : null}
+                <p><strong>{player.skipped ? recipientText.skipped : player.endingMode === 'automatic' || player.endingMode === 'choice' ? recipientEnding.completed : recipientText.solved}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
                   mode={storyMode} listening={storyMode === 'listen'}
                   narrator={narrator} beforeSpeak={interaction.stopRecording} onMediaError={refreshRevealMedia}
@@ -1480,8 +1480,14 @@ export default function SharedStoryPage() {
             ) : (
               <>
               {player.adventure ? <article style={cardStyle}>
-                <h2>{player.adventure.turn ? recipientText.adventureContinues : passage(player.scene.title)}</h2>
-                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.adventure.turn?.narration || player.scene.body)}</p>
+                <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
+                <h2>{passage(player.scene.title)}</h2>
+                <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
+                <p><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
+                {player.adventure.turn ? <section>
+                  <h3>{recipientText.yourJourney}</h3>
+                  <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.adventure.turn.narration)}</p>
+                </section> : null}
                 {player.adventure.turnTaking ? <p role="status" style={{ fontWeight: 700 }}>
                   {player.adventure.actionsUsed % 2 === 0 ? player.recipientName : player.creatorName}&apos;s turn. Pass the device so you can choose together.
                 </p> : null}
@@ -1514,6 +1520,10 @@ export default function SharedStoryPage() {
                   ? <p role="status">Waiting for {player.cooperative.currentTurnName} to take or pass their turn.</p>
                   : <p>{player.adventure.budgetRemaining <= 0 ? recipientText.noBudget : recipientText.noActions}</p>}
                 {player.adventure.pending ? <p role="status">{recipientText.pendingAction}</p> : null}
+                {player.sceneIndex + 1 < player.sceneCount ? <>
+                  <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
+                  <button type="button" disabled={busy || player.adventure.pending || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('next')} style={{ ...primaryStyle, marginTop: '1rem' }}>{recipientEnding.continueScenes}</button>
+                </> : null}
               </article> : <article style={cardStyle}>
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
                   <h2>{passage(player.scene.title)}</h2>
@@ -1537,7 +1547,7 @@ export default function SharedStoryPage() {
                     <div style={{ display: 'grid', gap: '0.75rem' }}>
                       {(player.scene.choices || [recipientText.next]).map(choice => <button key={choice} disabled={busy} onClick={() => void act('next')} style={{ ...buttonStyle, textAlign: 'start' }}>{choice}</button>)}
                     </div>
-                  </> : <p>{recipientText.tryAnswer}</p>}
+                  </> : <p>{player.endingMode === 'choice' ? recipientEnding.chooseFinal : recipientText.tryAnswer}</p>}
                 </article>}
                 {player.discoveries.length > 0 ? (
                   <details style={cardStyle}>
@@ -1552,7 +1562,7 @@ export default function SharedStoryPage() {
                     ))}
                   </details>
                 ) : null}
-                {(player.adventure || player.sceneIndex + 1 === player.sceneCount) ? <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
+                {player.sceneIndex + 1 === player.sceneCount && (player.endingMode ?? 'answer') === 'answer' ? <form onSubmit={(event) => { event.preventDefault(); void act('guess') }} style={cardStyle}>
                   {player.answerInstruction ? <p role="note">{player.answerInstruction}</p> : null}
                   <label style={{ fontWeight: 700 }}>{player.answerType === 'clue' ? 'What did you find?' : player.answerType === 'word' ? 'Say the final word' : player.answerType === 'action' ? 'Describe the action' : 'Say the final phrase'}<input value={guess} onFocus={() => interaction.cancelRecording()} onChange={(event) => { interaction.cancelRecording(); setGuess(event.target.value) }} maxLength={200} required style={fieldStyle} disabled={busy || !recipientDraft.ready || Boolean(player.cooperative && !player.cooperative.isYourTurn)} /></label>
                   <p>{recipientText.guessHelp} {player.canSkip ? recipientText.skipHelp : recipientText.solveHelp}</p>
@@ -1563,6 +1573,11 @@ export default function SharedStoryPage() {
                   <p>{recipientText.reviewGuess}</p>
                   {interaction.stoppingTarget === 'guess' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                 </form> : null}
+                {player.sceneIndex + 1 === player.sceneCount && player.endingMode === 'choice' ? <section style={cardStyle} aria-label={recipientEnding.chooseFinal}>
+                  <h2>{recipientEnding.chooseFinal}</h2>
+                  {player.answerInstruction ? <p>{player.answerInstruction}</p> : null}
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>{player.endingChoices?.map((choice, index) => <button key={choice} type="button" disabled={busy || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('ending-choice', index)} style={buttonStyle}>{choice}</button>)}</div>
+                </section> : null}
               </>
             )}
             {!player.solved && !player.skipped ? <details style={cardStyle}>
@@ -1572,7 +1587,7 @@ export default function SharedStoryPage() {
               {player.canSkip ? <>
                 <p>{recipientText.skipHelp}</p>
                 <button disabled={busy || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('skip')} style={buttonStyle}>{recipientText.skip}</button>
-              </> : <p>{recipientText.solveHelp}</p>}
+              </> : (player.endingMode ?? 'answer') === 'answer' ? <p>{recipientText.solveHelp}</p> : null}
               {!player.hintsRemaining && !player.revealedHints.length ? <p>{recipientText.noHints}</p> : null}
             </details> : null}
             {(player.revealedHints.length > 0 || (!player.solved && !player.skipped && player.hintsRemaining > 0)) ? (
@@ -1667,7 +1682,8 @@ export default function SharedStoryPage() {
             <details style={{ marginTop: '1rem' }} aria-label="Sender tools">
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Share and sender tools</summary>
             <p>For {creator.brief.recipientName} - about {creator.brief.durationMinutes} minutes.</p>
-            <p>{creator.brief.unlockPolicy === 'allow-skip' ? 'Allow a skip: recipients may confirm a reveal without solving.' : 'Solve to unlock: a correct answer is required.'}</p>
+            <p>{creation.endingHelp}</p>
+            <p>{creator.brief.endingMode === 'automatic' ? creation.automaticHelp : creator.brief.endingMode === 'choice' ? creation.choiceHelp : creator.brief.unlockPolicy === 'allow-skip' ? 'At the final scene, recipients may confirm a reveal without solving.' : creation.answerHelp}</p>
             <p>{creator.expiresAt === null ? 'Recipient access has no automatic expiry.' : `Recipient access expires ${new Date(creator.expiresAt).toLocaleString()}.`} The brief stays in this browser&apos;s library until removed, whether or not anyone finishes.</p>
             {creator.brief.adventure ? <p>{creator.brief.adventure.choiceMode === 'suggested' ? '3-5 suggested actions per turn' : 'Free written or spoken actions'}. Up to 12 per playthrough; {creator.brief.adventure.actionBudget} total AI attempts, including failures.</p> : null}
             {creator.content.scenes.map((scene, index) => (
@@ -1677,14 +1693,15 @@ export default function SharedStoryPage() {
                   <h3>Recipient exploration actions</h3>
                   <ul>{(scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <li key={choice}>{choice}</li>)}</ul>
                   <p>All actions continue to the same next scene.</p>
-                </> : <p>The recipient types the final answer after this clue.</p>}
+                </> : <p>{creator.brief.endingMode === 'automatic' ? creation.automaticHelp : creator.brief.endingMode === 'choice' ? creation.choiceHelp : creation.answerHelp}</p>}
               </details>
             ))}
             <details style={cardStyle}>
               <summary>Private ending details</summary>
-              <p><strong>Ending:</strong> {creator.brief.answerType === 'clue' ? 'Find and identify the final clue' : creator.brief.answerType === 'word' ? 'Say a word aloud' : creator.brief.answerType === 'action' ? 'Describe the final action' : 'Say a phrase aloud'}</p>
+              <p><strong>{creation.ending}:</strong> {creator.brief.endingMode === 'automatic' ? creation.automatic : creator.brief.endingMode === 'choice' ? creation.choice : creation.answer}</p>
               {creator.brief.answerInstruction ? <p><strong>Where/how:</strong> {creator.brief.answerInstruction}</p> : null}
-              <p><strong>Answer:</strong> {creator.brief.solution}</p>
+              {(creator.brief.endingMode ?? 'answer') === 'answer' ? <p><strong>Answer:</strong> {creator.brief.solution}</p> : null}
+              {creator.brief.endingMode === 'choice' ? <ul>{creator.brief.endingChoices?.map(choice => <li key={choice}>{choice}</li>)}</ul> : null}
               {(creator.brief.alternativeAnswers ?? []).length > 0 ? (
                 <><h3>Other valid answers</h3><ul>{creator.brief.alternativeAnswers!.map((answer, index) => <li key={index}>{answer}</li>)}</ul></>
               ) : null}
@@ -1880,66 +1897,28 @@ export default function SharedStoryPage() {
                 setDraftStatus('Unreadable draft discarded.')
               } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
-            {!quickTogether ? <section style={cardStyle} aria-labelledby="together-story-heading">
-              <h2 id="together-story-heading">{togetherStoryCopy(interfaceLanguage).title}</h2>
-              <p>{togetherStoryCopy(interfaceLanguage).intro}</p>
-              <button type="button" style={primaryStyle} disabled={busy || voiceRecording || voiceUploading || Boolean(pendingDraft) || draftUnreadable || Boolean(mediaFile) || Boolean(voiceFile)} onClick={startTogetherStory}>
-                {togetherStoryCopy(interfaceLanguage).start}
-              </button>
-            </section> : null}
-            {quickTogether ? <form onSubmit={generate} className="gift-story-form" aria-label={togetherStoryCopy(interfaceLanguage).title}>
-              <section style={cardStyle}>
-                <h2>{togetherStoryCopy(interfaceLanguage).title}</h2>
-                <p>{togetherStoryCopy(interfaceLanguage).intro}</p>
-                {textField('creatorName', giftFormText('yourName', interfaceLanguage), '', 80)}
-                {textField('recipientName', giftFormText('recipientName', interfaceLanguage), '', 80)}
-                <label htmlFor="together-language">{giftFormText('storyLanguage', interfaceLanguage)}
-                  <select id="together-language" style={fieldStyle} value={brief.language ?? 'en-US'} disabled={busy} onChange={event => {
-                    const language = STORY_LANGUAGES.find(item => item.code === event.target.value)
-                    if (!language) return
-                    updateBrief(current => {
-                      const oldDefault = togetherStoryCopy(current.language ?? 'en-US').defaultMessage
-                      return togetherStoryBrief({ ...current, language: language.code, message: current.message === oldDefault ? '' : current.message })
-                    })
-                    setAiConsent(false)
-                  }}>{STORY_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.label}</option>)}</select>
-                </label>
-                {textField('recipientHints', togetherStoryCopy(interfaceLanguage).memory, '', 1500, true)}
-                {textField('message', togetherStoryCopy(interfaceLanguage).message, '', 2000)}
-                <label htmlFor="together-puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('storyDifficulty')}
-                  <select id="together-puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
-                    if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
-                    updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))
-                    setAiConsent(false)
-                  }} style={fieldStyle}>
-                    <option value="gentle">{flow('difficultyGentle')}</option>
-                    <option value="balanced">{flow('difficultyBalanced')}</option>
-                    <option value="challenging">{flow('difficultyChallenging')}</option>
-                  </select>
-                </label>
-                <p>{flow('difficultyAttention')}</p>
-                <p>{togetherStoryCopy(interfaceLanguage).limits}</p>
-                <details><summary>{flow('privacyLimits')}</summary><p>{flow('giftPrivacy')}</p><p>{flow('giftBackupNote')}</p></details>
-                <ExplicitConsent checked={aiConsent} onChange={setAiConsent}>{flow('giftConsent')}</ExplicitConsent>
-                <button type="submit" style={primaryStyle} disabled={busy || !aiConsent || !brief.creatorName.trim() || !brief.recipientName.trim() || !brief.message.trim()}>
-                  {busy ? flow('preparingGift') : togetherStoryCopy(interfaceLanguage).prepare}
-                </button>
-                <button type="button" style={{ ...buttonStyle, marginInlineStart: '0.5rem' }} disabled={busy} onClick={() => { setQuickTogether(false); setCreatorStep(0) }}>
-                  {togetherStoryCopy(interfaceLanguage).customize}
-                </button>
-              </section>
-            </form> : <>
             <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
               {(['stepFor', 'stepStory', 'stepSurprise'] as const).map((key, index) => {
-                const label = giftFormText(key, interfaceLanguage)
+                const label = index === 2 ? creation.stepEnding : giftFormText(key, interfaceLanguage)
                 return <li key={key} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>
               })}
             </ol>
-            <p className="atelier-eyebrow" aria-live="polite">{creatorStep + 1}/3 · {giftFormText((['stepFor', 'stepStory', 'stepSurprise'] as const)[creatorStep], interfaceLanguage)}</p>
+            <p className="atelier-eyebrow" aria-live="polite">{creatorStep + 1}/3 · {creatorStep === 2 ? creation.stepEnding : giftFormText((['stepFor', 'stepStory'] as const)[creatorStep], interfaceLanguage)}</p>
             <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
                 <h2>1. {giftFormText('whoFor', interfaceLanguage)}</h2>
+                <fieldset aria-label={creation.participants} style={{ border: 0, padding: 0, marginBottom: '1.25rem' }}>
+                  <legend>{creation.participants}</legend>
+                  {(['recipient', 'together'] as const).map(value => <label key={value} style={{ display: 'flex', gap: '0.75rem', padding: '0.85rem', border: '1px solid var(--line)', borderRadius: 12, marginBlock: '0.5rem' }}>
+                    <input type="radio" name="story-participants" value={value} checked={(brief.participants ?? 'recipient') === value} onChange={() => {
+                      updateBrief(current => ({ ...current, participants: value, ...(current.adventure ? { adventure: { actionBudget: current.adventure.actionBudget, choiceMode: current.adventure.choiceMode } } : {}) }))
+                      setAiConsent(false)
+                    }} />
+                    <span><strong>{value === 'recipient' ? creation.recipientOnly : creation.together}</strong><br />{value === 'recipient' ? creation.recipientOnlyHelp : creation.togetherHelp}</span>
+                  </label>)}
+                </fieldset>
+                {brief.participants === 'together' ? <p>{creation.participantsNote}</p> : null}
                 <p>{giftFormText('chooseMoment', interfaceLanguage)}</p>
                 <div role="group" aria-label="Choose an occasion" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: '1.2rem' }}>
                   {GIFT_OCCASIONS.map(occasion => <button key={occasion.id} type="button" disabled={busy} aria-pressed={brief.gift?.occasion === occasion.id} onClick={() => chooseOccasion(occasion.id)} style={brief.gift?.occasion === occasion.id ? primaryStyle : buttonStyle}>{giftFormText(giftOccasionLabels[occasion.id], interfaceLanguage)}</button>)}
@@ -1973,17 +1952,20 @@ export default function SharedStoryPage() {
                 {textField('goal', flow('giftGoal'), '', 600)}
                 <label htmlFor="puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('storyDifficulty')}
                   <select id="puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
-                    if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
+                    if (!['gentle', 'easy', 'balanced', 'challenging', 'expert'].includes(event.target.value)) return
                     updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))
                     setAiConsent(false)
                   }} style={fieldStyle}>
-                    <option value="gentle">{flow('difficultyGentle')}</option>
-                    <option value="balanced">{flow('difficultyBalanced')}</option>
-                    <option value="challenging">{flow('difficultyChallenging')}</option>
+                    <option value="gentle">{creation.difficultyGentle}</option>
+                    <option value="easy">{creation.difficultyEasy}</option>
+                    <option value="balanced">{creation.difficultyBalanced}</option>
+                    <option value="challenging">{creation.difficultyChallenging}</option>
+                    <option value="expert">{creation.difficultyExpert}</option>
                   </select>
                 </label>
                 <p>{flow('difficultyAttention')}</p>
                 {textField('recipientHints', flow('giftPersonalTouches'), '', 1500, true)}
+                {textField('narration', creation.style, '', 600, true)}
                 <label style={{ fontWeight: 700 }}>{flow('duration')}
                   <select value={brief.durationMinutes} onChange={(event) => {
                     const duration = Number(event.target.value)
@@ -1995,7 +1977,7 @@ export default function SharedStoryPage() {
                   </select>
                 </label>
                 <fieldset aria-label={flow('interaction')} disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0, marginTop: '0.5rem' }}>
-                    <legend style={{ fontWeight: 700 }}>{brief.adventure?.cooperative ? flow('groupInteraction') : flow('interaction')}</legend>
+                    <legend style={{ fontWeight: 700 }}>{flow('interaction')}</legend>
                     {[
                       ['classic', flow('preparedClueMode')],
                       ['free', flow('freeInput')],
@@ -2005,9 +1987,7 @@ export default function SharedStoryPage() {
                         updateBrief(current => {
                           const { adventure, ...rest } = current
                           return value === 'classic' ? rest : { ...rest, adventure: {
-                            actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free',
-                            ...(adventure?.turnTaking ? { turnTaking: true } : {}),
-                            ...(adventure?.cooperative ? { cooperative: true } : {})
+                            actionBudget: adventure?.actionBudget ?? 12, choiceMode: value === 'suggested' ? 'suggested' : 'free'
                           } }
                         })
                         setAiConsent(false)
@@ -2015,28 +1995,12 @@ export default function SharedStoryPage() {
                       <span>{title}</span>
                     </label>)}
                 </fieldset>
+                {brief.adventure?.choiceMode === 'suggested' ? <p>{creation.choicesHelp}</p> : null}
                 {brief.adventure ? <>
                   <label htmlFor="adventure-budget">{flow('actionBudget')}
                     <input id="adventure-budget" type="number" min={1} max={1000} value={brief.adventure.actionBudget || ''} disabled={busy} onChange={event => { updateBrief(current => ({ ...current, adventure: { ...current.adventure!, actionBudget: Number(event.target.value) } })); setAiConsent(false) }} style={fieldStyle} />
                   </label>
                   <p>{flow('actionBudgetNote')}</p>
-                  <label style={{ display: 'block', padding: '0.75rem 0' }}>
-                    <input type="checkbox" checked={Boolean(brief.adventure.turnTaking)} disabled={busy} onChange={event => {
-                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
-                        ? { turnTaking: true, cooperative: undefined }
-                        : { turnTaking: undefined }) } }))
-                      setAiConsent(false)
-                    }} /> {flow('playTogetherSameDevice')}
-                  </label>
-                  <label style={{ display: 'block', padding: '0.75rem 0' }}>
-                    <input type="checkbox" checked={Boolean(brief.adventure.cooperative)} disabled={busy} onChange={event => {
-                      updateBrief(current => ({ ...current, adventure: { ...current.adventure!, ...(event.target.checked
-                        ? { cooperative: true, turnTaking: undefined }
-                        : { cooperative: undefined }) } }))
-                      setAiConsent(false)
-                    }} /> {flow('cooperativeMode')}
-                  </label>
-                  <p>{flow('cooperativeNote')}</p>
                 </> : <p>{flow('preparedModeNote')}</p>}
               </div>
               </fieldset>
@@ -2053,7 +2017,18 @@ export default function SharedStoryPage() {
                 <GiftVoiceRecorder file={voiceFile} onChange={file => { setVoiceFile(file); setAiConsent(false) }} disabled={busy} onActiveChange={setVoiceRecording} beforeRecord={() => { narrator.stop(); interaction.stopRecording() }} />
               </details>
               <div style={cardStyle}>
-                <h2>Choose the ending</h2>
+                <h2>{creation.ending}</h2>
+                <p>{creation.endingHelp}</p>
+                <fieldset aria-label={creation.ending} disabled={busy} style={{ border: 0, padding: 0 }}>
+                  {(['answer', 'choice', 'automatic'] as const).map(value => <label key={value} style={{ display: 'flex', gap: '0.75rem', padding: '0.85rem', border: '1px solid var(--line)', borderRadius: 12, marginBlock: '0.5rem' }}>
+                    <input type="radio" name="ending-mode" value={value} checked={(brief.endingMode ?? 'answer') === value} onChange={() => {
+                      updateBrief(current => ({ ...current, endingMode: value }))
+                      setAiConsent(false)
+                    }} />
+                    <span><strong>{creation[value]}</strong><br />{creation[`${value}Help`]}</span>
+                  </label>)}
+                </fieldset>
+                {(brief.endingMode ?? 'answer') === 'answer' ? <>
                 <fieldset aria-label="Ending interaction" disabled={busy} style={{ display: 'grid', gap: '0.65rem', border: 0, padding: 0 }}>
                   <legend style={{ fontWeight: 700 }}>How should they finish?</legend>
                   {[
@@ -2071,16 +2046,31 @@ export default function SharedStoryPage() {
                   </label>)}
                 </fieldset>
                 {textField('solution', flow('giftSolution'), '', 200)}
-                {textField('answerInstruction', flow('giftFinalGuidance'), '', 500, true)}
                 <p>{flow('finalAnswerNote')}</p>
                 <section aria-labelledby="accepted-answers-heading" style={{ marginBlock: '1rem', padding: '1rem', border: '1px solid #e4dcd4', borderRadius: 12 }}>
                   <h3 id="accepted-answers-heading" style={{ marginTop: 0 }}>{flow('giftAlternatives')} {flow('optional')}</h3>
                   {assistanceField('alternativeAnswers', flow('giftAlternatives'), flow('alternativesHelp'), 3, 200)}
                 </section>
                 <p>{flow('alternativesRule')}</p>
+                <details style={{ marginBlock: '1rem' }}>
+                  <summary>{creation.helpHints}</summary>
+                  {assistanceField('assistanceHints', flow('hints'), flow('hintsHelp'), 3, 600)}
+                </details>
+                </> : brief.endingMode === 'choice' ? <label style={{ display: 'block', marginBlock: '1rem' }}>{creation.endingChoices}
+                  <textarea id="ending-choices" value={(brief.endingChoices ?? []).join('\n')} rows={5} maxLength={804} required style={fieldStyle} onChange={event => {
+                    updateBrief(current => ({ ...current, endingChoices: event.target.value.split('\n') }))
+                    setAiConsent(false)
+                  }} />
+                  <span>{creation.endingChoicesHelp}</span>
+                </label> : null}
+                {brief.endingMode !== 'automatic' ? <>
+                  {textField('answerInstruction', creation.endingPrompt, '', 500, true)}
+                  <p>{creation.endingPromptHelp}</p>
+                </> : null}
               </div>
               <div style={cardStyle}>
                 <h2>{flow('finalReveal')}</h2>
+                {(brief.endingMode ?? 'answer') === 'answer' ? <>
                 <label style={{ fontWeight: 700 }}>{flow('unlockQuestion')}
                   <select aria-label={flow('unlockQuestion')} value={brief.unlockPolicy ?? 'solve'} disabled={busy} onChange={event => {
                     updateBrief(current => ({ ...current, unlockPolicy: event.target.value === 'allow-skip' ? 'allow-skip' : 'solve' }))
@@ -2091,6 +2081,7 @@ export default function SharedStoryPage() {
                   </select>
                 </label>
                 {brief.unlockPolicy === 'allow-skip' ? <p>{flow('skipNote')}</p> : null}
+                </> : null}
                 {textField('message', flow('giftMessage'), '', 2000, Boolean(mediaFile))}
                 <label style={{ fontWeight: 700 }}>{flow('photoVideo')} {flow('optional')}
                   <input type="file" accept={SHARED_MEDIA_ACCEPT} disabled={busy} onChange={event => { chooseFile(event.target.files?.[0] ?? null); setAiConsent(false); event.target.value = '' }} style={fieldStyle} />
@@ -2098,13 +2089,6 @@ export default function SharedStoryPage() {
                 {mediaFile ? <p role="status">{mediaFile.name} ({formatMediaSize(mediaFile.size)}). <button type="button" disabled={busy} onClick={() => chooseFile(null)} style={{ ...buttonStyle, fontSize: '0.85rem' }}>{flow('removeFile')}</button></p> : null}
                 <p>{flow('mediaLimits').replace('{photoSize}', formatMediaSize(SHARED_MEDIA_PHOTO_MAX_BYTES)).replace('{videoSize}', formatMediaSize(SHARED_MEDIA_VIDEO_MAX_BYTES))}</p>
               </div>
-              <details style={cardStyle}>
-                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{flow('styleAndHints')}</summary>
-                <div style={{ marginTop: '1rem' }}>
-                  {textField('narration', flow('giftNarration'), '', 600, true)}
-                  {assistanceField('assistanceHints', flow('hints'), flow('hintsHelp'), 3, 600)}
-                </div>
-              </details>
               <details style={{ marginBottom: '1rem' }}>
                 <summary>{flow('privacyLimits')}</summary>
                 <p>{flow('giftPrivacy')}</p>
@@ -2124,7 +2108,6 @@ export default function SharedStoryPage() {
                 {creatorStep < 2 ? <button type="button" disabled={busy || Boolean(pendingDraft) || draftUnreadable} onClick={nextCreatorStep} style={{ ...primaryStyle, flex: 1 }}>{flow('continue')}</button> : null}
               </div>
             </form>
-            </>}
           </section>
         )}
       </div>

@@ -8,14 +8,28 @@ function source(relative) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
   }).outputText
 }
-function plainModule(relative) {
+function plainModule(relative, dependencies = {}) {
   const result = { exports: {} }
-  new Function('module', 'exports', 'require', source(relative))(result, result.exports, id => id.startsWith('.') ? plainModule(path.join(path.dirname(relative), id + '.ts')) : require(id))
+  new Function('module', 'exports', 'require', source(relative))(
+    result, result.exports,
+    id => Object.prototype.hasOwnProperty.call(dependencies, id)
+      ? dependencies[id]
+      : id.startsWith('.') ? plainModule(path.join(path.dirname(relative), id + '.ts')) : require(id)
+  )
   return result.exports
 }
 const gifts = plainModule('src/lib/storyGift.ts')
 const language = plainModule('src/lib/storyLanguage.ts')
 const romance = plainModule('src/lib/storyRomance.ts')
+const creationCopy = plainModule('src/lib/sharedCreationCopy.ts')
+const freeform = plainModule('src/lib/freeformStory.ts', {
+  './sharedStory': {
+    SharedStoryError: class SharedStoryError extends Error {
+      constructor(message, status = 400) { super(message); this.status = status }
+    },
+    normalizeSharedAnswer: answer => answer.toLowerCase().replace(new RegExp('[^\\p{L}\\p{N}]+', 'gu'), ' ').trim()
+  }
+})
 function mountPreSendCheck(initialProps) {
   let cursor = 0, tree, props = initialProps
   const slots = [], pending = [], readiness = []
@@ -149,7 +163,9 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
       }
     }
     if (id.endsWith('/sharedStory')) return { SHARED_STORY_DURATIONS: [5, 10, 15, 20] }
+    if (id.endsWith('/freeformStory')) return freeform
     if (id.endsWith('/storyLanguage')) return plainModule('src/lib/storyLanguage.ts')
+    if (id.endsWith('/sharedCreationCopy')) return plainModule('src/lib/sharedCreationCopy.ts')
     if (id.endsWith('/interfacePages')) return plainModule('src/lib/interfacePages.ts')
     if (id.endsWith('/interfaceFlow')) return plainModule('src/lib/interfaceFlow.ts')
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => 'en-US' }
@@ -243,48 +259,116 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
 }
 async function main() {
-  const quick = await mount('#new', null, null, { create: true, permissions: { managed: true, ready: true, services: true, accountId: 'reader-a' } })
-  assert.equal(quick.requests.length, 0)
-  await quick.click('Start a story for two')
-  assert.equal(quick.requests.length, 0, 'Selecting a template never starts a paid request')
-  assert.ok(quick.nodes().some(node => node.type === 'form' && node.props['aria-label'] === 'Five minutes together'))
-  assert.equal(quick.field('together-puzzle-difficulty').props.value, 'balanced')
-  quick.field('together-puzzle-difficulty').props.onChange({ target: { value: 'challenging' } }); await quick.flush()
-  assert.equal(quick.nodes().filter(node => node.type === 'fieldset').length, 0, 'Short creation has no multi-step fieldsets')
-  assert.equal(quick.button('Prepare our story').props.disabled, true, 'Names must be supplied before generation')
-  const quickNames = quick.nodes().filter(node => node.type === 'input' && node.props.maxLength === 80)
-  assert.equal(quickNames.length, 2)
-  quickNames[0].props.onChange({ target: { value: 'Alex' } }); await quick.flush()
-  quick.nodes().filter(node => node.type === 'input' && node.props.maxLength === 80)[1].props.onChange({ target: { value: 'Sam' } }); await quick.flush()
-  assert.equal(quick.button('Prepare our story').props.disabled, false, 'Saved registration consent is reused without another tick')
-  quick.field('together-language').props.onChange({ target: { value: 'it-IT' } }); await quick.flush()
-  const quickDraft = JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY))
-  assert.equal(quickDraft.brief.durationMinutes, 5)
-  assert.equal(quickDraft.brief.puzzleDifficulty, 'challenging')
-  assert.deepEqual(quickDraft.brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
-  assert.equal(quickDraft.brief.creatorName, 'Alex')
-  assert.equal(quickDraft.brief.recipientName, 'Sam')
-  assert.equal(quickDraft.brief.solution, 'insieme')
-  assert.equal(quickDraft.brief.message, plainModule('src/lib/togetherStory.ts').togetherStoryCopy('it-IT').defaultMessage)
-  quick.nodes().find(node => node.type === 'form' && node.props['aria-label'] === 'Five minutes together').props.onSubmit({ preventDefault() {} })
-  await quick.flush()
-  assert.equal(quick.requests.length, 1, 'Only explicit preparation starts a request')
-  assert.equal(quick.requests[0].action, 'create')
-  assert.equal(quick.requests[0].brief.durationMinutes, 5)
-  assert.equal(quick.requests[0].brief.puzzleDifficulty, 'challenging')
-  assert.deepEqual(quick.requests[0].brief.adventure, { actionBudget: 6, choiceMode: 'suggested', cooperative: true })
-  assert.ok(quick.nodes().some(node => node.props.role === 'alert' && label(node).includes('Test preparation unavailable')))
-  assert.equal(JSON.parse(quick.values.get(gifts.GIFT_DRAFT_KEY)).brief.creatorName, 'Alex', 'Preparation failure preserves the draft')
-  await quick.click('More options')
-  assert.ok(quick.nodes().some(node => node.type === 'fieldset'), 'Advanced creation retains the template for editing')
-  assert.equal(quick.requests.length, 1)
-  quick.unmount()
-  const legacyQuick = await mount('#new')
-  await legacyQuick.click('Start a story for two')
-  assert.equal(legacyQuick.button('Prepare our story').props.disabled, true)
-  assert.ok(legacyQuick.nodes().some(node => node.type === '../components/ExplicitConsent'), 'Legacy users retain explicit feature consent')
-  legacyQuick.unmount()
-  console.log('PASS short together-story setup preserves names, localizes defaults, uses saved permissions and never auto-generates')
+  assert.deepEqual(freeform.parseSuggestedChoices(['Open the door', 'Follow the stars', 'Ask the keeper']),
+    ['Open the door', 'Follow the stars', 'Ask the keeper'])
+  assert.throws(() => freeform.parseSuggestedChoices(['Only one']), /3 to 5 distinct choices/)
+  assert.throws(() => freeform.parseSuggestedChoices(['Open the door', 'Open the door', 'Ask the keeper']), /AI response failed story validation/)
+  const expectedCompleteLabels = {
+    'en-US': 'Story complete',
+    'it-IT': 'Storia completata',
+    'es-ES': 'Historia completada',
+    'zh-CN': '故事已完成',
+    'hi-IN': 'कहानी पूरी हुई',
+    'uk-UA': 'Історію завершено',
+    'ar-SA': 'اكتملت القصة'
+  }
+  for (const [locale, expected] of Object.entries(expectedCompleteLabels)) {
+    assert.equal(creationCopy.sharedCreationCopy(locale).completed, expected,
+      `${locale} has localized story-completion copy`)
+  }
+  const wizard = await mount('#new')
+  assert.equal(wizard.requests.length, 0, 'Opening the creator never prepares a story')
+  assert.ok(!wizard.nodes().some(node => node.props['aria-label'] === 'Five minutes together'),
+    'The creator uses the single three-step wizard instead of the removed quick-together form')
+  assert.equal(wizard.nodes().filter(node => node.type === 'ol' && node.props['aria-label'] === 'Story creation steps').length, 1)
+  let participantRadios = wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'story-participants')
+  assert.deepEqual(participantRadios.map(radio => radio.props.value), ['recipient', 'together'])
+  const participantsStep = wizard.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])
+  assert.ok(!flatten(participantsStep).some(node => node?.type === 'input' &&
+    ['story-interaction', 'story-turn-taking', 'story-cooperative'].includes(node.props.name)),
+    'Participant selection does not expose forced interaction or turn-taking controls')
+  wizard.field('brief-creatorName').props.onChange({ target: { value: 'Alex' } })
+  await wizard.flush()
+  participantRadios[1].props.onChange()
+  await wizard.flush()
+  assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.participants, 'together')
+  assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.adventure, undefined,
+    'Choosing together does not silently create a cooperative adventure')
+  participantRadios = wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'story-participants')
+  participantRadios[0].props.onChange()
+  await wizard.flush()
+  assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.participants, 'recipient')
+  await wizard.click('Continue')
+  let visibleStep = wizard.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])
+  assert.ok(flatten(visibleStep).some(node => node?.props?.id === 'brief-narration'),
+    'Narrative style is available in step 2')
+  assert.ok(!flatten(visibleStep).some(node => ['brief-solution', 'brief-assistanceHints'].includes(node?.props?.id)),
+    'The final answer and its optional hints are not shown in step 2')
+  const difficulty = wizard.field('puzzle-difficulty')
+  assert.deepEqual(flatten(difficulty).filter(node => node?.type === 'option').map(option => option.props.value),
+    ['gentle', 'easy', 'balanced', 'challenging', 'expert'])
+  for (const value of ['gentle', 'easy', 'balanced', 'challenging', 'expert']) {
+    difficulty.props.onChange({ target: { value } })
+    await wizard.flush()
+    assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.puzzleDifficulty, value,
+      `${value} difficulty is persisted`)
+  }
+  wizard.field('brief-narration').props.onChange({ target: { value: 'Lyrical and warm' } })
+  await wizard.flush()
+  assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.narration, 'Lyrical and warm')
+  await wizard.click('Continue')
+  visibleStep = wizard.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])
+  assert.ok(flatten(visibleStep).some(node => node?.props?.id === 'brief-solution'),
+    'The final-answer field is in step 3')
+  assert.ok(flatten(visibleStep).some(node => node?.props?.id === 'brief-assistanceHints'),
+    'Optional final-answer hints are in step 3')
+  wizard.field('brief-solution').props.onChange({ target: { value: 'The silver key' } })
+  await wizard.flush()
+  wizard.field('brief-assistanceHints').props.onChange({ target: { value: ['Check the old map', 'Look beneath the bridge'].join('\n') } })
+  await wizard.flush()
+  let savedCreationDraft = gifts.loadGiftDraft(wizard.browser.localStorage)
+  assert.equal(savedCreationDraft.brief.solution, 'The silver key')
+  assert.equal(savedCreationDraft.assistanceHintsText, ['Check the old map', 'Look beneath the bridge'].join('\n'))
+  const endingModes = wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'ending-mode')
+  assert.deepEqual(endingModes.map(radio => radio.props.value), ['answer', 'choice', 'automatic'])
+  endingModes.find(radio => radio.props.value === 'choice').props.onChange()
+  await wizard.flush()
+  wizard.field('ending-choices').props.onChange({ target: { value: ['Open the door', 'Follow the stars', 'Ask the keeper'].join('\n') } })
+  await wizard.flush()
+  savedCreationDraft = gifts.loadGiftDraft(wizard.browser.localStorage)
+  assert.equal(savedCreationDraft.brief.endingMode, 'choice')
+  assert.deepEqual(savedCreationDraft.brief.endingChoices, ['Open the door', 'Follow the stars', 'Ask the keeper'])
+  wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'ending-mode')
+    .find(radio => radio.props.value === 'automatic').props.onChange()
+  await wizard.flush()
+  assert.equal(gifts.loadGiftDraft(wizard.browser.localStorage).brief.endingMode, 'automatic')
+  wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'ending-mode')
+    .find(radio => radio.props.value === 'answer').props.onChange()
+  await wizard.flush()
+  savedCreationDraft = gifts.loadGiftDraft(wizard.browser.localStorage)
+  assert.equal(savedCreationDraft.brief.endingMode, 'answer')
+  assert.deepEqual(savedCreationDraft.brief.endingChoices, ['Open the door', 'Follow the stars', 'Ask the keeper'],
+    'Switching ending modes preserves the saved choice text')
+  assert.equal(savedCreationDraft.assistanceHintsText, ['Check the old map', 'Look beneath the bridge'].join('\n'))
+  for (const [index, endingMode] of ['answer', 'choice', 'automatic'].entries()) {
+    const puzzleDifficulty = index % 2 === 0 ? 'easy' : 'expert'
+    const participants = index % 2 === 0 ? 'recipient' : 'together'
+    const endingChoices = endingMode === 'choice'
+      ? ['Open the door', 'Follow the stars', 'Ask the keeper']
+      : []
+    gifts.saveGiftDraft({
+      ...savedCreationDraft,
+      brief: { ...savedCreationDraft.brief, participants, endingMode, endingChoices, puzzleDifficulty }
+    }, wizard.browser.localStorage)
+    const restored = gifts.loadGiftDraft(wizard.browser.localStorage)
+    assert.equal(restored.brief.participants, participants, `${participants} participant setting round-trips`)
+    assert.equal(restored.brief.endingMode, endingMode, `${endingMode} ending mode round-trips`)
+    assert.deepEqual(restored.brief.endingChoices, endingChoices, `${endingMode} ending choices round-trip`)
+    assert.equal(restored.brief.puzzleDifficulty, puzzleDifficulty, `${puzzleDifficulty} difficulty round-trips`)
+  }
+  assert.equal(wizard.requests.length, 0, 'Wizard edits never prepare a story without an explicit submit')
+  wizard.unmount()
+  console.log('PASS shared creation wizard persists participants, all five difficulties, narrative style, endings and final choices')
   const reviewProps = {
     story: {
       ownerToken: 'creator-only-token',
@@ -445,25 +529,11 @@ async function main() {
   assert.ok(creator.nodes().some(node => label(node) === '2/3 · The story'))
   await creator.click('Continue')
   assert.equal(creator.nodes().filter(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label']).length, 1)
-  const liveMode = creator.nodes().find(node => node.type === 'input' && node.props.name === 'story-interaction' && node.props.value === 'free')
-  assert.ok(liveMode, 'Creator can select a live adventure before enabling cooperative play')
-  liveMode.props.onChange()
-  await creator.flush()
-  const cooperativeLabel = creator.nodes().find(node => node.type === 'label' && label(node).includes('Cooperative story · 2 participants'))
-  assert.ok(cooperativeLabel, 'Cooperative setup explains the participant and device model')
-  assert.ok(creator.nodes().some(node => node.type === 'p' && label(node).includes('Turns rotate in join order')),
-    'Cooperative setup explains names and turn order')
-  flatten(cooperativeLabel).find(node => node?.type === 'input').props.onChange({ target: { checked: true } })
-  await creator.flush()
-  creator.timers.at(-1)()
-  const cooperativeDraft = gifts.loadGiftDraft(creator.browser.localStorage)
-  assert.equal(cooperativeDraft.brief.adventure.cooperative, true)
-  assert.equal(cooperativeDraft.brief.adventure.turnTaking, undefined,
-    'Cooperative separate-device mode does not collide with same-device pass-and-play')
-  assert.throws(() => gifts.parseGiftDraft({
-    ...cooperativeDraft,
-    brief: { ...cooperativeDraft.brief, adventure: { ...cooperativeDraft.brief.adventure, cooperative: 'yes' } }
-  }), /invalid interaction option/)
+  const creatorBrief = gifts.loadGiftDraft(creator.browser.localStorage).brief
+  assert.notEqual(creatorBrief.participants, 'together', 'The default recipient-only setting does not imply together play')
+  assert.equal(creatorBrief.adventure, undefined, 'The wizard does not create an adventure or turn-taking configuration by default')
+  assert.equal(creator.nodes().some(node => node.type === 'label' && label(node).includes('Cooperative story')), false,
+    'The creator no longer offers the removed cooperative setup controls')
   const active = creator.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])
   const confirmationLabel = flatten(active).find(node => node?.type === 'label' && label(node).includes(romance.romanceCopy().creatorConfirmation))
   assert.ok(confirmationLabel, 'Creator acknowledgment is visible on the final step')
@@ -480,6 +550,43 @@ async function main() {
     solved: true, skipped: false, canSkip: false, revealedHints: [], hintsRemaining: 0, message: 'A final message',
     gift: { occasion: 'birthday', dedication: 'A note', allowReply: true }
   }
+  const automaticComplete = await mount('#play=automatic-complete-fixture', {
+    ...player, gift: undefined, endingMode: 'automatic',
+    scene: { title: 'The last scene', body: 'The final scene comes before the reveal.', clue: 'A final clue' }
+  })
+  automaticComplete.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
+  await automaticComplete.flush()
+  const automaticScene = automaticComplete.nodes().find(node =>
+    node.type === 'section' && node.props['aria-label'] === language.recipientCopy().scene(1, 1))
+  const automaticPassage = automaticComplete.nodes().find(node =>
+    node.type === '../components/StoryPassage' && node.props.text === 'The final scene comes before the reveal.')
+  const automaticReveal = automaticComplete.nodes().find(node => node.type === '../components/SharedStoryReveal')
+  assert.ok(automaticScene && automaticPassage && automaticReveal,
+    'Automatic completion presents its final scene and reveal in read mode')
+  assert.equal(automaticPassage.props.mode, 'read', 'The final scene passage follows the selected read mode')
+  assert.ok(automaticComplete.nodes().indexOf(automaticScene) < automaticComplete.nodes().indexOf(automaticReveal),
+    'The final scene is shown before the automatic message reveal')
+  assert.ok(automaticComplete.nodes().some(node => node.type === 'p' &&
+    label(node) === creationCopy.sharedCreationCopy('en-US').completed))
+  assert.equal(automaticComplete.nodes().some(node => node.type === 'input' && node.props.maxLength === 200), false,
+    'Automatic completion does not expose a guess field')
+  const automaticListening = await mount('#play=automatic-listen-fixture', {
+    ...player, gift: undefined, endingMode: 'automatic', message: 'A final private message',
+    scene: { title: 'The last scene', body: 'The final scene comes before the reveal.', clue: 'A final clue' }
+  })
+  automaticListening.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await automaticListening.flush()
+  const sceneNarration = automaticListening.nodes().find(node =>
+    node.props?.text === 'The last scene. The final scene comes before the reveal.')
+  const listeningReveal = automaticListening.nodes().find(node => node.type === '../components/SharedStoryReveal')
+  assert.ok(sceneNarration && listeningReveal,
+    'Listen mode provides narration for the final scene and the revealed message')
+  assert.ok(automaticListening.nodes().indexOf(sceneNarration) < automaticListening.nodes().indexOf(listeningReveal),
+    'The final-scene narration control precedes the message reveal in listen mode')
+  assert.equal(listeningReveal.props.mode, 'listen')
+  assert.equal(listeningReveal.props.listening, true)
+  assert.equal(listeningReveal.props.message, 'A final private message',
+    'The listening reveal receives the message after the final-scene narration control')
   const recipient = await mount('#play=fixture', player)
   assert.equal(recipient.nodes().find(node => node.type === '../components/SiteNavigation').props.recipient, true, 'Recipient menu stays minimal')
   assert.ok(recipient.button(language.recipientCopy().openStory))
@@ -558,6 +665,28 @@ async function main() {
   assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/PageIllustration'), 'Recipient story has no decorative banner')
   const disclosure = studioPlayer.nodes().find(node => node.type === 'details' && label(node).startsWith('About this private story'))
   assert.ok(disclosure && !disclosure.props.open)
+  const earlyRecipient = await mount('#play=early-fixture', {
+    ...player, solved: false, gift: undefined, sceneIndex: 0, sceneCount: 2
+  })
+  assert.equal(earlyRecipient.nodes().some(node => node.type === 'input' && node.props.maxLength === 200), false,
+    'A non-final scene does not expose the final-answer input')
+  assert.equal(earlyRecipient.nodes().some(node => node.type === 'button' && label(node) === language.recipientCopy().tryAnswer), false,
+    'A non-final scene does not expose the final-answer action')
+  const earlyAdventure = await mount('#play=early-adventure-fixture', {
+    ...player, solved: false, gift: undefined, sceneIndex: 0, sceneCount: 2,
+    adventure: { pending: false, actionsRemaining: 10, budgetRemaining: 20, budget: 30, revision: 0, choiceMode: 'free' }
+  })
+  assert.equal(earlyAdventure.nodes().some(node => node.type === 'input' && node.props.maxLength === 200), false,
+    'A non-final adventure scene does not expose a guess input')
+  assert.equal(earlyAdventure.nodes().some(node => node.type === 'button' && label(node) === language.recipientCopy().tryAnswer), false,
+    'A non-final adventure scene does not expose a guess action')
+  const earlyEndingChoice = await mount('#play=early-ending-choice-fixture', {
+    ...player, solved: false, gift: undefined, sceneIndex: 0, sceneCount: 2,
+    endingMode: 'choice', endingChoices: ['Open the door', 'Follow the stars', 'Ask the keeper']
+  })
+  assert.equal(earlyEndingChoice.nodes().some(node => node.type === 'button' &&
+    ['Open the door', 'Follow the stars', 'Ask the keeper'].includes(label(node))), false,
+  'Final choices are withheld until the final scene')
   const activeRecipient = await mount('#play=active-fixture', { ...player, solved: false, gift: undefined, language: 'en-US' })
   const guessInput = activeRecipient.nodes().find(node => node.type === 'input' && node.props.maxLength === 200)
   guessInput.props.onFocus()
@@ -576,6 +705,14 @@ async function main() {
   const nextScene = await mount('#play=active-fixture', { ...player, solved: false, gift: undefined, sceneIndex: 1, sceneCount: 2 }, null, {}, activeRecipient.values)
   assert.equal(nextScene.nodes().find(node => node.type === 'input' && node.props.maxLength === 200).props.value, '',
     'Answers from earlier revisions are not restored into the next scene')
+  const endingChoice = await mount('#play=ending-choice-fixture', {
+    ...player, solved: false, gift: undefined, sceneIndex: 1, sceneCount: 2,
+    endingMode: 'choice', endingChoices: ['Open the door', 'Follow the stars', 'Ask the keeper']
+  })
+  await endingChoice.click('Follow the stars')
+  assert.equal(endingChoice.requests.at(-1).action, 'ending-choice')
+  assert.equal(endingChoice.requests.at(-1).choiceIndex, 1,
+    'Choosing the second final option sends its zero-based choice index')
   assert.ok(!activeRecipient.nodes().some(node => node.type === '../components/MicrophoneCheck'), 'Recipient reading does not expose diagnostic tools')
   const hints = await mount('#play=hints-fixture', { ...player, solved: false, gift: undefined, hintsRemaining: 2 })
   assert.ok(hints.nodes().some(node => node.type === 'details' && !node.props.open &&

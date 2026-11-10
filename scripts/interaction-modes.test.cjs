@@ -7,7 +7,7 @@ const { randomUUID, randomBytes } = require('node:crypto')
 const root = path.resolve(__dirname, '..')
 const output = fs.mkdtempSync(path.join(__dirname, '.interaction-tests-'))
 const original = { env: { ...process.env }, fetch: global.fetch }
-let passed = 0, calls = 0, lastInput, invalidChoices = false
+let passed = 0, calls = 0, lastInput, lastSystem, invalidChoices = false
 const choices = ['Inspect the lantern', 'Talk to the guide', 'Explore the courtyard']
 const nextChoices = ['Follow the path', 'Examine the gate', 'Ask about the garden', 'Study the fountain', 'Rest by the wall']
 const state = { inventory: [], discoveries: [], relationships: [], progress: 'The courtyard is open.' }
@@ -41,6 +41,7 @@ async function main() {
     calls++
     const payload = JSON.parse(options.body), input = JSON.parse(payload.messages[1].content)
     lastInput = input
+    lastSystem = payload.messages[0].content
     const suggested = payload.messages[0].content.includes('choices":["...')
     const concluding = input.responsesRemaining === 0 || input.actionsRemaining === 0
     const offered = invalidChoices ? ['Only one'] : input.action ? nextChoices : choices
@@ -50,7 +51,7 @@ async function main() {
       title: 'The courtyard', description: 'Explore a welcoming garden.', narrationStyle: 'warm', narrationLanguage: 'en-US',
       scenes: Array.from({ length: 3 }, (_, i) => ({
         title: `Clue ${i + 1}`, body: Array(120).fill('wonder').join(' '), clue: 'Look where the light falls.',
-        ...(input.adventure?.choiceMode === 'suggested' && i === 0 ? { choices: offered } : {})
+        ...(input.adventure?.choiceMode === 'suggested' && i < 2 ? { choices: offered } : {})
       }))
     }
     else if (input.responsesRemaining === undefined && input.actionsRemaining === undefined) value = {
@@ -76,7 +77,15 @@ async function main() {
 
   await check('suggestions require 3-5 distinct bounded actions and reject malformed mode', () => {
     for (const length of [3, 4, 5]) assert.equal(helper.parseSuggestedChoices(nextChoices.slice(0, length)).length, length)
-    for (const value of [[], ['A', 'B'], [...nextChoices, 'Six'], ['A', 'a', 'B'], ['A', 'B', 'x'.repeat(161)]]) assert.throws(() => helper.parseSuggestedChoices(value))
+    for (const value of [
+      [], ['A', 'B'], [...nextChoices, 'Six'], ['A', 'a', 'B'], ['A  B', 'a b', 'C'],
+      ['Ａ', 'A', 'B'], ['Open the door', 'Open the door!', 'Look outside'],
+      ['café', 'cafe\u0301', 'Look outside'], ['A', 'B', 'x'.repeat(161)]
+    ]) {
+      assert.throws(() => helper.parseSuggestedChoices(value))
+    }
+    assert.deepEqual(helper.parseSuggestedChoices(nextChoices), nextChoices, 'Valid choices are returned without truncation or rewriting')
+    assert.match(helper.freeformSystemPrompt('suggested'), /meaningfully different options.*not paraphrases/)
     for (const mode of ['invalid', null, 1]) assert.throws(() => helper.parseStoryChoiceMode(mode))
     assert.throws(() => helper.validatePlayerChoiceSelection('suggested', choices, { text: 'Arbitrary action' }))
     assert.throws(() => helper.validatePlayerChoiceSelection('suggested', choices, { choiceIndex: 99 }))
@@ -88,6 +97,8 @@ async function main() {
       assert.equal(result.status, 200)
       let story = result.body.story
       assert.deepEqual(story.journey.choices, choices)
+      assert.match(lastSystem, /3 to 5 distinct proposed actions in turn\.choices/)
+      assert.match(lastSystem, /different player intent.*not paraphrases/)
       const resumed = await api(personal, { mode: 'journey', action: 'resume', id: story.id, capability: story.journey.capability })
       assert.deepEqual(resumed.body.story.journey.choices, choices)
       assert.equal(library.validatePersonalStory(story).journey.choiceMode, 'suggested')
@@ -101,6 +112,10 @@ async function main() {
         result = await api(personal, action)
         assert.equal(result.status, 200, JSON.stringify(result.body))
         assert.equal(lastInput.action, final ? journey.JOURNEY_CLOSING_ACTION : action.text)
+        if (!final) {
+          assert.match(lastSystem, /3 to 5 distinct proposed actions in choices/)
+          assert.match(lastSystem, /different player intents or likely outcomes.*not paraphrases/)
+        }
         assert.equal(calls, before + 1)
         story = result.body.story
         assert.equal(story.mood, 'curious')
@@ -134,8 +149,13 @@ async function main() {
     const opened = await api(shared, { action: 'open', token })
     assert.equal(opened.status, 200)
     const sessionToken = opened.body.sessionToken
-    let view = opened.body.player.adventure
+    let player = opened.body.player
+    let view = player.adventure
     assert.deepEqual(view.choices, choices)
+    const earlyGuess = await api(shared, { action: 'guess', token, sessionToken, guess: brief.solution })
+    assert.equal(earlyGuess.status, 409)
+    assert.equal(earlyGuess.body.player, undefined)
+    assert.ok(!JSON.stringify(earlyGuess.body).includes(brief.message))
     const before = calls
     assert.equal((await api(shared, { action: 'adventure', token, sessionToken, revision: 0, requestId: randomUUID(), text: 'invented', choiceMode: 'free' })).status, 400)
     assert.equal(calls, before)
@@ -147,7 +167,8 @@ async function main() {
       assert.equal(lastInput.action, action.text)
       for (const secret of [brief.solution, brief.message]) assert.ok(!JSON.stringify(lastInput).includes(secret))
       assert.equal(calls, before + 1)
-      view = next.body.player.adventure
+      player = next.body.player
+      view = player.adventure
       assert.equal((await api(shared, action)).status, 200)
       assert.equal(calls, before + 1)
       assert.equal((await api(shared, { ...action, requestId: randomUUID() })).status, 409)
@@ -155,19 +176,27 @@ async function main() {
     }
     assert.equal(view.actionsRemaining, 0)
     assert.equal(view.choices, undefined)
-    const refreshed = await api(shared, { action: 'open', token, sessionToken })
-    assert.equal(refreshed.body.player.adventure.choiceMode, 'suggested')
-    assert.equal(refreshed.body.player.adventure.choices, undefined)
-    assert.equal((await api(shared, { action: 'guess', token, sessionToken, guess: brief.solution })).body.player.solved, true)
+    assert.equal(view.choiceMode, 'suggested')
+    assert.equal(player.adventure.choices, undefined)
+    assert.ok(Number.isInteger(player.sceneIndex) && Number.isInteger(player.sceneCount))
+    while (player.sceneIndex < player.sceneCount - 1) {
+      const next = await api(shared, { action: 'next', token, sessionToken })
+      assert.equal(next.status, 200, JSON.stringify(next.body))
+      player = next.body.player
+    }
+    const solved = await api(shared, { action: 'guess', token, sessionToken, guess: brief.solution })
+    assert.equal(solved.status, 200, JSON.stringify(solved.body))
+    assert.equal(solved.body.player.solved, true)
   })
   await check('shared live choices validate privacy and exhausted views omit menus on either backend', () => {
     assert.throws(() => adventure.parseAdventureTurn({ narration, state, choices: [brief.solution, 'Investigate', 'Look around'] }, brief, 'suggested'), /privacy/)
     assert.throws(() => adventure.parseAdventureTurn({ narration, state, choices }, brief, 'free'))
     const view = { actionsRemaining: 12, budgetRemaining: 12, pending: false, turn: null }
-    const story = { brief, content: { scenes: [{ choices }] } }
+    const story = { brief, content: { scenes: [{ choices }, {}] } }
     assert.deepEqual(adventure.adventureChoiceView(view, story).choices, choices)
     assert.equal(adventure.adventureChoiceView({ ...view, budgetRemaining: 0 }, story).choices, undefined)
     assert.equal(adventure.adventureChoiceView({ ...view, pending: true }, story).choices, undefined)
+    assert.equal(adventure.adventureChoiceView(view, story, 1).choices, undefined, 'Final prepared scene uses ending controls instead of exploration menus')
   })
   await check('invalid AI suggestions consume one attempt without automatic regeneration', async () => {
     const created = await createPersonal(5)

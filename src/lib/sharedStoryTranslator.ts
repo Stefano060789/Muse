@@ -36,7 +36,10 @@ export async function translateSharedStory(
       translation.content.title, translation.content.description,
       ...translation.content.scenes.flatMap(scene => [scene.title, scene.body, scene.clue, ...(scene.choices ?? [])])
     ].join(' '))
-    const privateAnswers = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer).filter(Boolean)
+    const privateAnswers = [
+      brief.solution, brief.message, ...(brief.alternativeAnswers ?? []),
+      ...(brief.assistanceHints ?? []), ...(brief.endingChoices ?? [])
+    ].map(normalizeSharedAnswer).filter(Boolean)
     if (privateAnswers.some(answer => (` ${publicText} `).includes(` ${answer} `))) {
       throw new SharedStoryError('The translated story failed privacy validation. No translation was returned.', 502)
     }

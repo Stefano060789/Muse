@@ -29,6 +29,7 @@ export type StoredStory = {
   expires_at: string
 }
 export type PlayerState = { current_scene: number; solved: boolean; skipped: boolean; revealed_hints: number }
+export type SharedStoryAction = 'open' | 'next' | 'guess' | 'hint' | 'skip' | 'ending-choice'
 export type RequestKind = 'generate' | 'guess' | 'upload'
 export type CooperativeMember = { displayName: string; position: number }
 export type CooperativeView = {
@@ -55,7 +56,7 @@ export interface StoryRepository {
   updateContent(id: string, content: SharedStoryContent): Promise<void>
   delete(id: string): Promise<void>
   rotate(id: string, playHash: string): Promise<void>
-  advance(id: string, sessionHash: string, action: 'open' | 'next' | 'guess' | 'hint' | 'skip', guess: string, playHash?: string, cooperativeUserId?: string): Promise<PlayerState>
+  advance(id: string, sessionHash: string, action: SharedStoryAction, guess: string, playHash?: string, cooperativeUserId?: string): Promise<PlayerState>
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   cooperativeReady(): Promise<void>
@@ -358,7 +359,12 @@ export function storyRepository(): StoryRepository {
       )
       if (error) {
         const message = error.message ?? ''
-        if (message.startsWith('Adventure:')) throw new SharedStoryError(message, message.includes('unavailable') ? 404 : message.includes('AI budget reached') ? 429 : 409)
+        if (message.startsWith('Adventure:')) {
+          const guidance = message.includes('AI budget reached') || message.includes('12-action cap reached')
+            ? message.split('.')[0] + '. Continue through the remaining prepared scenes using Next without AI cost.'
+            : message
+          throw new SharedStoryError(guidance, message.includes('unavailable') ? 404 : message.includes('AI budget reached') ? 429 : 409)
+        }
         throw new SharedStoryError('Adventure storage is unavailable. Apply supabase/shared-adventures.sql before enabling hosted adventures.', 503)
       }
       if (!data?.view || !Number.isInteger(data.view.revision)) throw new SharedStoryError('Adventure storage returned invalid state.', 503)
@@ -391,19 +397,22 @@ export function storyRepository(): StoryRepository {
     },
     async advance(id, sessionHash, action, guess, playHash, cooperativeUserId) {
       const result = cooperativeUserId
-        ? await db.rpc('muse_cooperative_advance', { input: {
+        ? await db.rpc('muse_cooperative_ending_advance', { input: {
           storyId: id, sessionHash, action, guess, playHash: playHash ?? null, userId: cooperativeUserId
         } })
-        : await db.rpc('advance_shared_story', {
+        : await db.rpc('advance_shared_story_ending', {
           story_uuid: id, session_hash: sessionHash, action_name: action, guess_normalized: guess,
           expected_play_hash: playHash ?? null
         })
       const { data, error } = result
       if (error) {
+        if (isMissingGiftSchema(error)) throw new SharedStoryError('Shared story endings are unavailable. Apply supabase/shared-story-endings.sql before deploying this version.', 503)
         if (error.message === 'Story unavailable') throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
         if (error.message === 'Player session unavailable') throw new SharedStoryError('Player session is invalid. Reopen the story link.')
         if (error.message === 'Skipping is not enabled') throw new SharedStoryError('The sender chose Solve to unlock for this story.', 403)
+        if (['Reach the final scene first', 'This ending requires a different action', 'Invalid ending choice'].includes(error.message)) throw new SharedStoryError(error.message, 409)
         if (error.message.startsWith('Cooperative:')) throw new SharedStoryError(error.message, error.message.includes('sign in') ? 401 : 409)
+        if (error.message.startsWith('Adventure:')) throw new SharedStoryError(error.message, 409)
         if (error.message === 'Guess limit reached' || error.message === 'Please wait before guessing again') throw new SharedStoryError(error.message, 429)
         throw storyStorageError(error)
       }

@@ -84,6 +84,7 @@ async function main() {
     assert.equal(opened.status, 200)
     assert.equal(opened.body.player.title, 'PRIVATE_TITLE')
     assert.equal(opened.body.player.message, undefined)
+    for (let i = 1; i < opened.body.player.sceneCount; i++) await api({ action: 'next', token: story.token, sessionToken, romanceConfirmed: true })
     const solved = await api({ action: 'guess', token: story.token, sessionToken, guess: 'picnic', romanceConfirmed: true })
     assert.equal(solved.status, 200)
     assert.equal(solved.body.player.message, 'PRIVATE_REVEAL')

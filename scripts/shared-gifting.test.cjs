@@ -306,6 +306,8 @@ async function main() {
     const other = await api({ action: 'open', token: made.body.playToken }, '')
     assert.equal((await api({ action: 'voice', token: made.body.playToken, sessionToken: other.body.sessionToken }, '')).status, 403)
     assert.equal((await api({ action: 'reply', token: made.body.playToken, sessionToken: other.body.sessionToken, reply: 'Thanks!' }, '')).status, 403)
+    assert.equal((await api({ action: 'skip', token: made.body.playToken, sessionToken, confirmSkip: true }, '')).status, 409)
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: made.body.playToken, sessionToken }, '')
     const skipped = await api({ action: 'skip', token: made.body.playToken, sessionToken, confirmSkip: true }, '')
     assert.equal(skipped.status, 200)
     assert.equal(skipped.body.player.skipped, true)
@@ -338,6 +340,7 @@ async function main() {
     } finally { database.close() }
     for (let i = 0; i < 99; i++) await repo.giftReply(id, `reply-session-${String(i).padStart(4, '0')}`, `Reply ${i}`)
     const overflow = await api({ action: 'open', token: made.body.playToken }, '')
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: made.body.playToken, sessionToken: overflow.body.sessionToken }, '')
     await api({ action: 'skip', token: made.body.playToken, sessionToken: overflow.body.sessionToken, confirmSkip: true }, '')
     const overflowHash = require('node:crypto').createHash('sha256').update(overflow.body.sessionToken).digest('hex')
     await assert.rejects(() => repo.giftReply(id, overflowHash, 'One too many'), /100 replies/)
@@ -367,6 +370,7 @@ async function main() {
     const optOut = await api({ action: 'create', brief: { ...base, gift: { ...gift, allowReply: false } } })
     assert.equal(optOut.status, 201)
     const optOutOpen = await api({ action: 'open', token: optOut.body.playToken }, '')
+    for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: optOut.body.playToken, sessionToken: optOutOpen.body.sessionToken }, '')
     await api({ action: 'skip', token: optOut.body.playToken, sessionToken: optOutOpen.body.sessionToken, confirmSkip: true }, '')
     assert.equal((await api({ action: 'reply', token: optOut.body.playToken, sessionToken: optOutOpen.body.sessionToken, reply: 'Hello' }, '')).status, 403)
 

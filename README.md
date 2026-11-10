@@ -72,6 +72,21 @@ The full product definition lives in four documents:
 
 ## Gifts inside Shared Story
 
+Creation uses one three-step flow: choose who plays (recipient only or together),
+shape the story, then choose its ending. Together means both names participate
+in the narrative using the recipient link, without forced device turns or a
+separate cooperative setup. Existing cooperative stories remain playable.
+Five difficulty levels range from very easy to expert. Narrative style belongs
+with the story settings; optional answer hints belong with the final-answer setup.
+Suggested actions contain 3 to 5 distinct choices.
+
+Endings unlock only on reaching the last prepared scene, including live-AI
+stories. Creators can require a final answer, offer 3 to 5 final choices (each
+reveals the same message), or reveal automatically at the final scene. Running
+out of live actions does not end the story: readers can continue through the
+remaining prepared scenes. The automatic reveal retains the final scene above
+the message so its narration is not lost.
+
 Gift-story previews and recipient pages prioritize the story. Sender scenes are
 hidden until Read or Listen is chosen; sharing safeguards, answer/reveal, uploads, narration
 preparation, progress and management stay under **Share and sender tools**.
@@ -1051,13 +1066,68 @@ upgrades its schema locally. No production migration is run by the application.
 
 ### Final reveal attachments
 
-The creator form has three steps (who, story and duration, ending and final reveal)
-with narration style, alternative answers, hints and adventure
-mode chosen visibly with the story settings; narration and private puzzle help
-are under **Advanced options** (defaults: warm playful narration, 5 minutes,
-classic mystery). The final reveal is a message, one photo/video, or both.
-Ending choices are visible cards: find and identify a clue, describe an action,
-or say a word or phrase. Clue/action answers are checked against the creator's
+Shared Story endings use `endingMode: 'answer' | 'choice' | 'automatic'`.
+Optional `participants: 'recipient' | 'together'` is narrative context, persisted
+in the brief, preserved in follow-ups and returned on the player projection.
+Together mode uses the same recipient link; it does not enable turn-taking,
+cooperative accounts or paid live interactions. Live narration preserves this
+participation context too. Omitted participation retains recipient-only behavior.
+Omitting `endingMode` preserves the legacy answer ending. The goal is always required;
+`solution` is required only for answer mode (otherwise omitted/empty is valid).
+Choice mode requires 3–5 distinct creator-written `endingChoices` (160 characters
+each); every final option unlocks the same private message. Difficulty supports
+`gentle`, `easy`, `balanced` (default), `challenging`, and `expert`.
+
+All endings require reaching the last **prepared** scene. Early guesses, skips
+and final-choice submissions return 409 without unlocking anything. Player JSON
+always includes `endingMode`, but only includes `endingChoices` at the final
+scene. Submit `{ action: 'ending-choice', token, sessionToken, choiceIndex }`
+using the zero-based authoritative option index, not its text. Guess and opted-in
+skip apply only to answer endings. Automatic endings complete on `next`/`open`
+at the final scene. Completed choice/automatic endings persist `solved: true`.
+Show answer controls or final options only when `sceneIndex === sceneCount - 1`.
+
+`next` now advances prepared scenes for adventures too, without an AI call or
+budget charge. Show a Continue/Next control throughout the adventure, including
+after the action allowance runs out; action exhaustion never unlocks the reveal.
+When continuing, render the returned prepared `player.scene`, rather than treating
+an older `player.adventure.turn` as the next scene. Live AI actions explore the
+current prepared scene only; they cannot advance or unlock endings.
+Next returns 409 while an adventure action is pending (abandoned requests expire
+after 90 seconds). Live turns carry their prepared `sceneIndex`; a turn from an
+earlier scene is hidden after Next, while its durable state remains available to
+the next generation. `player.adventure.sceneIndex` identifies the current scene.
+Reapply `shared-adventures.sql` before `shared-story-endings.sql` for the
+reservation-time stale-scene guard.
+
+Before deploying, apply [shared-story-endings.sql](supabase/shared-story-endings.sql)
+after the help/cooperative migrations. Versioned RPC entry points fail closed
+until installed; existing brief JSON and SQLite storage need no schema change.
+The checked local `.env.local` selects `STORY_STORAGE=sqlite`; this does not
+deploy or validate Supabase SQL. Next loads that setting locally; a hosting
+environment may override it. The application never silently falls back to
+SQLite or an older RPC when Supabase ending RPCs are missing: it returns 503
+with migration instructions instead.
+
+For fresh Supabase installs, `shared-stories.sql` now includes the same guarded
+ending implementation and service-role-only versioned RPCs. Apply optional
+adventure/cooperative and existing help migrations next, then apply
+`shared-story-endings.sql` **last**, because older help migrations replace the
+unversioned advance function. For existing deployments, reapply the updated
+`shared-adventures.sql` when adventures are enabled, then
+`shared-story-endings.sql` last. Do not deploy application code before this SQL
+rollout. Run the rollback-only ending smoke against the actual Supabase project;
+local SQLite tests and mocked adapter tests are not a live PostgreSQL smoke.
+Run the rollback-only [ending smoke](supabase/shared-story-endings-smoke.sql) on
+Supabase and `npm run test:shared`, `npm run test:sqlite` locally.
+
+The creator form has three steps (who, story and duration, ending and final reveal).
+Narration style and adventure mode belong with the story settings; alternative
+answers and optional hints belong with the final-answer ending (defaults: warm
+playful narration, 5 minutes, prepared clues). The final reveal is a message,
+one photo/video, or both. Ending modes are final answer, final choice, or automatic
+reveal at the last scene. Final-answer stories can ask readers to identify a clue,
+describe an action, or say a word or phrase. Clue/action answers are checked against the creator's
 answer and approved alternatives; Muse can check the text but cannot verify
 that anyone physically performed an action. After the story is prepared, its
 title can be edited without regenerating the story.

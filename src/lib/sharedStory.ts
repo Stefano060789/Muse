@@ -13,17 +13,21 @@ export type SharedStoryGift = {
 }
 
 export type SharedStoryAnswerType = 'clue' | 'word' | 'phrase' | 'action'
-export type SharedStoryPuzzleDifficulty = 'gentle' | 'balanced' | 'challenging'
+export type SharedStoryPuzzleDifficulty = 'gentle' | 'easy' | 'balanced' | 'challenging' | 'expert'
+export type SharedStoryEndingMode = 'answer' | 'choice' | 'automatic'
 export type SharedStoryBrief = {
   romance?: StoryRomance
   language?: StoryLanguageCode
   creatorName: string
   recipientName: string
+  participants?: 'recipient' | 'together'
   narration: string
   setting: string
   recipientHints: string
   goal: string
   solution: string
+  endingMode?: SharedStoryEndingMode
+  endingChoices?: string[]
   puzzleDifficulty?: SharedStoryPuzzleDifficulty
   answerType?: SharedStoryAnswerType
   answerInstruction?: string
@@ -46,6 +50,7 @@ export type SharedStoryContent = NarrationMetadata & { title: string; descriptio
 export type SharedStoryPlayer = NarrationMetadata & {
   romance?: StoryRomance
   language?: StoryLanguageCode
+  participants?: 'recipient' | 'together'
   title: string
   description: string
   creatorName: string
@@ -64,6 +69,8 @@ export type SharedStoryPlayer = NarrationMetadata & {
   message?: string
   gift?: SharedStoryGift
   answerType: SharedStoryAnswerType
+  endingMode: SharedStoryEndingMode
+  endingChoices?: string[]
   answerInstruction?: string
   media?: { kind: SharedMediaKind; mime: SharedMediaMime }
   voice?: { mime: 'audio/wav'; size: number }
@@ -110,8 +117,28 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     throw new SharedStoryError('Choose whether the recipient should find a clue, say a word or phrase, or describe an action.')
   }
   const answerInstruction = input.answerInstruction === undefined ? '' : text(input.answerInstruction, 'Final-scene instruction', 500, true)
+  if (input.participants !== undefined && input.participants !== 'recipient' && input.participants !== 'together') {
+    throw new SharedStoryError('Choose a supported participant option.')
+  }
+  const endingMode = input.endingMode ?? 'answer'
+  if (!['answer', 'choice', 'automatic'].includes(String(endingMode)) || input.endingMode === null) {
+    throw new SharedStoryError('Choose a supported ending mode.')
+  }
+  let endingChoices: string[] | undefined
+  if (endingMode === 'choice') {
+    if (!Array.isArray(input.endingChoices) || input.endingChoices.length < 3 || input.endingChoices.length > 5) {
+      throw new SharedStoryError('Write 3 to 5 distinct final options.')
+    }
+    endingChoices = input.endingChoices.map(value => text(value, 'Final option', 160))
+    const normalized = endingChoices.map(normalizeSharedAnswer)
+    if (normalized.some(value => !value) || new Set(normalized).size !== normalized.length) {
+      throw new SharedStoryError('Write 3 to 5 distinct final options.')
+    }
+  } else if (input.endingChoices !== undefined && (!Array.isArray(input.endingChoices) || input.endingChoices.length > 0)) {
+    throw new SharedStoryError('Final options are only available for a final-choice ending.')
+  }
   const puzzleDifficulty = input.puzzleDifficulty === undefined ? 'balanced' : input.puzzleDifficulty
-  if (!['gentle', 'balanced', 'challenging'].includes(String(puzzleDifficulty))) {
+  if (!['gentle', 'easy', 'balanced', 'challenging', 'expert'].includes(String(puzzleDifficulty))) {
     throw new SharedStoryError('Choose a supported puzzle difficulty.')
   }
   const brief = {
@@ -119,11 +146,14 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
     ...(language ? { language } : {}),
     creatorName: text(input.creatorName, 'Your name', 80),
     recipientName: text(input.recipientName, 'Recipient name', 80),
+    ...(input.participants === undefined ? {} : { participants: input.participants as 'recipient' | 'together' }),
     narration: text(input.narration, 'Narration style', 600),
     setting: text(input.setting, 'Story idea and setting', 3000),
     recipientHints: text(input.recipientHints, 'Personal hints', 1500, true),
     goal: text(input.goal, 'What the recipient needs to find or solve', 600),
-    solution: text(input.solution, 'Secret answer', 200),
+    solution: text(input.solution === undefined && endingMode !== 'answer' ? '' : input.solution, 'Secret answer', 200, endingMode !== 'answer'),
+    ...(input.endingMode === undefined ? {} : { endingMode: endingMode as SharedStoryEndingMode }),
+    ...(endingChoices ? { endingChoices } : {}),
     puzzleDifficulty: puzzleDifficulty as SharedStoryPuzzleDifficulty,
     answerType: answerType as SharedStoryAnswerType,
     ...(answerInstruction ? { answerInstruction } : {}),
@@ -177,16 +207,16 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
       allowReply: input.allowReply
     }
   }
-  if (!normalizeSharedAnswer(brief.solution) || (brief.message && !normalizeSharedAnswer(brief.message))) {
+  if ((endingMode === 'answer' && !normalizeSharedAnswer(brief.solution)) || (brief.message && !normalizeSharedAnswer(brief.message))) {
     throw new SharedStoryError('The answer and message must contain letters or numbers.')
   }
   const acceptedAnswers = [brief.solution, ...brief.alternativeAnswers]
-  if (brief.answerType === 'word' && acceptedAnswers.some(answer => normalizeSharedAnswer(answer).split(' ').length !== 1)) {
+  if (endingMode === 'answer' && brief.answerType === 'word' && acceptedAnswers.some(answer => normalizeSharedAnswer(answer).split(' ').length !== 1)) {
     throw new SharedStoryError('A word answer and each accepted alternative must contain one word. Choose phrase for longer answers.')
   }
   if (brief.answerInstruction) {
     const instruction = normalizeSharedAnswer(brief.answerInstruction)
-    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints]
+    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints, ...(brief.endingChoices ?? [])]
       .map(normalizeSharedAnswer).filter(Boolean)
     if (privateValues.some(value => (` ${instruction} `).includes(` ${value} `))) {
       throw new SharedStoryError('The final-scene instruction must not reveal the answer, message, or private hints.')
@@ -194,7 +224,7 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
   }
   if (brief.gift?.dedication) {
     const dedication = normalizeSharedAnswer(brief.gift.dedication)
-    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints]
+    const privateValues = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints, ...(brief.endingChoices ?? [])]
       .map(normalizeSharedAnswer).filter(Boolean)
     if (privateValues.some(value => (` ${dedication} `).includes(` ${value} `))) {
       throw new SharedStoryError('Gift dedication must not reveal the secret answer, final message, or private hints.')
@@ -202,6 +232,10 @@ export function parseSharedStoryBrief(value: unknown, options: { allowEmptyMessa
   }
   if (brief.alternativeAnswers.some(answer => !normalizeSharedAnswer(answer))) {
     throw new SharedStoryError('Approved alternative answers must contain letters or numbers.')
+  }
+  const secrets = [brief.solution, brief.message, ...brief.alternativeAnswers, ...brief.assistanceHints].map(normalizeSharedAnswer).filter(Boolean)
+  if (endingChoices?.some(choice => secrets.some(secret => (` ${normalizeSharedAnswer(choice)} `).includes(` ${secret} `)))) {
+    throw new SharedStoryError('Final options must not reveal the answer, message, or private hints.')
   }
   return brief
 }
@@ -239,15 +273,15 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
       ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) })
     }
   })
-  if (brief.adventure?.choiceMode === 'suggested' && !scenes[0].choices) {
-    throw new SharedStoryError('Suggested-choice stories need 3 to 5 opening actions.', 502)
+  if (brief.adventure?.choiceMode === 'suggested' && scenes.slice(0, -1).some(scene => !scene.choices)) {
+    throw new SharedStoryError('Suggested-choice stories need 3 to 5 distinct actions on every non-final prepared scene.', 502)
   }
   const publicText = normalizeSharedAnswer([title, description, ...scenes.flatMap((scene) => [scene.title, scene.body, scene.clue, ...(scene.choices || [])])].join(' '))
-  const solutions = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer)
+  const solutions = [brief.solution, ...(brief.alternativeAnswers ?? [])].map(normalizeSharedAnswer).filter(Boolean)
   const message = normalizeSharedAnswer(brief.message)
-  if (solutions.some(solution => !solution) || (brief.message && !message)) throw new SharedStoryError('The answer and message must contain letters or numbers.')
+  if (((brief.endingMode ?? 'answer') === 'answer' && !normalizeSharedAnswer(brief.solution)) || (brief.message && !message)) throw new SharedStoryError('The answer and message must contain letters or numbers.')
   const privateHints = (brief.assistanceHints ?? []).map(normalizeSharedAnswer).filter(Boolean)
-  if ([...solutions, message, ...privateHints].filter(Boolean).some(secret => (' ' + publicText + ' ').includes(' ' + secret + ' '))) {
+  if ([...solutions, message, ...privateHints, ...(brief.endingChoices ?? []).map(normalizeSharedAnswer)].filter(Boolean).some(secret => (' ' + publicText + ' ').includes(' ' + secret + ' '))) {
     throw new SharedStoryError('The generated narration exposed the answer or final message. Try generating again.', 502)
   }
   const words = storyWordCount(scenes.map((scene) => scene.body + ' ' + scene.clue).join(' '), brief.language)
@@ -271,6 +305,9 @@ export function sharedStoryPlayerView(
   voice?: SharedVoiceSummary | null
 ): SharedStoryPlayer {
   const sceneIndex = Math.max(0, Math.min(state.current_scene, content.scenes.length - 1))
+  const atEnding = sceneIndex === content.scenes.length - 1
+  const completed = atEnding && (state.solved || state.skipped === true)
+  const endingMode = brief.endingMode ?? 'answer'
   const hints = brief.assistanceHints ?? []
   const revealed = Math.max(0, Math.min(state.revealed_hints ?? 0, hints.length))
   const copy = brief.language ? recipientCopy(brief.language) : undefined
@@ -283,6 +320,7 @@ export function sharedStoryPlayerView(
     ? feedbackLabels[feedback] : feedback
   return {
     ...(brief.language ? { language: brief.language } : {}),
+    ...(brief.participants ? { participants: brief.participants } : {}),
     ...(brief.romance ? { romance: parseStoryRomance(brief.romance) } : {}),
     title: content.title,
     description: content.description,
@@ -290,21 +328,24 @@ export function sharedStoryPlayerView(
     creatorName: brief.creatorName,
     recipientName: brief.recipientName,
     durationMinutes: brief.durationMinutes,
-    scene: content.scenes[sceneIndex],
+    scene: atEnding && brief.adventure?.choiceMode === 'suggested'
+      ? { ...content.scenes[sceneIndex], choices: undefined } : content.scenes[sceneIndex],
     sceneIndex,
     sceneCount: content.scenes.length,
     discoveries: content.scenes.slice(0, sceneIndex),
-    solved: state.solved,
-    skipped: state.skipped === true,
-    canSkip: brief.unlockPolicy === 'allow-skip' && !state.solved && !state.skipped,
+    solved: atEnding && state.solved,
+    skipped: atEnding && state.skipped === true,
+    canSkip: atEnding && endingMode === 'answer' && brief.unlockPolicy === 'allow-skip' && !completed,
     revealedHints: hints.slice(0, revealed),
     hintsRemaining: hints.length - revealed,
     ...(localizedFeedback ? { feedback: localizedFeedback } : {}),
     ...(brief.gift ? { gift: brief.gift } : {}),
     answerType: brief.answerType ?? 'phrase',
-    ...(brief.answerInstruction && sceneIndex === content.scenes.length - 1 ? { answerInstruction: brief.answerInstruction } : {}),
-    ...((state.solved || state.skipped) && brief.message ? { message: brief.message } : {}),
-    ...((state.solved || state.skipped) && media ? { media: { kind: media.kind, mime: media.mime } } : {}),
-    ...((state.solved || state.skipped) && voice ? { voice: { mime: voice.mime, size: voice.size } } : {})
+    endingMode,
+    ...(atEnding && endingMode === 'choice' ? { endingChoices: brief.endingChoices } : {}),
+    ...(endingMode === 'answer' && brief.answerInstruction && atEnding ? { answerInstruction: brief.answerInstruction } : {}),
+    ...(completed && brief.message ? { message: brief.message } : {}),
+    ...(completed && media ? { media: { kind: media.kind, mime: media.mime } } : {}),
+    ...(completed && voice ? { voice: { mime: voice.mime, size: voice.size } } : {})
   }
 }
