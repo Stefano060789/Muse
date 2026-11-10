@@ -1,5 +1,15 @@
 # Muse
 
+## Visual theme
+
+Muse takes its visual direction from Leonardo da Vinci's *Annunciation*:
+warm ivory and limestone surfaces, cypress green, terracotta accents, soft
+daylight and quiet architectural framing. The local SVG illustrations are
+original garden, passage and reading-room compositions, not reproductions of
+the painting. Existing illustration URLs are preserved for compatibility.
+Shared global styles carry the palette across navigation, creation, reading,
+pricing and settings without changing story content or interaction.
+
 Stripe is **sandbox-only and disabled by default**. See
 [docs/STRIPE-SANDBOX.md](docs/STRIPE-SANDBOX.md) for the explicit opt-in,
 public test catalogue, secure manual provisioning and shared-account event routing.

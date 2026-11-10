@@ -44,4 +44,25 @@ const image = tree.props.children.find(child => child.type === 'img')
 assert.equal(image.props.alt, '')
 assert.equal(image.props.src, ILLUSTRATION_ASSETS.garden)
 assert.equal(image.props.width / image.props.height, 3, 'Dimensions reserve a stable aspect ratio')
+const css = fs.readFileSync(path.join(root, 'src', 'styles', 'globals.css'), 'utf8')
+const color = name => {
+  const match = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6});`, 'i'))
+  assert.ok(match, `Theme defines ${name}`)
+  return match[1]
+}
+const luminance = hex => {
+  const [r, g, b] = hex.slice(1).match(/../g).map(channel => {
+    const value = parseInt(channel, 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+for (const foreground of ['ink', 'muted', 'plum']) {
+  for (const background of ['paper', 'surface']) {
+    const values = [luminance(color(foreground)), luminance(color(background))].sort((a, b) => b - a)
+    assert.ok((values[0] + 0.05) / (values[1] + 0.05) >= 4.5,
+      `${foreground} on ${background} must meet WCAG AA text contrast`)
+  }
+}
 console.log(`PASS all ${pages.length} pages have local artwork; decorative semantics, route motifs and self-contained SVGs verified (${total} bytes total)`)
+console.log('PASS Annunciation-inspired theme text colors meet WCAG AA on paper and card surfaces')
