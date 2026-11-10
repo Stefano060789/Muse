@@ -27,15 +27,13 @@ async function main() {
   try {
     const guard = load('src/lib/stripeSandbox.ts')
     const catalogue = load('src/lib/stripeCatalogue.ts').STRIPE_TEST_CATALOGUE
-    assert.deepEqual(Object.values(catalogue).map(plan => plan.unitAmount), [899, 8999, 599])
+    assert.deepEqual(Object.values(catalogue).map(plan => plan.unitAmount), [899, 8999])
     assert.equal(catalogue.annual.fulfillment, 'catalogue-only')
-    assert.equal(catalogue.gift.fulfillment, 'catalogue-only')
     assert.equal(catalogue.monthly.priceId, 'price_1UYpG5C5ufGRzg9R3hgrKDlg')
     assert.equal(catalogue.annual.priceId, 'price_1UYpNIC5ufGRzg9RuzXzBfyA')
-    assert.equal(catalogue.gift.priceId, 'price_1UYpHDC5ufGRzg9RPfI5iEXo')
     assert.equal(catalogue.monthly.productId, 'prod_VZzEGTdZZFjCf5')
     assert.equal(catalogue.annual.productId, catalogue.monthly.productId)
-    assert.equal(catalogue.gift.productId, 'prod_VZzFm5j2PxwPOy')
+    assert.equal('gift' in catalogue, false)
     assert.throws(() => guard.requireStripeSandbox(), /disabled/)
     for (const value of ['false', '1', 'TRUE', 'sandbox']) {
       process.env.MUSE_STRIPE_SANDBOX_ENABLED = value

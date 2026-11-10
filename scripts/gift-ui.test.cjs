@@ -359,8 +359,10 @@ async function main() {
   duration.props.onChange({ target: { value: '20' } })
   await preferenceCreator.flush()
   assert.deepEqual(JSON.parse(preferenceValues.get('muse-preferences')), { language: 'ar-SA', duration: 20 })
-  assert.ok(preferenceCreator.nodes().some(node => node.type === 'p' && label(node).includes('This standard Shared Gift Story')),
-    'Gift creation explains that a 20-minute gift uses the shared story allowance')
+  assert.ok(preferenceCreator.nodes().some(node => node.type === 'p' &&
+    label(node).includes('Shared Story is included in Muse Plus') &&
+    label(node).includes('120 AI interactions')),
+  'Shared Story uses the package allowance')
   assert.equal(consent().props.checked, false, 'Changing remembered language or duration never preserves AI consent')
   console.log('PASS gift creation remembers validated language and duration without remembering consent')
 
@@ -747,11 +749,9 @@ async function main() {
   assert.equal(owner.browser.location.hash, '#manage=follow-up-owner-token')
   assert.equal(owner.savedStories.at(-1).content.title, 'The Follow-up Story')
   console.log('PASS owner recording upload and manual-only private replies are wired')
-  owner.nodes().find(node => node.type === '../components/SiteNavigation').props.onCreateGift()
-  await owner.flush()
-  assert.equal(owner.browser.location.hash, '#new')
-  assert.equal(owner.nodes().some(node => node.type === '../components/StudioNarration'), false, 'Create a gift leaves management and starts a draft')
-  assert.equal(owner.field('brief-creatorName').props.value, '', 'New gift does not copy private sender fields')
-  console.log('PASS Create a gift menu starts a blank gift from management')
+  const ownerNavigation = owner.nodes().find(node => node.type === '../components/SiteNavigation')
+  assert.equal(ownerNavigation.props.pathname, '/shared')
+  assert.equal(ownerNavigation.props.onCreateGift, undefined, 'Shared Story navigation no longer triggers gift creation')
+  console.log('PASS shared-story management uses the Stories hub navigation')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

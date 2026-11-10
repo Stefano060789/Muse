@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') return res.status(200).json({ billing: await getBillingStatus(account.id) })
     if (req.body?.action !== 'subscribe') return res.status(400).json({ error: 'Unsupported billing action.' })
     if (req.body?.planId !== undefined && req.body.planId !== 'monthly') {
-      return res.status(400).json({ error: 'Only monthly sandbox checkout is supported. Annual and gift prices are catalogue-only.' })
+      return res.status(400).json({ error: 'Only monthly sandbox checkout is supported. Annual pricing is catalogue-only.' })
     }
     const price = sandboxMonthlyPriceId()
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL

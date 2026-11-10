@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { SharedStoryError } from './sharedStory'
 import { generateStoryJson } from './storyProvider'
-import type { PersonalStory, PersonalStoryMood } from './story'
+import type { PersonalStory, PersonalStoryDifficulty, PersonalStoryMood } from './story'
 import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata } from './narration'
 import { assertStoryNarrationLanguage, parseStoryLanguage, storyLanguageInstruction, type StoryLanguageCode } from './storyLanguage'
 import { parseStoryRomance, requireRomanceConfirmation, romanceInstruction, type StoryRomance } from './storyRomance'
@@ -44,6 +44,14 @@ function mood(value: unknown): PersonalStoryMood {
   return value as PersonalStoryMood
 }
 
+function difficulty(value: unknown): PersonalStoryDifficulty {
+  const selected = value === undefined ? 'balanced' : value
+  if (!['gentle', 'balanced', 'challenging'].includes(String(selected))) {
+    throw new SharedStoryError('Choose a valid story difficulty.')
+  }
+  return selected as PersonalStoryDifficulty
+}
+
 function keypoints(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 5) throw new SharedStoryError('Select up to 5 profile key points.')
   return value.map((point) => text(point, 'Profile key point', 180))
@@ -77,6 +85,7 @@ export function parsePersonalStoryRequest(value: unknown) {
       ...romance,
       ...languageField(input.language),
       mood: mood(input.mood),
+      difficulty: difficulty(input.difficulty),
       storyIdea,
       improvementGoal: text(input.improvementGoal ?? '', 'Your change or improvement goal', 1000, true),
       need: storyIdea,
@@ -97,6 +106,7 @@ export function parsePersonalStoryRequest(value: unknown) {
     ...romanceField(saved.romance),
     ...languageField(saved.language),
     ...narration(saved, false, parseStoryLanguage(saved.language)),
+    difficulty: difficulty(saved.difficulty),
     id: text(saved.id, 'Story ID', 80),
     createdAt,
     generation: 'ai',
@@ -123,13 +133,14 @@ const SYSTEM = [
   'Write in the language of the user need or answer, or English when unspecified.',
   'Use concrete narrative imagery rather than generic advice. Keep the story safe and coherent.',
   'Each scene has title, body (100-180 words), question, and exactly three short choices.',
+  'Match the selected story difficulty: gentle uses welcoming, clearly signposted obstacles; balanced uses a few clues or decisions that reward attention; challenging connects multiple concrete details and meaningful obstacles while remaining fair. Never use timers, obscure outside knowledge, or dead ends.',
   'Return valid JSON only, without markdown.',
   NARRATION_AI_INSTRUCTION
 ].join('\n')
 
 export async function generatePersonalStory(input: ReturnType<typeof parsePersonalStoryRequest>): Promise<PersonalStory> {
   if (input.action === 'create') {
-    const generated = await generateStoryJson(`${SYSTEM}\n${romanceInstruction(input.romance)}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
+    const generated = await generateStoryJson(`${SYSTEM}\nSelected story difficulty: ${input.difficulty}.\n${romanceInstruction(input.romance)}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
     try {
       const content = object(generated)
       if (!Array.isArray(content.scenes) || content.scenes.length !== 3) throw new SharedStoryError('The AI must return three personal story scenes.')
@@ -140,7 +151,7 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
         ...narration(content, true, input.language),
         title: text(content.title, 'Story title', 160),
         description: text(content.description, 'Story description', 500),
-        mood: input.mood, need: input.need, storyIdea: input.storyIdea, improvementGoal: input.improvementGoal, profileKeypoints: input.profileKeypoints,
+        mood: input.mood, difficulty: input.difficulty, need: input.need, storyIdea: input.storyIdea, improvementGoal: input.improvementGoal, profileKeypoints: input.profileKeypoints,
         currentStep: 0, responses: [], scenes: content.scenes.map(scene)
       }
     } catch (error) {
@@ -151,9 +162,9 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
   const { story, answer } = input
   const nextStep = story.currentStep + 1
   const generated = await generateStoryJson(
-    `${SYSTEM}\n${romanceInstruction(story.romance)}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
+    `${SYSTEM}\nSelected story difficulty: ${story.difficulty ?? 'balanced'}.\n${romanceInstruction(story.romance)}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
     {
-      mood: story.mood, need: story.need, storyIdea: story.storyIdea, improvementGoal: story.improvementGoal, profileKeypoints: story.profileKeypoints,
+      mood: story.mood, difficulty: story.difficulty ?? 'balanced', need: story.need, storyIdea: story.storyIdea, improvementGoal: story.improvementGoal, profileKeypoints: story.profileKeypoints,
       ...(story.language ? { language: story.language } : {}),
       ...(story.romance ? { romance: story.romance } : {}),
       title: story.title, description: story.description, responses: [...story.responses, answer],

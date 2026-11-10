@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryMood } from '../lib/story'
+import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryDifficulty, type PersonalStoryMood } from '../lib/story'
 import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
@@ -39,6 +39,10 @@ type Preparation = { id: string; capability: string }
 const moods: Array<{ key: PersonalStoryMood }> = [
   { key: 'adventure' }, { key: 'relaxed' }, { key: 'curious' }, { key: 'hopeful' }
 ]
+const difficulties: PersonalStoryDifficulty[] = ['gentle', 'balanced', 'challenging']
+const difficultyCopyKeys: Record<PersonalStoryDifficulty, InterfaceFlowKey> = {
+  gentle: 'difficultyGentle', balanced: 'difficultyBalanced', challenging: 'difficultyChallenging'
+}
 const moodCopyKeys: Record<PersonalStoryMood, { title: InterfaceFlowKey; description: InterfaceFlowKey }> = {
   adventure: { title: 'moodAdventure', description: 'moodAdventureDescription' },
   relaxed: { title: 'moodRelaxed', description: 'moodRelaxedDescription' },
@@ -75,6 +79,7 @@ export default function StoryPage() {
   const [profileDraft, setProfileDraft] = useState('')
   const [responseDraft, setResponseDraft] = useState('')
   const [duration, setDuration] = useState(10)
+  const [difficulty, setDifficulty] = useState<PersonalStoryDifficulty>('balanced')
   const [choiceMode, setChoiceMode] = useState<StoryChoiceMode>('free')
   const [language, setLanguage] = useState<StoryLanguageCode>('en-US')
   const [romance, setRomance] = useState<StoryRomance | undefined>()
@@ -189,7 +194,7 @@ export default function StoryPage() {
         setStoryIdea(draft.storyIdea ?? draft.need ?? '')
         setImprovementGoal(draft.improvementGoal ?? '')
         setSelectedMood(draft.mood); setChoiceMode(draft.choiceMode)
-        setLanguage(draft.language); setDuration(draft.duration); setRomance(draft.romance)
+        setLanguage(draft.language); setDuration(draft.duration); setDifficulty(draft.difficulty ?? 'balanced'); setRomance(draft.romance)
         setUseProfile(draft.useProfile); setProfileDraft(draft.profileDraft); setCreationStep(draft.step)
         setDraftNotice('Draft restored. Review your choices and consent before creating.')
       }
@@ -203,14 +208,14 @@ export default function StoryPage() {
   useEffect(() => {
     if (!draftsReady || story || preparation || !draftWritable.current) return
     try {
-      writeDraft(PERSONAL_DRAFT_KEY, { storyIdea, improvementGoal, mood: selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, step: creationStep })
+      writeDraft(PERSONAL_DRAFT_KEY, { storyIdea, improvementGoal, mood: selectedMood, choiceMode, language, duration, difficulty, romance, useProfile, profileDraft, step: creationStep })
       saveStoryPreferences({ language, duration })
       setDraftNotice('Draft saved in this browser.')
       setDraftError('')
     } catch {
       setDraftError('Your draft or preferences could not be saved. Keep this page open or copy your writing before leaving.')
     }
-  }, [draftsReady, story, preparation, storyIdea, improvementGoal, selectedMood, choiceMode, language, duration, romance, useProfile, profileDraft, creationStep])
+  }, [draftsReady, story, preparation, storyIdea, improvementGoal, selectedMood, choiceMode, language, duration, difficulty, romance, useProfile, profileDraft, creationStep])
 
   useEffect(() => {
     setAnswerLoaded(null)
@@ -375,7 +380,7 @@ export default function StoryPage() {
       }
       window.localStorage.setItem(PREPARATION_KEY, JSON.stringify(saved))
       setPreparation(saved)
-      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), storyIdea, improvementGoal, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
+      await requestJourney({ action: 'create', ...saved, mood: selectedMood, duration, difficulty, choiceMode, language, ...(romance ? { romance, romanceConfirmed } : {}), storyIdea, improvementGoal, profileKeypoints: profile?.keypoints.slice(-5) || [], consentVersion })
       removeDraft(PERSONAL_DRAFT_KEY)
       setRomanceConfirmed(false)
       setStoryIdea('')
@@ -656,6 +661,16 @@ export default function StoryPage() {
                   {[5, 10, 15, 20].map(minutes => <option key={minutes} value={minutes}>{minutes} {flow('minutes')}</option>)}
                 </select>
               </label>
+              <label style={{ display: 'block', marginTop: '1rem' }}>{flow('storyDifficulty')}
+                <select aria-label={flow('storyDifficulty')} value={difficulty} disabled={isGenerating || Boolean(preparation)} onChange={event => {
+                  if (!difficulties.includes(event.target.value as PersonalStoryDifficulty)) return
+                  setDifficulty(event.target.value as PersonalStoryDifficulty)
+                  setAiConsent(false)
+                }}>
+                  {difficulties.map(level => <option key={level} value={level}>{flow(difficultyCopyKeys[level])}</option>)}
+                </select>
+              </label>
+              <p className="atelier-note">{flow('difficultyAttention')}</p>
               <label style={{ display: 'block', marginTop: '1rem' }}>{pageText('createStoryLanguage', interfaceLanguage)}
                 <select aria-label={pageText('createStoryLanguage', interfaceLanguage)} value={language} disabled={isGenerating || Boolean(preparation)} onChange={event => { setLanguage(event.target.value as StoryLanguageCode); setAiConsent(false) }}>
                   {STORY_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
@@ -691,7 +706,7 @@ export default function StoryPage() {
               </fieldset>
               <fieldset hidden={creationStep !== 2} disabled={creationStep !== 2 || isGenerating || Boolean(preparation)} className="atelier-card" style={{ margin: 0 }}>
               <legend>{flow('lastLook')}</legend>
-              <p><strong>{moodTitle(selectedMood)}</strong> · {flow('aboutDuration')} {duration} {flow('minutes')} · {storyLanguage(language).label}</p>
+              <p><strong>{moodTitle(selectedMood)}</strong> · {flow('aboutDuration')} {duration} {flow('minutes')} · {flow('storyDifficulty')}: {flow(difficultyCopyKeys[difficulty])} · {storyLanguage(language).label}</p>
               <p>{choiceMode === 'suggested' ? flow('suggestedReview') : flow('freeReview')} {useProfile && profileReady ? flow('memoryIncluded') : flow('memoryExcluded')}</p>
               {storyIdea ? <p><strong>{flow('storyIdea')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{storyIdea}</span></p> : null}
               {improvementGoal ? <p><strong>{flow('improvementGoal')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{improvementGoal}</span></p> : null}

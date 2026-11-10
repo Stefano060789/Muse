@@ -33,8 +33,8 @@ const { publicNavigationCopy } = load('src/lib/publicNavigationCopy.ts')
 const BillingPage = load('src/pages/billing.tsx').default
 const SiteFooter = load('src/components/SiteFooter.tsx').default
 const textMarkup = text => renderToStaticMarkup(React.createElement('span', null, text)).replace(/^<span>|<\/span>$/g, '')
-assert.deepEqual(BILLING_PLANS.map(plan => plan.id), ['free', 'trial', 'gift', 'monthly', 'annual'])
-assert.deepEqual(BILLING_PLANS.map(plan => plan.amount), [0, 0, 5.99, 8.99, 89.99])
+assert.deepEqual(BILLING_PLANS.map(plan => plan.id), ['free', 'trial', 'monthly', 'annual'])
+assert.deepEqual(BILLING_PLANS.map(plan => plan.amount), [0, 0, 8.99, 89.99])
 assert.equal((8.99 * 12 - 89.99).toFixed(2), '17.89')
 for (const locale of locales) {
   language = locale
@@ -43,7 +43,7 @@ for (const locale of locales) {
   assert.deepEqual(Object.keys(copy).sort(), Object.keys(billingCopy('en-US')).sort())
   assert.ok(Object.values(copy).every(value => typeof value === 'string' && value.trim()))
   const plans = localizedBillingPlans(locale)
-  assert.deepEqual(plans.map(plan => plan.amount), [0, 0, 5.99, 8.99, 89.99])
+  assert.deepEqual(plans.map(plan => plan.amount), [0, 0, 8.99, 89.99])
   const html = renderToStaticMarkup(React.createElement(BillingPage))
   assert.ok(html.includes(textMarkup(copy.title)))
   for (const plan of plans) {
@@ -56,17 +56,16 @@ for (const locale of locales) {
   for (const key of [
     'trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'packageHeading', 'packageIntro',
     'personalOptionName', 'sharedGiftOptionName', 'packageAccessHeading', 'packageAccessIntro',
-    'oneTimeHeading', 'oneTimeIntro', 'otherOptionsHeading', 'priceNotice', 'allowanceDefinition',
-    'freeActions', 'limits', 'plannedHelp', 'storageHelp'
+    'otherOptionsHeading', 'priceNotice', 'allowanceDefinition',
+    'freeActions', 'limits', 'storageHelp'
   ]) {
     assert.ok(html.includes(textMarkup(copy[key])), `${locale} must show ${key}`)
   }
   assert.ok(html.includes('href="/my-stories"'), `${locale} must link to My Story`)
-  assert.ok(html.includes('href="/shared#new"'), `${locale} must link to the standard Shared Gift Story flow`)
-  assert.ok(html.includes(textMarkup(plans.find(plan => plan.id === 'gift').price)), `${locale} must show the separate gift price`)
-  assert.ok(html.includes(textMarkup(copy.giftDescription)), `${locale} must explain the separate gift is not available yet`)
+  assert.ok(html.includes('href="/shared#new"'), `${locale} must link to the Shared Story flow`)
+  assert.doesNotMatch(html, /Gift Story|Long Shared Gift|Shared Gift Story|€5\.99|5,99 €|5,99 €/)
   assert.equal(/<(form|input|button|iframe)\b/.test(html), false, 'No signed-out purchase controls')
-  assert.equal((html.match(new RegExp(textMarkup(copy.planned).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 2)
+  assert.equal((html.match(new RegExp(textMarkup(copy.planned).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1)
   const footer = renderToStaticMarkup(React.createElement(SiteFooter))
   for (const [href, key] of [['demo', 'sample'], ['billing', 'plans'], ['support', 'support'], ['privacy', 'privacy'], ['terms', 'terms']]) {
     assert.ok(footer.includes(`href="/${href}"`))

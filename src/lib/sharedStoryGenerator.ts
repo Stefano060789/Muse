@@ -26,10 +26,10 @@ export async function generateSharedStory(
       ? 'The final challenge is a specific action the recipient describes or dictates at the ending. The last scene must clearly cue when and where the action belongs, and clues must point to the exact private solution. The app can match their description but cannot verify physical actions.'
       : 'The final challenge requires the recipient to say one specific phrase aloud. The last scene must clearly cue when and where to say it, and its clues must point to the exact private solution.'
   const difficultyInstruction = brief.puzzleDifficulty === 'gentle'
-    ? 'Puzzle difficulty: gentle. Use a clear, memorable clue and only one simple inference. Repeat the key clue naturally; no trick wording, obscure knowledge or time pressure.'
+    ? 'Story difficulty: easy. Use clear, memorable clues and approachable obstacles with only one simple inference. Repeat key clues naturally; no trick wording, obscure knowledge or time pressure.'
     : brief.puzzleDifficulty === 'challenging'
-      ? 'Puzzle difficulty: challenging but fair. Reward close attention by connecting several concrete details across scenes. Make every needed detail available in the story and offer a path to the answer without obscure knowledge, trick wording or time pressure.'
-      : 'Puzzle difficulty: balanced. Ask the recipient to notice and connect a few clear details, with a modest amount of thought. Keep the answer fair and solvable from the story alone.'
+      ? 'Story difficulty: challenging but fair. Reward close attention by connecting several concrete details across scenes and using meaningful obstacles. Make every needed detail available in the story and offer a path to the answer without obscure knowledge, trick wording or time pressure.'
+      : 'Story difficulty: standard. Ask the recipient to notice and connect a few clear details and navigate approachable obstacles, with a modest amount of thought. Keep the answer fair and solvable from the story alone.'
   const system = [
     romanceInstruction(brief.romance),
     'Write an original, safe, non-therapeutic interactive mystery from a creator to one recipient.',

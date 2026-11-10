@@ -22,8 +22,8 @@ function inspect(run) {
   try { return run(db) } finally { db.close() }
 }
 function dayUsed() { return inspect(db => Number(db.prepare('SELECT used FROM muse_adventure_budgets WHERE bucket = ?').get(`day:${new Date(now).toISOString().slice(0, 10)}`)?.used || 0)) }
-function newCreation(duration = 5) {
-  return { mode: 'journey', action: 'create', id: randomUUID(), capability: randomBytes(32).toString('hex'), duration, mood: 'relaxed', need: 'I am restless and want an adventure, but I explicitly chose relaxed.', storyIdea: 'A quiet story about exploring a moonlit garden.', improvementGoal: 'Let the character find a new perspective.', profileKeypoints: ['I enjoy gardens.'] }
+function newCreation(duration = 5, difficulty = 'balanced') {
+  return { mode: 'journey', action: 'create', id: randomUUID(), capability: randomBytes(32).toString('hex'), duration, difficulty, mood: 'relaxed', need: 'I am restless and want an adventure, but I explicitly chose relaxed.', storyIdea: 'A quiet story about exploring a moonlit garden.', improvementGoal: 'Let the character find a new perspective.', profileKeypoints: ['I enjoy gardens.'] }
 }
 function responseBody(created, revision = created.snapshot.revision, requestId = randomUUID()) {
   return { mode: 'journey', action: 'respond', id: created.story.id, capability: created.story.journey.capability, revision, requestId, text: 'I thank the gardener and leave a light for the next visitor.' }
@@ -105,14 +105,14 @@ async function main() {
   })
   await check('creation validates all durations, mood, capabilities and bounded profile before any AI call', async () => {
     const before = calls
-    for (const patch of [{ duration: 6 }, { duration: '5' }, { duration: null }, { mood: 'angry' }, { profileKeypoints: Array(6).fill('x') }, { need: 'x'.repeat(1001) }, { storyIdea: 'x'.repeat(1001) }, { improvementGoal: 'x'.repeat(1001) }, { capability: 'x' }, { id: 'invalid' }]) {
+    for (const patch of [{ duration: 6 }, { duration: '5' }, { duration: null }, { mood: 'angry' }, { difficulty: 'impossible' }, { profileKeypoints: Array(6).fill('x') }, { need: 'x'.repeat(1001) }, { storyIdea: 'x'.repeat(1001) }, { improvementGoal: 'x'.repeat(1001) }, { capability: 'x' }, { id: 'invalid' }]) {
       assert.equal((await api({ ...newCreation(), ...patch })).status, 400)
     }
     assert.equal(calls, before)
   })
-  for (const duration of [5, 10, 15, 20]) {
+  for (const [index, duration] of [5, 10, 15, 20].entries()) {
     await check(`${duration} minutes locks ${duration * 3 / 5} responses, one opening+plan call and actual final conclusion`, async () => {
-      const creation = newCreation(duration)
+      const creation = newCreation(duration, ['gentle', 'balanced', 'challenging', 'gentle'][index])
       const before = calls, beforeBudget = fs.existsSync(filename) ? dayUsed() : 0
       let result = await api({ ...creation, maxTurns: 999, plan: ['hacked'], state: { progress: 'hacked' } })
       assert.equal(result.status, 200)
@@ -122,6 +122,7 @@ async function main() {
       assert.equal(requests.at(-1).payload.max_tokens, 2600, 'Opening generation has enough output budget for both the arc plan and narrated scene')
       assert.equal(dayUsed(), beforeBudget, 'Opening uses existing generation limits, not live action budget')
       assert.equal(initial.story.mood, 'relaxed')
+      assert.equal(initial.story.difficulty, creation.difficulty)
       assert.equal(initial.story.storyIdea, creation.storyIdea)
       assert.equal(initial.story.improvementGoal, creation.improvementGoal)
       assert.equal(initial.snapshot.maxTurns, duration * 3 / 5)
@@ -134,6 +135,7 @@ async function main() {
       assert.equal(JSON.parse(row.record).input.storyIdea, creation.storyIdea)
       assert.equal(JSON.parse(row.record).input.improvementGoal, creation.improvementGoal)
       assert.ok(requests.at(-1).payload.messages[0].content.includes('Preserve storyIdea as the primary premise'))
+      assert.ok(requests.at(-1).payload.messages[0].content.includes(`Selected story difficulty: ${creation.difficulty}`))
       assert.ok(!row.record.includes(creation.capability), 'Database stores capability hash only')
       assert.equal(row.expires_at, 'infinity')
       assert.equal(JSON.parse(row.record).expiresAt, null)
@@ -147,6 +149,7 @@ async function main() {
         const recent = requests.at(-1)
         assert.equal(recent.payload.max_tokens, 1600)
         assert.equal(recent.input.mood, 'relaxed')
+        assert.equal(recent.input.difficulty, creation.difficulty)
         assert.deepEqual(recent.input.profileKeypoints, ['I enjoy gardens.'])
         assert.equal(recent.input.storyIdea, creation.storyIdea)
         assert.equal(recent.input.improvementGoal, creation.improvementGoal)

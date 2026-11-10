@@ -1354,7 +1354,7 @@ export default function SharedStoryPage() {
         <meta name="referrer" content="no-referrer" />
         <meta name="robots" content="noindex, nofollow" />
       </Head>
-      <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} interfaceLanguage={interfaceLanguage} onCreateGift={creator ? () => startNewStory() : undefined} />
+      <SiteNavigation pathname="/shared" recipient={Boolean(playToken)} interfaceLanguage={interfaceLanguage} />
       {!playToken && !creator ? <PageIllustration pathname="/shared" /> : null}
       <div style={{ maxWidth: 850, margin: '0 auto', padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         {error || interaction.error || narrator.error ? <p role="alert" style={{ ...cardStyle, color: '#a14329' }}>{error || interaction.error || narrator.error}{(error || interaction.error || narrator.error).includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
@@ -1906,7 +1906,7 @@ export default function SharedStoryPage() {
                 </label>
                 {textField('recipientHints', togetherStoryCopy(interfaceLanguage).memory, '', 1500, true)}
                 {textField('message', togetherStoryCopy(interfaceLanguage).message, '', 2000)}
-                <label htmlFor="together-puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('puzzleDifficulty')}
+                <label htmlFor="together-puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('storyDifficulty')}
                   <select id="together-puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
                     if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
                     updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))
@@ -1971,7 +1971,7 @@ export default function SharedStoryPage() {
                 <h2>2. {giftFormText('stepStory', interfaceLanguage)}</h2>
                 {textField('setting', flow('giftStoryIdea'), '', 3000)}
                 {textField('goal', flow('giftGoal'), '', 600)}
-                <label htmlFor="puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('puzzleDifficulty')}
+                <label htmlFor="puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('storyDifficulty')}
                   <select id="puzzle-difficulty" value={brief.puzzleDifficulty ?? 'balanced'} disabled={busy} onChange={event => {
                     if (!['gentle', 'balanced', 'challenging'].includes(event.target.value)) return
                     updateBrief(current => ({ ...current, puzzleDifficulty: event.target.value as NonNullable<SharedStoryBrief['puzzleDifficulty']> }))

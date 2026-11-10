@@ -112,13 +112,6 @@ export default function BillingPage() {
             {renderPlanCards(['trial', 'monthly'])}
           </div>
         </section>
-        <section aria-labelledby="one-time-heading" style={{ margin: '2rem 0', padding: '1.25rem', border: '1px solid #ac8450', borderRadius: 20, background: '#fffaf6' }}>
-          <h2 id="one-time-heading">{copy.oneTimeHeading}</h2>
-          <p style={{ lineHeight: 1.7 }}>{copy.oneTimeIntro}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 420px))', gap: 16, margin: '1rem 0' }}>
-            {renderPlanCards(['gift'])}
-          </div>
-        </section>
         <section aria-labelledby="other-options-heading" style={{ margin: '2rem 0' }}>
           <h2 id="other-options-heading">{copy.otherOptionsHeading}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1rem 0' }}>
@@ -132,7 +125,6 @@ export default function BillingPage() {
           <p>{copy.allowanceDefinition}</p>
           <p>{copy.freeActions}</p>
           <p>{copy.limits}</p>
-          <p>{copy.plannedHelp}</p>
           <p>{copy.storageHelp}</p>
         </details>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '1rem 0' }}>

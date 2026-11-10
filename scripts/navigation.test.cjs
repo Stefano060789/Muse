@@ -26,12 +26,13 @@ function load(relative) {
 }
 const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
+const StoriesPage = load('src/pages/stories.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Myself', 'My stories', 'Create a gift story', 'Archive', 'Settings', 'Plans &amp; pricing']
+const expected = ['Home', 'Myself', 'Stories', 'Archive', 'Pricing', 'Settings']
 for (const [pathname, selected] of [
-  ['/', 'Home'], ['/story', 'My stories'], ['/my-stories', 'My stories'], ['/myself', 'Myself'],
-  ['/shared', 'Create a gift story'], ['/couples', 'Create a gift story'], ['/library', 'Archive'],
-  ['/demo', null], ['/billing', 'Plans &amp; pricing'], ['/privacy', null], ['/creator', null]
+  ['/', 'Home'], ['/story', 'Stories'], ['/my-stories', 'Stories'], ['/myself', 'Myself'],
+  ['/stories', 'Stories'], ['/shared', 'Stories'], ['/couples', 'Stories'], ['/library', 'Archive'],
+  ['/demo', null], ['/billing', 'Pricing'], ['/account', 'Settings'], ['/privacy', null], ['/creator', null]
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/)[1]
@@ -45,18 +46,14 @@ assert.ok(recipient.includes('Muse home'))
 assert.ok(!recipient.includes('<nav'), 'Recipients have a quiet brand-only header')
 const italianNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'it-IT' }))
 assert.ok(italianNavigation.includes('Impostazioni'), 'Interface language updates navigation labels')
-assert.ok(italianNavigation.includes('Piani e prezzi'), 'Plans are visible in the localized primary navigation')
-assert.ok(italianNavigation.includes('Crea una storia regalo'))
-let created = 0, prevented = 0
-const tree = Navigation({ pathname: '/shared', onCreateGift: () => created++ })
-const personalLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/my-stories')
-assert.ok(personalLink, 'Personal navigation opens the hub, not a blank creation flow')
-assert.equal(personalLink.props.onClick, undefined, 'Normal and modified clicks use standard link navigation')
-prevented = 0
-const giftLink = tree.props.children.props.children[1].props.children.find(link => link.props.href === '/shared#new')
-giftLink.props.onClick({ preventDefault() { prevented++ } })
-assert.equal(created, 1, 'Gift management delegates new-story action rather than only changing the hash')
-assert.equal(prevented, 1)
+assert.ok(italianNavigation.includes('Prezzi'), 'Plans are visible in the localized primary navigation')
+assert.ok(italianNavigation.includes('Storie'), 'Stories is the localized hub destination')
+const storiesHub = render(React.createElement(StoriesPage))
+const hubLinks = [...storiesHub.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)]
+assert.ok(hubLinks.some(([, href, label]) => href === '/my-stories' && label.includes('Open My stories')), 'My Story opens the personal story collection')
+assert.ok(hubLinks.some(([, href, label]) => href === '/shared#new' && label.includes('Create a Shared Story')), 'Shared Story opens the shared-story creation flow')
+assert.equal(hubLinks.length, 2, 'The Stories hub contains only My Story and Shared Story')
+assert.ok(!storiesHub.includes('Gift Story'), 'No separate Gift Story offer is shown')
 for (const pathname of ['/', '/story', '/library', '/billing', '/privacy', '/creator', '/demo']) {
   const html = render(React.createElement(App, {
     Component: () => React.createElement('main', null, 'Page content'),

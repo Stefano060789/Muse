@@ -4,11 +4,10 @@ import type { StoryLanguageCode } from './storyLanguage'
 const plans = [
   { id: 'free', price: 0, prefix: 'free', availability: 'free', features: ['sampleFeature', 'receiveFeature', 'savedFeature', 'audioFeature'] },
   { id: 'trial', price: 0, prefix: 'trial', availability: 'trial', features: ['trialStories', 'trialInteractions', 'personalFeature', 'giftFeature', 'audioFeature'] },
-  { id: 'gift', price: 5.99, prefix: 'gift', availability: 'planned', features: ['longStory', 'longInteractions', 'giftFeature', 'audioFeature'] },
   { id: 'monthly', price: 8.99, prefix: 'monthly', availability: 'monthly', features: ['monthlyStories', 'monthlyInteractions', 'personalFeature', 'giftFeature', 'audioFeature'] },
   { id: 'annual', price: 89.99, prefix: 'annual', availability: 'planned', features: ['monthlyStories', 'monthlyInteractions', 'monthlyRefresh', 'personalFeature', 'giftFeature', 'audioFeature'] }
 ] as const satisfies readonly {
-  id: string; price: number; prefix: 'free' | 'trial' | 'gift' | 'monthly' | 'annual'
+  id: string; price: number; prefix: 'free' | 'trial' | 'monthly' | 'annual'
   availability: 'free' | 'trial' | 'monthly' | 'planned'; features: readonly (keyof BillingCopy)[]
 }[]
 

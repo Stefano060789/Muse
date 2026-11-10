@@ -213,13 +213,13 @@ async function main() {
     assert.ok(Array.isArray(schemaExample.scenes))
     assert.equal(providerRequest.response_format.type, 'json_object')
   })
-  await check('puzzle difficulty directs clue clarity and fair attention in generation', async () => {
+  await check('story difficulty directs clue clarity and fair attention in generation', async () => {
     process.env.LLM_API_KEY = 'test-key'
     process.env.LLM_PROVIDER = 'GROQ'
     for (const [puzzleDifficulty, expected] of [
-      ['gentle', /Puzzle difficulty: gentle.*one simple inference/],
-      ['balanced', /Puzzle difficulty: balanced.*few clear details/],
-      ['challenging', /Puzzle difficulty: challenging but fair.*several concrete details/]
+      ['gentle', /Story difficulty: easy.*one simple inference/],
+      ['balanced', /Story difficulty: standard.*few clear details/],
+      ['challenging', /Story difficulty: challenging but fair.*several concrete details/]
     ]) {
       await generateSharedStory(parseSharedStoryBrief({ ...brief, puzzleDifficulty }))
       assert.match(providerRequest.messages[0].content, expected)

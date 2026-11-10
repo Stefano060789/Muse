@@ -47,12 +47,14 @@ export type StoryTemplate = {
 }
 
 export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
+export type PersonalStoryDifficulty = 'gentle' | 'balanced' | 'challenging'
 
 export type PersonalStory = NarrationMetadata & {
   archived?: boolean
   chapter?: { number: number; rootId: string; parentId?: string; parentTitle?: string }
   romance?: StoryRomance
   language?: StoryLanguageCode
+  difficulty?: PersonalStoryDifficulty
   journey?: JourneySnapshot & { capability: string }
   generation?: 'ai'
   need?: string

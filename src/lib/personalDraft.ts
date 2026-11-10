@@ -1,5 +1,5 @@
 import type { StoryChoiceMode } from './freeformStory'
-import type { PersonalStoryMood } from './story'
+import type { PersonalStoryDifficulty, PersonalStoryMood } from './story'
 import type { StoryRomance } from './storyRomance'
 import { isStoryPreferences, type StoryPreferences } from './storyPreferences'
 
@@ -7,6 +7,7 @@ export const PERSONAL_DRAFT_KEY = 'muse-personal-creation-draft'
 export type PersonalDraft = StoryPreferences & {
   storyIdea?: string; improvementGoal?: string; need?: string
   mood: PersonalStoryMood; choiceMode: StoryChoiceMode
+  difficulty?: PersonalStoryDifficulty
   romance?: StoryRomance; useProfile: boolean; profileDraft: string; step: number
 }
 export function isPersonalDraft(value: unknown): value is PersonalDraft {
@@ -18,6 +19,7 @@ export function isPersonalDraft(value: unknown): value is PersonalDraft {
   const hasSeparateIdeas = validText(draft.storyIdea) && validText(draft.improvementGoal)
   return (hasLegacyIdea || hasSeparateIdeas) &&
     typeof draft.mood === 'string' && ['adventure', 'relaxed', 'curious', 'hopeful'].includes(draft.mood) &&
+    (draft.difficulty === undefined || ['gentle', 'balanced', 'challenging'].includes(String(draft.difficulty))) &&
     typeof draft.choiceMode === 'string' && ['free', 'suggested'].includes(draft.choiceMode) &&
     (draft.romance === undefined || draft.romance === 'sweet' || draft.romance === 'spicy') &&
     typeof draft.useProfile === 'boolean' && typeof draft.profileDraft === 'string' && draft.profileDraft.length <= 4000 &&
