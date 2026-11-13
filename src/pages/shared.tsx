@@ -1508,10 +1508,12 @@ export default function SharedStoryPage() {
                           ambientText={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`}
                           onReadAlong={(position, active) => setStudioReadAlong({ text: `${player.scene.title}. ${player.scene.body} ${player.scene.clue}`, position, active })}
                           voiceVolume={narrator.immersive.voiceVolume}
+                          onVoiceVolumeChange={value => narrator.setImmersivePreference('voiceVolume', value)}
                           onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                           disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
                     load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
-                  <details><summary>Device voice (optional, quality varies)</summary>
+                  <details><summary>No voice? Try free device voice</summary>
+                    <p>If the words move but you hear no voice, check your device volume or try this voice.</p>
                     <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} />
                   </details>
                   </> : null}
@@ -1609,6 +1611,7 @@ export default function SharedStoryPage() {
                   }}
                   sceneIndex={Math.min(studioScene, creator.content.scenes.length - 1)} owner audioRef={studioAudio}
                   voiceVolume={narrator.immersive.voiceVolume}
+                  onVoiceVolumeChange={value => narrator.setImmersivePreference('voiceVolume', value)}
                   disabled={busy || voiceRecording || voiceUploading} stopSignal={narrator.busy || Boolean(interaction.recordingTarget) || voiceRecording} beforeListen={beforeStudio}
                   check={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-status', token: creator.ownerToken }, signal), sceneIndex)}
                   generate={async (sceneIndex, signal) => studioSceneStatus(await request<StudioResponse>({ action: 'studio-generate', token: creator.ownerToken, sceneIndex, consentVersion: MUSE_AI_CONSENT_VERSION }, signal), sceneIndex)}

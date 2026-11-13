@@ -4,6 +4,10 @@ const path = require('node:path')
 const Module = require('node:module')
 const ts = require('typescript')
 
+const styles = fs.readFileSync(path.join(__dirname, '..', 'src/styles/globals.css'), 'utf8')
+assert.match(styles, /\.story-mode-prompt\s*\{[^}]*color:\s*var\(--ink\)/s,
+  'The scene-ready prompt uses neutral ink instead of error-like red')
+
 const source = fs.readFileSync(path.join(__dirname, '..', 'src/components/ReadAlongText.tsx'), 'utf8')
 const code = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }

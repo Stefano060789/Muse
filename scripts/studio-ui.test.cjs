@@ -17,6 +17,7 @@ function mount(extra = {}) {
   const ambientEvents = []
   const props = {
     sceneIndex: 1, audioRef, beforeListen() { calls.push('beforeListen') },
+    voiceVolume: 0.9, onVoiceVolumeChange(value) { calls.push(['volume', value]) },
     ambientText: 'Cars pass in a mysterious street.',
     onAmbientStart(text) { ambientEvents.push(['start', text]) },
     onAmbientPause() { ambientEvents.push(['pause']) },
@@ -148,7 +149,8 @@ async function main() {
   assert.ok(!disabled.button('Prepare this scene\'s Studio audio'),
     'A response claiming enabled cannot expose generation while this deployment is on a disabled provider')
   assert.ok(disabled.nodes().some(node => node.type === 'p' && /disabled pending commercial entitlement review/.test(flatten(node).join(' '))))
-  assert.ok(!disabled.nodes().some(node => node.type === 'input'))
+  assert.ok(disabled.nodes().some(node => node.type === 'input' && node.props.type === 'range' && node.props['aria-label'] === 'Voice volume'))
+  assert.ok(!disabled.nodes().some(node => node.type === 'input' && node.props.type === 'checkbox'))
   assert.ok(!disabled.nodes().some(node => node.type === 'ExplicitConsent'), 'Disabled generation never asks for cloud consent')
   assert.ok(!disabled.calls.includes('generate') && !disabled.calls.includes('load'))
   disabled.unmount()
@@ -156,7 +158,7 @@ async function main() {
   await blocked.flush()
   blocked.button('Check Studio availability').props.onClick()
   await blocked.flush()
-  assert.ok(!blocked.nodes().some(node => node.type === 'input'), 'Failed/pending scenes cannot offer a new paid attempt')
+  assert.ok(!blocked.nodes().some(node => node.type === 'input' && node.props.type === 'checkbox'), 'Failed/pending scenes cannot offer a new paid attempt')
   assert.ok(!blocked.nodes().some(node => node.type === 'ExplicitConsent'))
   assert.ok(!blocked.button('Prepare this scene\'s Studio audio'), 'Blocked Google generation has no paid-attempt button')
   blocked.unmount()
@@ -185,6 +187,10 @@ async function main() {
   assert.ok(audio.props.controls)
   assert.equal(audio.props.autoPlay, undefined)
   assert.equal(audio.props.preload, 'metadata')
+  const volumeControl = recipient.nodes().find(node => node.type === 'input' && node.props['aria-label'] === 'Voice volume')
+  assert.ok(volumeControl, 'Recipients can adjust prepared-recording volume while listening')
+  volumeControl.props.onChange({ target: { value: '0.5' } })
+  assert.ok(recipient.calls.some(call => Array.isArray(call) && call[0] === 'volume' && call[1] === 0.5))
   audio.props.onPlay()
   assert.deepEqual(readAlong.at(-1), [0, true])
   audio.props.onTimeUpdate({ currentTarget: { duration: 20, currentTime: 10 } })
@@ -200,6 +206,12 @@ async function main() {
   assert.ok(recipient.calls.includes('pause'))
   recipient.unmount()
   assert.deepEqual(recipient.revoked, ['blob:synthetic-1'])
+
+  const muted = mount({ provider: 'disabled', voiceVolume: 0 })
+  await muted.flush()
+  assert.ok(muted.nodes().some(node => node.props.role === 'status' && flatten(node).join('').includes('Voice volume is 0%')),
+    'A zero saved voice level is explained as a status, not presented as an error')
+  muted.unmount()
 
   const failure = mount({ provider: 'disabled', load: async () => { throw new Error('No prepared recording') } })
   await failure.flush()

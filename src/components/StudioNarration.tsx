@@ -17,6 +17,7 @@ type Props = {
   onAmbientStop?: () => void
   onReadAlong?: (position: number, active: boolean) => void
   voiceVolume?: number
+  onVoiceVolumeChange: (volume: number) => void
   check?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   generate?: (sceneIndex: number, signal: AbortSignal) => Promise<StudioSceneStatus>
   load: (sceneIndex: number, signal: AbortSignal) => Promise<Blob>
@@ -25,7 +26,7 @@ type Props = {
 }
 
 export default function StudioNarration({ sceneIndex, owner = false, disabled = false, stopSignal, audioRef, beforeListen, check, generate, load,
-  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9, playRequest = 0,
+  ambientText = '', onAmbientStart, onAmbientPause, onAmbientStop, onReadAlong, voiceVolume = 0.9, onVoiceVolumeChange, playRequest = 0,
   provider = process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google' ? 'google' : 'disabled' }: Props) {
   const [status, setStatus] = useState<StudioSceneStatus | null>(null)
   const permissions = useAccountPermissions()
@@ -140,6 +141,13 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
     {!owner || status?.ready ? <button type="button" disabled={busy || disabled} onClick={() => void run('load')}>{provider === 'google' ? 'Load scene recording' : 'Load saved Studio audio'}</button> : null}
     {busy ? <p role="status">Working on Studio audio...</p> : null}
     {error ? <p role="alert">{error} Read instead, retry, or explicitly choose the device voice controls.</p> : null}
+    <label style={{ display: 'block', marginBlock: '0.75rem', maxWidth: '100%' }}>
+      Voice volume · {Math.round(voiceVolume * 100)}%
+      <input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={voiceVolume}
+        onChange={event => onVoiceVolumeChange(Number(event.target.value))}
+        style={{ display: 'block', width: '100%', maxWidth: 360 }} />
+    </label>
+    {voiceVolume === 0 ? <p role="status">Voice volume is 0%. Raise it to hear the recording.</p> : null}
     {url ? <>
       <audio ref={audioRef} src={url} controls preload="metadata" aria-label={`Studio audio for scene ${sceneIndex + 1}`} onPlay={() => {
         if (disabled) { audioRef.current?.pause(); setError('Finish the current story request, upload or recording before playing Studio audio.'); return }
