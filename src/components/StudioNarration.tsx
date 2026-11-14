@@ -128,7 +128,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   }, [playRequest])
 
   const content = <>
-    {owner ? <p>{provider === 'google' ? 'Google WaveNet recording' : 'New Studio narration is disabled pending commercial entitlement review. Saved recordings are unchanged.'} · Listen plays saved audio; it never generates a paid recording automatically.</p> : null}
+    {owner ? <p>{provider === 'google' ? 'Google Cloud TTS recording' : 'New Studio narration is disabled pending commercial entitlement review. Saved recordings are unchanged.'} · Listen plays saved audio; it never generates a paid recording automatically.</p> : null}
     {owner ? <>
       <details><summary>Recording privacy and cost</summary><p>{provider === 'google' ? 'Optional Google Cloud narration sends this scene and clue, excluding the private answer and reveal. New recordings use the paid narration allowance; replay reuses them. Live AI turns are not included.' : 'Previously saved Studio audio may still be played. New cloud recordings are disabled pending commercial entitlement review.'}</p></details>
       <button type="button" disabled={busy || disabled} onClick={() => void run('check')}>Check Studio availability</button>
@@ -166,7 +166,7 @@ export default function StudioNarration({ sceneIndex, owner = false, disabled = 
   </>
   if (!owner) return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>
     {content}
-    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google WaveNet.' : 'This is a sender-prepared saved recording.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Listen starts playback; if your browser blocks it, press Play. It never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
+    <details><summary>About this recording</summary><p>{provider === 'google' ? 'AI-generated narration by Google Cloud Text-to-Speech.' : 'This is a sender-prepared saved recording.'} This plays the sender&apos;s saved recording and never generates paid audio. If unavailable, keep reading or ask the sender to prepare it. Listen starts playback; if your browser blocks it, press Play. It never switches to a device voice automatically.</p><p>Simple text cues select synthetic local ambience for explicit playback. Recording text follows elapsed audio time; word timing is approximate.</p></details>
   </section>
   return <section aria-label="Studio narration" style={{ margin: '1rem 0', maxWidth: '100%', minWidth: 0 }}>{content}</section>
 }

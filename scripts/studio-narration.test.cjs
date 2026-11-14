@@ -69,7 +69,7 @@ async function main() {
     }, res)
     return { status: res.statusCode, body: res.body, headers }
   }
-  async function insert(extra = {}) {
+  async function insert(extra = {}, narrationLanguage = 'en-US') {
     const id = randomUUID()
     const story = {
       id, owner_hash: hash(ownerKey), play_hash: hash(playKey),
@@ -79,7 +79,7 @@ async function main() {
         durationMinutes: 5, ...extra
       },
       content: {
-        title: 'Story title', description: 'Story description', narrationStyle: 'warm', narrationLanguage: 'en-US',
+        title: 'Story title', description: 'Story description', narrationStyle: 'warm', narrationLanguage,
         scenes: Array.from({ length: 3 }, (_, i) => ({
           title: `Scene ${i} ${id}`, body: `Body ${i} ${id}`, clue: `Clue ${i} ${id}`
         }))
@@ -297,14 +297,16 @@ async function main() {
     MUSE_STUDIO_NARRATION_ENABLED: 'true'
   })
   let googleCalls = 0
+  const googleVoiceNames = []
   const googleMp3 = Buffer.alloc(192)
   googleMp3.set([0xff, 0xf3, 0x84, 0xc0])
   global.fetch = async (url, options) => {
     assert.ok(String(url).startsWith('https://texttospeech.googleapis.com/v1/text:synthesize'))
     const body = JSON.parse(options.body)
     assert.ok(!JSON.stringify(body).includes('PRIVATE_'), 'Google receives only prepared scene narration')
-    assert.match(body.voice.name, /Wavenet/)
+    assert.match(body.voice.name, /(?:Wavenet|Chirp3-HD)/)
     assert.equal(body.audioConfig.audioEncoding, 'MP3')
+    googleVoiceNames.push(body.voice.name)
     googleCalls++
     return new Response(JSON.stringify({ audioContent: googleMp3.toString('base64') }), { headers: { 'Content-Type': 'application/json' } })
   }
@@ -318,6 +320,12 @@ async function main() {
   assert.deepEqual(Buffer.from(googleAudio.body), googleMp3)
   assert.equal((await generate(googleStory)).status, 200)
   assert.equal(googleCalls, 1, 'Saved Google gift recordings replay without provider charges')
+  const ukrainianStory = await insert({}, 'uk-UA')
+  assert.equal((await generate(ukrainianStory)).status, 200)
+  assert.equal(googleCalls, 2)
+  assert.equal(googleVoiceNames.at(-1), 'uk-UA-Chirp3-HD-Achernar')
+  await api({ action: 'open', token: ukrainianStory.token, sessionToken })
+  assert.equal((await audio(ukrainianStory)).status, 200)
   assert.equal((await api({ action: 'studio-generate', token: googleStory.ownerToken, sceneIndex: 1, consentVersion: 'muse-ai-v1' })).status, 400, 'An invalid consent version cannot authorize paid Google synthesis')
   console.log('PASS Google prepared gift synthesis, private cached replay and account-owner generation')
 }

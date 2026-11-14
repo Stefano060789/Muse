@@ -1,7 +1,9 @@
-# Google WaveNet narration setup
+# Google Cloud narration setup
 
 Muse supports Google Cloud Text-to-Speech for personal-story narration and
-sender-prepared story-gift scene recordings. It uses MP3 playback, not the
+sender-prepared story-gift scene recordings. English and other mapped languages
+use WaveNet; Ukrainian uses the Chirp 3: HD voice `uk-UA-Chirp3-HD-Achernar`.
+It uses MP3 playback, not the
 iPhone speech engine. No Google account is needed by recipients.
 
 ## 1. Create and protect your Google Cloud project
@@ -65,10 +67,11 @@ local databases across servers or ephemeral serverless disk. Vercel must use
 the hosted Supabase store, not local SQLite. Do not put the database in `public/`.
 
 The 100,000-character cap is a **suggested initial limit**, not an automatically
-authorized purchase. At a listed WaveNet rate of US$4/million characters, it
-represents roughly US$0.40 in base generation, excluding taxes and other services.
-Check current Google account pricing before enabling it. Leave the cap at `0`
-to disable generation.
+authorized purchase or a guaranteed dollar maximum. At Google's listed rates,
+100,000 characters cost about US$0.40 with WaveNet or US$3 with Chirp 3: HD,
+excluding taxes and other services. Actual usage depends on the voice models
+used. Check current Google account pricing before enabling it. Leave the cap at
+`0` to disable generation.
 
 The cap is lifetime reserved characters across personal and prepared gift
 narration, not per-user or monthly. Failed/interrupted generations remain charged
@@ -101,11 +104,12 @@ The shared cache is bounded to 128 MiB in total and 12 MiB per recording.
 Expired or evicted personal recordings need fresh, budgeted generation; saved
 story-gift scene recordings also have their existing story-specific media copy.
 
-Audio settings offer six pacing presets: calm, warm, curious, adventurous,
+WaveNet audio settings offer six pacing presets: calm, warm, curious, adventurous,
 playful and suspenseful. These are subtle delivery changes, not six actors or
 guaranteed emotional performances. The server chooses a language-specific
-WaveNet voice. Unsupported languages fail explicitly rather than speaking with
-an unrelated voice. Device voices are a separate, explicit fallback.
+voice model; Ukrainian uses Chirp 3: HD, and other listed languages use
+WaveNet. Unsupported languages fail explicitly rather than speaking with an
+unrelated voice. Device voices are a separate, explicit fallback.
 
 ### Story gifts
 

@@ -27,7 +27,7 @@ export function studioConfiguration() {
   }
   const google = googleNarrationConfiguration()
   return { available: process.env.MUSE_STUDIO_NARRATION_ENABLED === 'true' && google.available,
-    budget: google.budget, voice: 'google-wavenet',
+    budget: google.budget, voice: 'google-cloud-tts',
     reason: process.env.MUSE_STUDIO_NARRATION_ENABLED !== 'true' ? 'disabled' : google.reason }
 }
 
@@ -68,14 +68,12 @@ export async function generateStudioScene(db: StoryRepository, story: StoredStor
   if (!config.available) throw new SharedStoryError(config.reason === 'commercial-entitlement-required'
     ? 'ElevenLabs Studio narration is disabled pending commercial entitlement review.'
     : 'Studio narration is disabled or not configured.', 503)
-  if (process.env.NEXT_PUBLIC_NARRATION_PROVIDER === 'google') {
-    googleVoice(story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
-  }
+  const voice = googleVoice(story.content.narrationLanguage || 'en-US', story.content.narrationStyle || 'warm')
   await store.ready('audio/mpeg')
   const record: StudioRecord = {
     story_id: story.id, scene_index: sceneIndex,
-    fingerprint: createHash('sha256').update(JSON.stringify([text, 'google-wavenet',
-      config.voice, story.content.narrationLanguage, story.content.narrationStyle, 'mp3_44100_128'])).digest('hex'),
+    fingerprint: createHash('sha256').update(JSON.stringify([text, voice.model, voice.name,
+      story.content.narrationLanguage, story.content.narrationStyle, 'mp3'])).digest('hex'),
     object_key: `stories/${story.id}/${randomUUID()}.mp3`, status: 'pending',
     characters: text.length, size: 0, created_at: new Date().toISOString()
   }

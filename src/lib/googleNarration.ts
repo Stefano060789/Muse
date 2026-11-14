@@ -9,14 +9,16 @@ import { googleHostedConfigured, googleHostedOperation } from './googleNarration
 const RETENTION = 30 * 86400000
 const MAX_AUDIO = 12 * 1024 * 1024
 const MAX_CACHE = 128 * 1024 * 1024
+type GoogleVoiceModel = 'wavenet' | 'chirp3-hd'
 // Names verified against Google's supported-voices catalog; never fall back across languages.
-const VOICES: Record<string, [string, string]> = {
+const VOICES: Record<string, [string, string, GoogleVoiceModel?]> = {
   'en-us': ['en-US', 'en-US-Wavenet-F'], 'zh-cn': ['cmn-CN', 'cmn-CN-Wavenet-A'],
   'cmn-cn': ['cmn-CN', 'cmn-CN-Wavenet-A'], 'hi-in': ['hi-IN', 'hi-IN-Wavenet-A'],
   'es-es': ['es-ES', 'es-ES-Wavenet-F'], 'ar-sa': ['ar-XA', 'ar-XA-Wavenet-A'],
   'ar-xa': ['ar-XA', 'ar-XA-Wavenet-A'], 'it-it': ['it-IT', 'it-IT-Wavenet-E'],
   'fr-fr': ['fr-FR', 'fr-FR-Wavenet-F'], 'de-de': ['de-DE', 'de-DE-Wavenet-G'],
-  'ja-jp': ['ja-JP', 'ja-JP-Wavenet-A'], 'pt-br': ['pt-BR', 'pt-BR-Wavenet-A']
+  'ja-jp': ['ja-JP', 'ja-JP-Wavenet-A'], 'pt-br': ['pt-BR', 'pt-BR-Wavenet-A'],
+  'uk-ua': ['uk-UA', 'uk-UA-Chirp3-HD-Achernar', 'chirp3-hd']
 }
 
 function failure(code: string, message: string, status = 503): SharedStoryError & { code: string } {
@@ -41,8 +43,8 @@ export function googleVoice(language: string, style: NarrationStyle) {
       !NARRATION_STYLES.includes(style)) {
     throw failure('google-unsupported-voice', 'Unsupported Google narration language or style.', 400)
   }
-  const [languageCode, name] = VOICES[language.toLowerCase()]
-  return { languageCode, name, speakingRate: NARRATION_PRESETS[style].rate,
+  const [languageCode, name, model = 'wavenet'] = VOICES[language.toLowerCase()]
+  return { languageCode, name, model, speakingRate: NARRATION_PRESETS[style].rate,
     pitch: style === 'playful' ? 0.5 : style === 'suspenseful' ? -0.5 : 0 }
 }
 
@@ -140,7 +142,8 @@ async function providerChunk(text: string, voice: ReturnType<typeof googleVoice>
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': process.env.GOOGLE_TTS_API_KEY! },
     body: JSON.stringify({ input: { text }, voice: { languageCode: voice.languageCode, name: voice.name },
-      audioConfig: { audioEncoding: 'MP3', speakingRate: voice.speakingRate, pitch: voice.pitch } })
+      audioConfig: { audioEncoding: 'MP3', speakingRate: voice.speakingRate,
+        ...(voice.model === 'wavenet' ? { pitch: voice.pitch } : {}) } })
   })
   if (!response.ok) {
     await response.body?.cancel()
@@ -188,7 +191,12 @@ export async function synthesizeGoogleNarration(
   }
   const count = Array.from(text).length
   if (count > 12000) throw failure('google-invalid-text', 'Narration text exceeds 12000 Unicode characters.', 400)
-  const hash = createHash('sha256').update(JSON.stringify(['google-mp3-v1', text, voice, style])).digest('hex')
+  const cacheVoice = voice.model === 'wavenet'
+    ? { languageCode: voice.languageCode, name: voice.name, speakingRate: voice.speakingRate, pitch: voice.pitch }
+    : voice
+  const hash = createHash('sha256').update(JSON.stringify([
+    voice.model === 'wavenet' ? 'google-mp3-v1' : 'google-mp3-v2', text, cacheVoice, style
+  ])).digest('hex')
   const hosted = googleHostedConfigured()
   const token = randomUUID()
   let cached: Uint8Array | null

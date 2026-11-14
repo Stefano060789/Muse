@@ -22,6 +22,7 @@ async function main() {
   const { SharedStoryError } = require(path.join(output, 'lib', 'sharedStory.js'))
   let calls = 0, attempts = 0, requests = []
   function reset(name = 'main', cap = '1000000') {
+    requests = []
     delete process.env.VERCEL
     delete process.env.MUSE_GOOGLE_TTS_PERSISTENT_STORAGE
     delete process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -91,6 +92,9 @@ async function main() {
     'ar-XA': 'ar-XA-Wavenet-A', 'it-IT': 'it-IT-Wavenet-E', 'fr-FR': 'fr-FR-Wavenet-F',
     'de-DE': 'de-DE-Wavenet-G', 'ja-JP': 'ja-JP-Wavenet-A', 'pt-BR': 'pt-BR-Wavenet-A'
   })) assert.equal(google.googleVoice(language, 'warm').name, expected)
+  assert.deepEqual(google.googleVoice('uk-UA', 'warm'), {
+    languageCode: 'uk-UA', name: 'uk-UA-Chirp3-HD-Achernar', model: 'chirp3-hd', speakingRate: 0.98, pitch: 0
+  })
   assert.equal(google.googleVoice('en-US', 'calm').speakingRate, 0.95)
   assert.equal(google.googleVoice('en-US', 'playful').pitch, 0.5)
   await rejects(() => synth('hello', 'en-GB'), 'google-unsupported-voice', 400)
@@ -100,6 +104,14 @@ async function main() {
     await rejects(() => synth(text), 'google-invalid-text', 400)
   }
   assert.equal(calls, 0)
+  reset('ukrainian', '10000')
+  const ukrainianAudio = await synth('Серце Пустелі та Дракон', 'uk-UA')
+  assert.ok(ukrainianAudio instanceof Uint8Array)
+  assert.equal(requests[0].voice.name, 'uk-UA-Chirp3-HD-Achernar')
+  assert.equal(requests[0].voice.languageCode, 'uk-UA')
+  assert.equal(requests[0].audioConfig.audioEncoding, 'MP3')
+  assert.equal(requests[0].audioConfig.speakingRate, 0.98)
+  assert.equal('pitch' in requests[0].audioConfig, false, 'Chirp 3 HD requests omit WaveNet-only pitch control')
   reset('unicode', '12000')
   const text = '你好世界。🙂 '.repeat(1500)
   const audio = await synth(text, 'zh-CN')
