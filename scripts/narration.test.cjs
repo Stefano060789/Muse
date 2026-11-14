@@ -183,7 +183,7 @@ async function main() {
       getVoices: () => voiceList,
       addEventListener: (event, callback) => listeners.set(event, callback),
       removeEventListener: event => listeners.delete(event),
-      speak: utterance => { calls.push('speak'); spoken.push(utterance); utterance.onstart?.() },
+      speak: utterance => { calls.push('speak'); spoken.push(utterance); if (options.autoStart !== false) utterance.onstart?.() },
       cancel: () => { calls.push('cancel'); cancels++ },
       pause: () => { calls.push('pause'); synth.paused = true },
       resume: () => { calls.push('resume'); synth.paused = false }
@@ -409,6 +409,16 @@ async function main() {
       await hook.render().speak('Preview.')
       assert.equal(calls, 0)
       assert.equal(hook.spoken.length, 1)
+    } finally { hook.dispose() }
+  })
+  await check('browser narration stays in preparing state until the speech engine starts', async () => {
+    const hook = mount({ narrationStyle: 'warm', narrationLanguage: 'en-US' }, voices, true, { browserOnly: true, autoStart: false })
+    try {
+      await hook.render().speak('Wait for the speech engine.')
+      assert.equal(hook.render().loading, true)
+      assert.equal(hook.render().speaking, false)
+      hook.spoken[0].onstart()
+      assert.equal(hook.render().speaking, true)
     } finally { hook.dispose() }
   })
   await check('cloud narration consent starts unchecked and never sends text until explicitly accepted', async () => {

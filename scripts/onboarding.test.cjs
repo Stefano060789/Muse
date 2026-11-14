@@ -189,11 +189,13 @@ check('sample audio requires a Play tap, surfaces failures and never switches to
   assert.equal(browserComponent.props.language, 'it-IT')
   assert.equal(browserComponent.props.text, 'Una scena tradotta.')
   const browserSpeech = component('src/components/BrowserSampleNarration.tsx', {
+    './NarrationControls': { __esModule: true, default: 'narration-controls' },
     '../lib/useNarration': {
       useNarration: (metadata, mood, context, options) => {
         narrationInitializations++
         narrationOptions = { metadata, mood, context, options }
-        return { busy: false, supported: true, error: '', loading: false, paused: false, canPause: false, speak() {}, pause() {}, resume() {}, stop() {} }
+        return { busy: false, supported: true, error: '', loading: false, paused: false, canPause: false,
+          immersive: { voiceVolume: 0 }, speak() {}, pause() {}, resume() {}, stop() {} }
       }
     }
   })
@@ -206,6 +208,11 @@ check('sample audio requires a Play tap, surfaces failures and never switches to
   assert.ok(narrationInitializations > 0, 'Device narration initializes for translated browser speech')
   assert.equal(browserNodes.filter(node => node.type === 'audio').length, 0)
   assert.ok(browserNodes.some(node => text(node).includes(browserCopy.narrationNotice)))
+  assert.ok(browserNodes.some(node => node.type === 'details'), 'The sample provides voice and volume controls')
+  assert.ok(browserNodes.some(node => node.props.role === 'status' && text(node).includes(browserCopy.narrationMuted)),
+    'A saved zero voice volume is explained without red error styling')
+  assert.ok(browserNodes.some(node => text(node).includes(browserCopy.narrationTroubleshooting)),
+    'Silent playback has explicit, neutral troubleshooting guidance')
   assert.ok(browserNodes.some(node => node.type === 'button' && text(node) === browserCopy.listenScene))
 })
 check('pre-send requires complete preview, answer and attachment checks and resets for uploads', () => {

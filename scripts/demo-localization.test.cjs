@@ -28,6 +28,10 @@ function load(relative) {
       default: () => props => React.createElement(load('src/components/BrowserSampleNarration.tsx').default, props)
     }
     if (id.endsWith('/interfaceLanguage')) return { useInterfaceLanguage: () => renderLanguage }
+    if (id.endsWith('/NarrationControls')) return {
+      __esModule: true,
+      default: () => React.createElement('div', { 'data-audio-settings': true })
+    }
     if (id.endsWith('/useNarration')) return {
       useNarration: () => ({
         busy: false, supported: true, error: '', loading: false, paused: false, speaking: false,
@@ -91,6 +95,8 @@ for (const language of languages) {
   if (language === 'ar-SA') assert.ok(sceneMarkup.includes('dir="rtl"'))
   assert.ok(!sceneMarkup.includes('<audio'))
   assert.ok(containsText(sceneMarkup, copy.narrationNotice))
+  assert.ok(containsText(sceneMarkup, copy.narrationSettings))
+  assert.ok(containsText(sceneMarkup, copy.narrationTroubleshooting))
 
   const revealMarkup = renderPage(language, [true, 2, true, story.scenes.map(scene => scene.choices[0])])
   assert.ok(containsText(revealMarkup, story.message), `${language} renders the translated reveal`)

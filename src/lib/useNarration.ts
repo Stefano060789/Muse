@@ -326,7 +326,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         try { window.speechSynthesis.speak(current) } catch { finish('Could not start browser narration.') }
       }
       mode.current = 'browser'
-      setStatus('speaking')
+      setStatus('loading')
       next()
     }
     if (provider === 'browser' || !cloudConsent) {
