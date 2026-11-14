@@ -662,12 +662,18 @@ async function main() {
   assert.ok(studioPlayer.nodes().filter(node => node.type === '../components/StoryPassage').every(node => node.props.mode === null), 'Shared passages start hidden until an experience is selected')
   assert.ok(!studioPlayer.nodes().some(node => node.type === '../components/StudioNarration'), 'Read mode never loads audio controls')
   const requestsBeforeListen = studioPlayer.requests.length
+  const narrationBeforeListen = studioPlayer.narrationCalls.length
   recipientMode.props.onChange('listen')
   await studioPlayer.flush()
-  assert.equal(studioPlayer.requests.length, requestsBeforeListen, 'Page delegates prepared playback to Studio without generating paid audio')
+  assert.equal(studioPlayer.requests.length, requestsBeforeListen, 'Starting Listen does not call APIs before needed')
+  assert.equal(studioPlayer.narrationCalls.length, narrationBeforeListen + 1,
+    'Selecting Listen immediately starts the shared scene using the configured narration provider')
+  assert.ok(studioPlayer.narrationCalls.at(-1)[0].startsWith(`${player.scene.title}. ${player.scene.body}`),
+    `Listen starts the active shared scene: ${studioPlayer.narrationCalls.at(-1)[0]}`)
+  assert.deepEqual(studioPlayer.narrationCalls.at(-1)[2], { autoPlay: true })
   const recipientStudio = studioPlayer.nodes().find(node => node.type === '../components/StudioNarration')
   assert.ok(recipientStudio)
-  assert.equal(recipientStudio.props.playRequest, 1, 'Listen requests immediate prepared playback, not a second load/play click')
+  assert.equal(recipientStudio.props.playRequest, 0, 'Saved audio remains an optional manual alternative, not a second required Listen action')
   assert.equal(typeof recipientStudio.props.onReadAlong, 'function', 'Prepared audio reports progressive text position')
   recipientStudio.props.onReadAlong(12, true)
   await studioPlayer.flush()

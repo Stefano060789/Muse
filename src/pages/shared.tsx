@@ -361,8 +361,9 @@ export default function SharedStoryPage() {
         startListening(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`)
       } else if (creator?.brief.adventure) {
         startListening(sharedStoryPreviewText(creator.content))
-      } else setStudioPlayRequest(value => value + 1)
-    }
+      } else if (creator) setStudioPlayRequest(value => value + 1)
+      else if (player) startListening(`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`)
+    } else pendingListen.current = null
   }
   useEffect(() => {
     narrator.stop(); studioAudio.current?.pause()
@@ -1519,8 +1520,9 @@ export default function SharedStoryPage() {
                     <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
                   {storyMode === 'listen' ? <>
+                  <details><summary>Use the sender&apos;s prepared recording</summary>
                   <StudioNarration key={`${playToken}:${sessionToken}:${player.sceneIndex}`} sceneIndex={player.sceneIndex} audioRef={studioAudio}
-                          playRequest={studioPlayRequest}
+                          playRequest={0}
                           ambientText={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`}
                           onReadAlong={(position, active) => setStudioReadAlong({ text: `${player.scene.title}. ${player.scene.body} ${player.scene.clue}`, position, active })}
                           voiceVolume={narrator.immersive.voiceVolume}
@@ -1528,9 +1530,10 @@ export default function SharedStoryPage() {
                           onAmbientStart={narrator.startAmbientFor} onAmbientPause={narrator.pauseAmbient} onAmbientStop={narrator.stopAmbient}
                           disabled={busy} stopSignal={narrator.busy || Boolean(interaction.recordingTarget)} beforeListen={beforeStudio}
                     load={(sceneIndex, signal) => requestStudioAudio({ action: 'studio-audio', token: playToken, sessionToken, sceneIndex, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }, signal)} />
-                  <details><summary>No voice? Try free device voice</summary>
+                  </details>
+                  <details><summary>Use free device voice instead</summary>
                     <p>If the words move but you hear no voice, check your device volume or try this voice.</p>
-                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} />
+                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} deviceVoice />
                   </details>
                   </> : null}
                   {player.sceneIndex + 1 < player.sceneCount ? <>
