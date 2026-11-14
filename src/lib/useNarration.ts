@@ -245,7 +245,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     } catch { setPreferenceNotice(STORAGE_WRITE_NOTICE) }
   }
 
-  const speak = async (text: string, playbackContext: NarrationContext = context, options: { autoPlay?: boolean } = {}) => {
+  const speak = async (text: string, playbackContext: NarrationContext = context, options: { autoPlay?: boolean; deviceOnly?: boolean } = {}) => {
     stop()
     setError('')
     setNotice('')
@@ -329,8 +329,8 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       setStatus('loading')
       next()
     }
-    if (provider === 'browser' || !cloudConsent) {
-      if (provider !== 'browser') {
+    if (provider === 'browser' || options.deviceOnly || !cloudConsent) {
+      if (provider !== 'browser' && !options.deviceOnly) {
         finish('Studio narration needs your consent. Choose device voice in Audio settings to listen without cloud generation.')
         return
       }

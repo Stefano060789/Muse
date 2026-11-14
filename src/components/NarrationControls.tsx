@@ -26,14 +26,22 @@ function PlaybackButtons({ narrator, label }: { narrator: Narrator; label: strin
   </>
 }
 
-export function NarrationButton({ narrator, text, beforeSpeak, label: requestedLabel, context, showCloudConsent = true }: { narrator: Narrator; text: string; beforeSpeak?: () => void; label?: string; context?: NarrationContext; showCloudConsent?: boolean }) {
+export function NarrationButton({ narrator, text, beforeSpeak, label: requestedLabel, context, showCloudConsent = true, deviceVoice = false }: {
+  narrator: Narrator
+  text: string
+  beforeSpeak?: () => void
+  label?: string
+  context?: NarrationContext
+  showCloudConsent?: boolean
+  deviceVoice?: boolean
+}) {
   const language = useInterfaceLanguage()
   const copy = audioControlsCopy(language)
   const label = requestedLabel ?? copy.listen
   const current = narrator.busy && narrator.activeText === text
   const elsewhere = narrator.busy && !current
   return <div style={rowStyle}>
-    {showCloudConsent && narrator.provider === 'google' && !narrator.cloudConsent ? <ExplicitConsent scope="cloudAudio" checked={false} onChange={narrator.setCloudConsent}>
+    {showCloudConsent && !deviceVoice && narrator.provider === 'google' && !narrator.cloudConsent ? <ExplicitConsent scope="cloudAudio" checked={false} onChange={narrator.setCloudConsent}>
       Allow Google Cloud to narrate this text (paid generation when not already saved). <a href="/privacy">Privacy</a>
     </ExplicitConsent> : null}
     {narrator.cloudAudioUrl && narrator.activeText === text ? <div style={{ width: '100%' }}>
@@ -47,7 +55,7 @@ export function NarrationButton({ narrator, text, beforeSpeak, label: requestedL
       <button type="button" style={buttonStyle} aria-label={`${copy.stop}: ${label}`} onClick={narrator.stop}>{copy.stop}</button>
     </div> : current ? <PlaybackButtons narrator={narrator} label={label} />
       : <button type="button" style={buttonStyle} disabled={!text.trim() || elsewhere} title={elsewhere ? 'Stop the current narration before listening to this.' : undefined}
-        onClick={() => { beforeSpeak?.(); void narrator.speak(text, context) }}>{label}</button>}
+        onClick={() => { beforeSpeak?.(); void narrator.speak(text, context, deviceVoice ? { deviceOnly: true } : undefined) }}>{label}</button>}
   </div>
 }
 
@@ -78,6 +86,12 @@ export default function NarrationControls({ narrator, beforeSpeak, showCloudCons
       </select></label> : null}
     </div>
     {narrator.provider === 'browser' ? <small>{copy.help}</small> : null}
+    {narrator.provider === 'browser' && narrator.supported && narrator.voices.length > 0 && !narrator.voice
+      ? <p role="status">No device voice is available for {narrator.language}. Try Google Cloud narration if configured, or select a language with an available device voice.</p>
+      : null}
+    {narrator.immersive.voiceVolume === 0
+      ? <p role="status">Voice volume is 0%. Raise it here to hear narration.</p>
+      : null}
     <button type="button" style={buttonStyle} onClick={narrator.resetVoice}>{copy.automatic}</button>
     <fieldset style={{ margin: '1rem 0', border: '1px solid #d9cfc5', borderRadius: 8, minWidth: 0 }}>
       <legend>{copy.settings}</legend>

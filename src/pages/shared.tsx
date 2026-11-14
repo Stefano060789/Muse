@@ -316,7 +316,7 @@ export default function SharedStoryPage() {
     ending: player ? player.solved || player.skipped : undefined,
     sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
       : creator?.ownerToken || 'new'
-  }, { browserOnly: true })
+  }, { browserOnly: !creator })
   const interaction = useStoryInteraction(() => { studioAudio.current?.pause(); narrator.stop() }, player?.language || creator?.brief.language || brief.language || 'en-US')
   const beforeStudio = () => { narrator.stop(); interaction.stopRecording(); storedVoiceAudio.current?.pause() }
   const beforeDeviceListen = () => {
@@ -1619,7 +1619,7 @@ export default function SharedStoryPage() {
               </> : <p>Live AI scenes cannot use prepared Studio recordings. Free device speech is available below; its quality depends on your device.</p>}
               <details>
                 <summary>Use free device voice instead</summary>
-                <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen with device voice (quality varies)" beforeSpeak={beforeDeviceListen} />
+                <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen with device voice (quality varies)" beforeSpeak={beforeDeviceListen} deviceVoice />
                 <details><summary>Device voice and background settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
               </details>
               <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>

@@ -125,6 +125,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   }
   let narrationStops = 0
   const narrationCalls = []
+  let narrationConfiguration
   const narrator = { stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() }, startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 } }
   let dictationLanguage
   const customRequire = id => {
@@ -189,7 +190,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
       dictationLanguage = language
       return { stopRecording() {}, cancelRecording() {}, recordingTarget: null, error: '' }
     } }
-    if (id.endsWith('/useNarration')) return { useNarration: () => narrator }
+    if (id.endsWith('/useNarration')) return { useNarration: (...args) => { narrationConfiguration = args; return narrator } }
     if (id.endsWith('/useAccountPermissions')) return { useAccountPermissions: () => failures.permissions ?? ({ managed: false, ready: true }) }
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: 'test' }
     if (id.endsWith('/sharedStoryMedia')) return { formatMediaSize: () => '5 MB', SHARED_MEDIA_ATTEMPTS_PER_STORY: 6, validateVoiceBytes: () => ({ durationSeconds: 1 }) }
@@ -259,6 +260,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
   return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, savedStories, browser, narrationCalls,
+    narrationConfiguration: () => narrationConfiguration,
     dispatch(name) { listeners.get(name)?.() },
     dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
@@ -645,6 +647,8 @@ async function main() {
   assert.ok(resumed.nodes().some(node => node.props.role === 'status' && label(node).includes('earlier progress may not be available')))
   console.log('PASS romance gates even cover/narration, requires fresh explicit opt-in and declines without another request')
   const studioPlayer = await mount('#play=studio-fixture', { ...player, solved: false, romance: 'sweet' })
+  assert.equal(studioPlayer.narrationConfiguration()[3].browserOnly, true,
+    'Recipients retain browser-only speech and cannot synthesize paid cloud narration')
   studioPlayer.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
   await studioPlayer.flush()
   await studioPlayer.click(romance.romanceCopy().open)
@@ -790,6 +794,8 @@ async function main() {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
     content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: null, playToken: 'gift-play-token'
   })
+  assert.equal(owner.narrationConfiguration()[3].browserOnly, false,
+    'Creator preview can use configured Google narration with its explicit consent gate')
   const tools = owner.nodes().find(node => node.props['aria-label'] === 'Sender tools')
   assert.ok(tools && !tools.props.open, 'Advanced sender tools stay collapsed')
   assert.ok(!owner.nodes().some(node => node.props['aria-label'] === 'Private management link'), 'The management link is not shown on the post-create screen')
@@ -815,6 +821,7 @@ async function main() {
   let studioPauses = 0
   ownerStudio.props.audioRef.current = { pause() { studioPauses++ } }
   const deviceFallback = owner.nodes().find(node => node.props.label === 'Listen with device voice (quality varies)')
+  assert.equal(deviceFallback.props.deviceVoice, true, 'The free fallback explicitly bypasses cloud narration')
   deviceFallback.props.beforeSpeak()
   assert.equal(studioPauses, 1, 'Choosing device speech first stops any prepared audio')
   assert.deepEqual(await ownerStudio.props.check(0, new AbortController().signal), { enabled: true, ready: false, blocked: false })
