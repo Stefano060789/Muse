@@ -126,7 +126,11 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   let narrationStops = 0
   const narrationCalls = []
   let narrationConfiguration
-  const narrator = { stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() }, startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 } }
+  const narrator = {
+    provider: 'browser', cloudConsent: false,
+    stop() { narrationStops++ }, speak(...args) { narrationCalls.push(args); return Promise.resolve() },
+    startAmbientFor() {}, pauseAmbient() {}, stopAmbient() {}, error: '', preferences: {}, immersive: { voiceVolume: 0.9 }
+  }
   let dictationLanguage
   const customRequire = id => {
     if (id === 'react') return react
@@ -260,7 +264,7 @@ async function mount(hash, player = null, owner = null, failures = {}, values = 
   const click = async text => { button(text).props.onClick(); await flush() }
   await flush()
   return { flush, render, nodes, button, field, click, values, timers, timerDelays, activeTimers, requests, savedStories, browser, narrationCalls,
-    narrationConfiguration: () => narrationConfiguration,
+    narrationConfiguration: () => narrationConfiguration, narrator,
     dispatch(name) { listeners.get(name)?.() },
     dictationLanguage: () => dictationLanguage, narrationStops: () => narrationStops,
     unmount: () => slots.forEach(slot => slot?.cleanup?.()) }
@@ -647,8 +651,8 @@ async function main() {
   assert.ok(resumed.nodes().some(node => node.props.role === 'status' && label(node).includes('earlier progress may not be available')))
   console.log('PASS romance gates even cover/narration, requires fresh explicit opt-in and declines without another request')
   const studioPlayer = await mount('#play=studio-fixture', { ...player, solved: false, romance: 'sweet' })
-  assert.equal(studioPlayer.narrationConfiguration()[3].browserOnly, true,
-    'Recipients retain browser-only speech and cannot synthesize paid cloud narration')
+  assert.equal(studioPlayer.narrationConfiguration()[3], undefined,
+    'Shared stories use the same cloud/device provider selection as private stories')
   studioPlayer.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
   await studioPlayer.flush()
   await studioPlayer.click(romance.romanceCopy().open)
@@ -794,7 +798,7 @@ async function main() {
     brief: { creatorName: 'Sender', recipientName: 'Recipient', message: 'The surprise', solution: 'A secret', gift: player.gift, durationMinutes: 5 },
     content: { title: 'A gift', description: 'A mystery', scenes: [player.scene] }, expiresAt: null, playToken: 'gift-play-token'
   })
-  assert.equal(owner.narrationConfiguration()[3].browserOnly, false,
+  assert.equal(owner.narrationConfiguration()[3], undefined,
     'Creator preview can use configured Google narration with its explicit consent gate')
   const tools = owner.nodes().find(node => node.props['aria-label'] === 'Sender tools')
   assert.ok(tools && !tools.props.open, 'Advanced sender tools stay collapsed')
@@ -866,5 +870,18 @@ async function main() {
   assert.equal(ownerNavigation.props.pathname, '/shared')
   assert.equal(ownerNavigation.props.onCreateGift, undefined, 'Shared Story navigation no longer triggers gift creation')
   console.log('PASS shared-story management uses the Stories hub navigation')
+  const consentListen = await mount('#play=cloud-listen-fixture', {
+    ...player, solved: false, gift: undefined,
+    adventure: { pending: false, actionsRemaining: 10, budgetRemaining: 20, budget: 30, revision: 0, choiceMode: 'free' }
+  })
+  consentListen.narrator.provider = 'google'
+  consentListen.nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('listen')
+  await consentListen.flush()
+  assert.equal(consentListen.narrationCalls.length, 0, 'Shared-story cloud playback waits for explicit consent')
+  consentListen.narrator.cloudConsent = true
+  await consentListen.flush()
+  assert.equal(consentListen.narrationCalls.length, 1, 'Granting cloud consent starts the pending listen action')
+  assert.equal(consentListen.narrationCalls[0][2].autoPlay, true)
+  console.log('PASS shared-story cloud narration waits for explicit consent and then starts playback')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

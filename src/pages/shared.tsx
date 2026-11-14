@@ -316,7 +316,22 @@ export default function SharedStoryPage() {
     ending: player ? player.solved || player.skipped : undefined,
     sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
       : creator?.ownerToken || 'new'
-  }, { browserOnly: !creator })
+  })
+  const pendingListen = useRef<{ text: string; context?: { progress?: number; ending?: boolean } } | null>(null)
+  const startListening = (text: string, context?: { progress?: number; ending?: boolean }) => {
+    if (narrator.provider !== 'browser' && !narrator.cloudConsent) {
+      pendingListen.current = { text, context }
+      return
+    }
+    pendingListen.current = null
+    void narrator.speak(text, context, { autoPlay: true })
+  }
+  useEffect(() => {
+    const pending = pendingListen.current
+    if (!pending || storyMode !== 'listen' || (narrator.provider !== 'browser' && !narrator.cloudConsent)) return
+    pendingListen.current = null
+    void narrator.speak(pending.text, pending.context, { autoPlay: true })
+  }, [narrator.cloudConsent, narrator.provider, storyMode])
   const interaction = useStoryInteraction(() => { studioAudio.current?.pause(); narrator.stop() }, player?.language || creator?.brief.language || brief.language || 'en-US')
   const beforeStudio = () => { narrator.stop(); interaction.stopRecording(); storedVoiceAudio.current?.pause() }
   const beforeDeviceListen = () => {
@@ -341,16 +356,17 @@ export default function SharedStoryPage() {
         const endingText = player.endingMode === 'automatic'
           ? `${player.scene.title}. ${player.scene.body}${player.message ? `\n\n${player.message}` : ''}`
           : player.message
-        if (endingText) void narrator.speak(endingText, { progress: 1, ending: true }, { autoPlay: true })
+        if (endingText) startListening(endingText, { progress: 1, ending: true })
       } else if (player?.adventure) {
-        void narrator.speak(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`, undefined, { autoPlay: true })
+        startListening(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`)
       } else if (creator?.brief.adventure) {
-        void narrator.speak(sharedStoryPreviewText(creator.content), undefined, { autoPlay: true })
+        startListening(sharedStoryPreviewText(creator.content))
       } else setStudioPlayRequest(value => value + 1)
     }
   }
   useEffect(() => {
     narrator.stop(); studioAudio.current?.pause()
+    pendingListen.current = null
     setStoryMode(null)
     setStudioPlayRequest(0)
     setStudioReadAlong({ text: '', position: 0, active: false })
@@ -1466,7 +1482,7 @@ export default function SharedStoryPage() {
                 </p> : null}
                 {storyMode === 'listen' ? <details open><summary>Device voice (optional, quality varies)</summary>
                   <p>Prepared cloud recordings do not cover live adventure turns. This option uses your phone&apos;s voice, not Google narration.</p>
-                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} />
+                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} deviceVoice />
                 </details> : null}
                 <details style={{ margin: '1rem 0' }}><summary>{recipientText.yourJourney}</summary>
                 <p>{recipientText.adventureBudget(player.adventure.actionsRemaining, player.adventure.budgetRemaining, player.adventure.budget)}</p>
