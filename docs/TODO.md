@@ -11,9 +11,11 @@ older planning and marketing documents describe a different product direction.
 - [ ] Immediately freeze the minimum public scope and choose/clear a public
       product name; "Muse" remains an internal codename with documented
       naming conflicts.
-- [ ] Before inviting unrelated creators, replace the deployment-wide Creator
-      access code with creator-scoped accounts or per-story capabilities;
-      remove deployment-wide recovery of other creators' private stories.
+- [ ] Creator isolation: code is account-based and the isolation test is
+      repaired (20 November 2026). Still confirm live Supabase accounts and
+      remove the unused `MUSE_CREATOR_ACCESS_CODE` and
+      `NEXT_PUBLIC_MUSE_CREATOR_LOCKED` production variables. See
+      [LAUNCH-READINESS.md](LAUNCH-READINESS.md).
 - [ ] Before public invitations, verify production Supabase/Vercel settings,
       migrations, access controls, backups, error reporting, API/provider
       spending limits and alerts; never expose service-role credentials.

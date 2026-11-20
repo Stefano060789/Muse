@@ -45,7 +45,7 @@ export default function PreSendCheck({ story, hasMedia, hasVoice, uploadPending,
         <div lang={story.brief.language} dir={story.brief.language === 'ar-SA' ? 'rtl' : undefined}>
           <p>Scene {index + 1} of {story.content.scenes.length}</p><h4>{scene.title}</h4><p style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{scene.body}</p><p><strong>Clue:</strong> {scene.clue}</p>
         </div>
-        {story.brief.adventure ? <p>This shows the prepared clue plan. Live AI actions will adapt it, and are not simulated here.</p> : null}
+        {story.brief.adventure ? <p>This shows the prepared clue plan. Live AI actions are designed to adapt it, and are not simulated here.</p> : null}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button type="button" style={{ padding: '0.75rem', minHeight: 44 }} onClick={() => setIndex(index === 0 ? -1 : index - 1)}>{index === 0 ? 'Previous: gift cover' : 'Previous scene'}</button>
           {index < story.content.scenes.length - 1 ?

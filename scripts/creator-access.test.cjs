@@ -48,6 +48,7 @@ async function main() {
         if (name === './sharedStory') return { SharedStoryError }
         if (name === './storyRepository') return { storyStorageMode: () => process.env.STORY_STORAGE || 'supabase' }
         if (name === './shareConsent') return { hasShareConsent: metadata => metadata?.muse_share_teaser_consent?.version === '2026-10-18' }
+        if (name === './accountPermissions') return { accountPermissions: () => undefined }
         throw new Error(`Unexpected account auth dependency: ${name}`)
       }
     })
@@ -82,7 +83,13 @@ async function main() {
       { id: 'local-development' })
 
     const shared = fs.readFileSync(path.join(root, 'src/pages/api/shared-story.ts'), 'utf8')
-    assert.match(shared, /const PLAYER_ACTIONS = \['open', 'next', 'guess', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio'\]/)
+    const actionList = name => JSON.parse(new RegExp(`const ${name} = (\\[[^\\]]*\\])`).exec(shared)[1].replace(/'/g, '"'))
+    const playerActions = actionList('PLAYER_ACTIONS'), ownerActions = actionList('OWNER_ACTIONS')
+    assert.deepEqual(playerActions.filter(action => ownerActions.includes(action)), [], 'No action is both a recipient and a creator action')
+    for (const action of ['manage', 'progress', 'help-code', 'share', 'delete', 'library', 'follow-up', 'media-start', 'voice-start']) {
+      assert.ok(ownerActions.includes(action) && !playerActions.includes(action), `${action} requires the creator capability and account`)
+    }
+    assert.ok(playerActions.includes('redeem-help'), 'Recipients redeem a help code; only creators can issue one')
     assert.match(shared, /requireAccount\(req, res\)/)
     assert.match(shared, /story\.owner_id !== account\.id/)
     assert.match(shared, /listRetained\(account!\.id/)
@@ -93,7 +100,7 @@ async function main() {
     const accountPage = fs.readFileSync(path.join(root, 'src/pages/account.tsx'), 'utf8')
     assert.match(accountPage, /supabase\.auth\.signUp/)
     assert.match(accountPage, /supabase\.auth\.signInWithPassword/)
-    assert.match(accountPage, /Create account/)
+    assert.match(accountPage, /interfaceText\('createAccount'/)
     for (const name of ['shared.tsx', 'story.tsx', 'library.tsx']) {
       const ui = fs.readFileSync(path.join(root, `src/pages/${name}`), 'utf8')
       assert.ok(!ui.includes('x-muse-creator-code'), `${name} must not send a deployment-wide creator code`)

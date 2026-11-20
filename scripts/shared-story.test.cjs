@@ -703,6 +703,12 @@ async function main() {
     assert.equal(recovered.expiresAt, null)
     assert.equal((await api({ action: 'manage', token: recovered.ownerToken })).status, 200)
     assert.equal((await api({ action: 'manage', token: recovered.ownerToken }, 'POST', { authorization: 'Bearer other-account-token' })).status, 404)
+    for (const ownerAction of ['progress', 'share', 'delete', 'title', 'help-code', 'media-delete']) {
+      const foreign = await api({ action: ownerAction, token: recovered.ownerToken, title: 'Taken over', requestId: 'AAAAAAAA' }, 'POST', { authorization: 'Bearer other-account-token' })
+      assert.equal(foreign.status, 404, `another account cannot ${ownerAction} this story`)
+    }
+    assert.equal((await api({ action: 'library' }, 'POST', { authorization: 'Bearer other-account-token' })).body.stories.length, 0,
+      'Another account lists none of this creator\'s stories')
     assert.equal(JSON.stringify(stored), before, 'Recovery does not patch stored hashes')
     const after = stored.id
     await api({ action: 'library', after })

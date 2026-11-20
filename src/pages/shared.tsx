@@ -1633,7 +1633,7 @@ export default function SharedStoryPage() {
               <p>{player.description}</p>
               <p>{player.cooperative
                 ? 'Cooperative participants can see one shared progress state, participant display names, and whose turn is next.'
-                : 'The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you.'} <Link href="/privacy">Privacy</Link></p>
+                : 'The sender can see anonymous playthrough counts, the furthest prepared scene reached, and whether the mystery was solved or revealed without solving. This does not identify you. Anyone who has this link can open the story, so only forward it to people you trust; the sender can replace the link at any time. If you choose to ask for a help code, the sender sees only the request ID you send them.'} <Link href="/privacy">Privacy</Link></p>
               <p>{recipientText.settingsDisclosure}</p>
             </details>
             </>}
@@ -1706,7 +1706,7 @@ export default function SharedStoryPage() {
             {creator.content.scenes.map((scene, index) => (
               <details key={index} style={cardStyle}>
                 <summary style={{ cursor: 'pointer' }}>Scene {index + 1}: {scene.title}</summary>
-                {creator.brief.adventure ? <p>AI adapts this clue to the recipient&apos;s actions.</p> : index + 1 < creator.content.scenes.length ? <>
+                {creator.brief.adventure ? <p>AI is designed to adapt this clue to the recipient&apos;s actions.</p> : index + 1 < creator.content.scenes.length ? <>
                   <h3>Recipient exploration actions</h3>
                   <ul>{(scene.choices || ['Follow the next clue', 'Continue exploring the mystery', 'Look for another detail']).map(choice => <li key={choice}>{choice}</li>)}</ul>
                   <p>All actions continue to the same next scene.</p>

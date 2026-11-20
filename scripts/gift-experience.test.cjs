@@ -18,7 +18,7 @@ const { keepsakeHtml } = moduleFrom('src/lib/storyKeepsake.ts')
 const { wavRecording, VOICE_SAMPLE_RATE } = moduleFrom('src/lib/voiceRecording.ts')
 const brief = {
   creatorName: 'Sender', recipientName: '', narration: 'Warm', setting: '', recipientHints: '',
-  goal: '', solution: '', message: '', durationMinutes: 5,
+  goal: '', solution: '', message: '', durationMinutes: 5, puzzleDifficulty: 'balanced',
   gift: { occasion: 'birthday', dedication: 'For your special day', allowReply: true }
 }
 const draft = () => ({ version: 1, brief: structuredClone(brief), assistanceHintsText: 'One gentle clue', alternativeAnswersText: '', savedAt: '2026-10-15T07:00:00.000Z' })

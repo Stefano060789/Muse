@@ -128,7 +128,7 @@ const checks = [
     assert.match(privacyDisclosure, /up to 30 days/)
     assert.match(privacyDisclosure, /60 seconds and 5 MB/)
     assert.match(privacyDisclosure, /120 general requests per minute/)
-    assert.match(privacyDisclosure, /20 failed creator-code attempts per 10 minutes/)
+    assert.match(privacyDisclosure, /20 failed private operator-access attempts per 10 minutes/)
     assert.match(privacyDisclosure, /5 error-report requests per minute/)
     assert.match(termsDisclosure, /collects no page-view or website-visit analytics/)
     assert.match(termsDisclosure, /not legal approval or a certified legal agreement/)

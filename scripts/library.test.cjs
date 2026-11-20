@@ -453,7 +453,7 @@ try {
       assert.ok(textOf(card).includes('Ending not completed · saved scenes kept'))
       assert.match(textOf(card), /Chapter 2\s+·\s+Following First story/)
       assert.ok(button(card, 'Read saved scenes'))
-      assert.ok(!nodes(card).some(node => node.type === 'personal-story-share-card'))
+      assert.ok(nodes(card).some(node => node.type === 'personal-story-share-card'), 'The card derives an in-progress milestone for unfinished chapters')
       assert.ok(!textOf(card).includes('Completed'))
     } finally { ui.cleanup() }
   })
