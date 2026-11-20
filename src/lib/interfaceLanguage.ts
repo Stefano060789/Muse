@@ -5,6 +5,7 @@ export const INTERFACE_LANGUAGE_KEY = 'muse-interface-language'
 export const INTERFACE_LANGUAGE_CHANGE_EVENT = 'muse-interface-language-changed'
 const english = {
   navHome: 'Home',
+  navMenu: 'Menu',
   navMyself: 'Myself',
   navStories: 'Stories',
   navArchive: 'Archive',
@@ -42,6 +43,8 @@ const english = {
   homeTitle: 'A story to get lost in.',
   homeGiftTitle: 'A gift story they’ll remember.',
   homeSubtitle: 'Muse turns your memories, interests, and relationships into stories you can keep building together.',
+  homePersonalDescription: 'An adventure of your own, shaped by your choices.',
+  homeSharedDescription: 'A mystery for someone special, or a journey for two.',
   homeMyself: 'Myself',
   homeJustForYou: 'Just for you',
   homeForSomeone: 'For someone else',
@@ -61,6 +64,9 @@ type InterfaceCopy = Record<InterfaceCopyKey, string>
 const copies: Record<StoryLanguageCode, InterfaceCopy> = {
   'en-US': english,
   'it-IT': {
+    navMenu: 'Menu',
+    homePersonalDescription: 'Un’avventura tutta tua, guidata dalle tue scelte.',
+    homeSharedDescription: 'Un mistero per una persona speciale, o un viaggio in due.',
     navHome: 'Home', navMyself: 'Io', navStories: 'Storie', navArchive: 'Archivio', navSettings: 'Impostazioni', navPlans: 'Prezzi', museHome: 'Home di Muse',
     settingsEyebrow: 'Le tue preferenze Muse', settingsTitle: 'Impostazioni', settingsSubtitle: 'Gestisci account, profilo, lingua e notifiche.',
     profileHeading: 'Il tuo profilo', profileNameLabel: 'Il tuo nome', profileNameHelp: 'Viene usato come nome quando crei una storia condivisa e partecipi a storie cooperative.', saveProfile: 'Salva nome', profileSaved: 'Il tuo nome è stato salvato.',
@@ -70,6 +76,9 @@ const copies: Record<StoryLanguageCode, InterfaceCopy> = {
     welcomeEyebrow: 'Piccole avventure. Significati personali.', homeTitle: 'Una storia in cui perdersi.', homeGiftTitle: 'Una storia regalo da ricordare.', homeSubtitle: 'Muse trasforma ricordi, interessi e relazioni in storie da costruire insieme.', homeMyself: 'Io', homeJustForYou: 'Solo per te', homeForSomeone: 'Per qualcun altro', homeCreatePersonal: 'Le mie storie', homeCreatePersonalHelp: 'Scegli come vuoi sentirti e scrivi o racconta le tue scelte mentre Muse crea la tua avventura.', homeOpenPersonal: 'Apri Le mie storie', homeShareTogether: 'Condividi una storia e gioca insieme', homeShareHelp: 'Crea una storia interattiva e invia al gruppo un link privato. Invita membri Muse e ospiti a condividere i progressi e alternarsi da dispositivi diversi.', homeCreateGift: 'Crea e condividi una storia', sample: 'Prova un esempio di 2 minuti', sampleNote: 'Gratis, creato a mano, senza account.'
   },
   'es-ES': {
+    navMenu: 'Menú',
+    homePersonalDescription: 'Una aventura propia, guiada por tus decisiones.',
+    homeSharedDescription: 'Un misterio para alguien especial o un viaje para dos.',
     navHome: 'Inicio', navMyself: 'Yo', navStories: 'Historias', navArchive: 'Archivo', navSettings: 'Ajustes', navPlans: 'Precios', museHome: 'Inicio de Muse',
     settingsEyebrow: 'Tus preferencias de Muse', settingsTitle: 'Ajustes', settingsSubtitle: 'Gestiona tu cuenta, perfil, idioma y notificaciones.',
     profileHeading: 'Tu perfil', profileNameLabel: 'Tu nombre', profileNameHelp: 'Se usa como tu nombre al crear historias compartidas y participar en historias cooperativas.', saveProfile: 'Guardar nombre', profileSaved: 'Tu nombre se ha guardado.',
@@ -79,6 +88,9 @@ const copies: Record<StoryLanguageCode, InterfaceCopy> = {
     welcomeEyebrow: 'Pequeñas aventuras. Significado personal.', homeTitle: 'Una historia para perderse.', homeGiftTitle: 'Una historia-regalo para recordar.', homeSubtitle: 'Muse convierte tus recuerdos, intereses y relaciones en historias que podéis seguir creando juntos.', homeMyself: 'Yo', homeJustForYou: 'Solo para ti', homeForSomeone: 'Para otra persona', homeCreatePersonal: 'Mis historias', homeCreatePersonalHelp: 'Elige cómo quieres sentirte y escribe o dicta tus decisiones mientras Muse crea tu aventura personal.', homeOpenPersonal: 'Abrir Mis historias', homeShareTogether: 'Comparte una historia y jugad juntos', homeShareHelp: 'Crea una historia interactiva y envía un enlace privado al grupo. Invita a miembros de Muse y a invitados a compartir el progreso y turnarse desde distintos dispositivos.', homeCreateGift: 'Crear y compartir una historia', sample: 'Prueba una muestra de 2 minutos', sampleNote: 'Gratis, creada a mano y sin cuenta.'
   },
   'zh-CN': {
+    navMenu: '菜单',
+    homePersonalDescription: '一段属于你的冒险，由你的选择塑造。',
+    homeSharedDescription: '送给特别之人的谜题，或一段双人旅程。',
     navHome: '首页', navMyself: '自我', navStories: '故事', navArchive: '故事库', navSettings: '设置', navPlans: '价格', museHome: 'Muse 首页',
     settingsEyebrow: 'Muse 偏好设置', settingsTitle: '设置', settingsSubtitle: '管理账户、个人资料、语言和通知偏好。',
     profileHeading: '个人资料', profileNameLabel: '你的名字', profileNameHelp: '创建共享故事或参与合作故事时会使用此名称。', saveProfile: '保存姓名', profileSaved: '姓名已保存。',
@@ -88,6 +100,9 @@ const copies: Record<StoryLanguageCode, InterfaceCopy> = {
     welcomeEyebrow: '小小冒险，个人意义。', homeTitle: '沉浸于一个故事。', homeGiftTitle: '一份令人难忘的故事礼物。', homeSubtitle: 'Muse 将回忆、兴趣和关系变成可以一起续写的故事。', homeMyself: '自我', homeJustForYou: '只为你', homeForSomeone: '送给某人', homeCreatePersonal: '我的故事', homeCreatePersonalHelp: '选择你想感受的心情，然后写下或说出选择，让 Muse 为你构建专属冒险。', homeOpenPersonal: '打开我的故事', homeShareTogether: '分享故事，一起游玩', homeShareHelp: '创建互动故事并发送私人链接。邀请 Muse 成员和访客在不同设备上共享进度、轮流行动。', homeCreateGift: '创建并分享故事', sample: '体验 2 分钟示例', sampleNote: '免费、手工制作，无需账户。'
   },
   'hi-IN': {
+    navMenu: 'मेन्यू',
+    homePersonalDescription: 'आपका अपना रोमांच, आपकी पसंद से आकार लेता हुआ।',
+    homeSharedDescription: 'किसी खास के लिए एक रहस्य, या दो लोगों का सफ़र।',
     navHome: 'होम', navMyself: 'मैं', navStories: 'कहानियाँ', navArchive: 'संग्रह', navSettings: 'सेटिंग्स', navPlans: 'कीमतें', museHome: 'Muse होम',
     settingsEyebrow: 'आपकी Muse प्राथमिकताएँ', settingsTitle: 'सेटिंग्स', settingsSubtitle: 'अपना खाता, प्रोफ़ाइल, भाषा और सूचनाएँ प्रबंधित करें।',
     profileHeading: 'आपकी प्रोफ़ाइल', profileNameLabel: 'आपका नाम', profileNameHelp: 'साझा कहानी बनाने और सहयोगी कहानियों में भाग लेने पर यही नाम दिखेगा।', saveProfile: 'नाम सहेजें', profileSaved: 'आपका नाम सहेज लिया गया है।',
@@ -97,6 +112,9 @@ const copies: Record<StoryLanguageCode, InterfaceCopy> = {
     welcomeEyebrow: 'छोटे रोमांच। निजी मायने।', homeTitle: 'एक कहानी जिसमें खो जाएँ।', homeGiftTitle: 'याद रहने वाली उपहार कहानी।', homeSubtitle: 'Muse आपकी यादों, रुचियों और रिश्तों को ऐसी कहानियों में बदलता है जिन्हें आप साथ मिलकर आगे बढ़ा सकते हैं।', homeMyself: 'मैं', homeJustForYou: 'सिर्फ़ आपके लिए', homeForSomeone: 'किसी और के लिए', homeCreatePersonal: 'मेरी कहानियाँ', homeCreatePersonalHelp: 'अपनी मनचाही भावना चुनें और Muse के साथ अपनी निजी कहानी बनाने के लिए लिखें या बोलें।', homeOpenPersonal: 'मेरी कहानियाँ खोलें', homeShareTogether: 'कहानी साझा करें और साथ खेलें', homeShareHelp: 'इंटरैक्टिव कहानी बनाएँ और समूह को निजी लिंक भेजें। Muse सदस्यों और मेहमानों को अलग-अलग डिवाइस से प्रगति साझा करने और बारी लेने के लिए आमंत्रित करें।', homeCreateGift: 'कहानी बनाएँ और साझा करें', sample: '2 मिनट का नमूना आज़माएँ', sampleNote: 'मुफ़्त, हाथ से बनाया गया, खाता आवश्यक नहीं।'
   },
   'uk-UA': {
+    navMenu: 'Меню',
+    homePersonalDescription: 'Власна пригода, яку формують ваші рішення.',
+    homeSharedDescription: 'Таємниця для особливої людини або подорож удвох.',
     navHome: 'Головна', navMyself: 'Я', navStories: 'Історії', navArchive: 'Архів', navSettings: 'Налаштування', navPlans: 'Ціни', museHome: 'Головна Muse',
     settingsEyebrow: 'Ваші налаштування Muse', settingsTitle: 'Налаштування', settingsSubtitle: 'Керуйте обліковим записом, профілем, мовою та сповіщеннями.',
     profileHeading: 'Ваш профіль', profileNameLabel: 'Ваше ім’я', profileNameHelp: 'Це ім’я використовуватиметься під час створення спільної історії та участі в кооперативних історіях.', saveProfile: 'Зберегти ім’я', profileSaved: 'Ваше ім’я збережено.',
@@ -106,6 +124,9 @@ const copies: Record<StoryLanguageCode, InterfaceCopy> = {
     welcomeEyebrow: 'Невеликі пригоди. Особливий сенс.', homeTitle: 'Історія, у якій можна загубитися.', homeGiftTitle: 'Історія-подарунок, яку пам’ятатимуть.', homeSubtitle: 'Muse перетворює спогади, інтереси та стосунки на історії, які можна розвивати разом.', homeMyself: 'Я', homeJustForYou: 'Лише для вас', homeForSomeone: 'Для когось іншого', homeCreatePersonal: 'Мої історії', homeCreatePersonalHelp: 'Оберіть настрій, а потім пишіть або промовляйте рішення, поки Muse створює вашу пригоду.', homeOpenPersonal: 'Відкрити мої історії', homeShareTogether: 'Поділіться історією та грайте разом', homeShareHelp: 'Створіть інтерактивну історію та надішліть групі приватне посилання. Запросіть учасників Muse і гостей спільно проходити історію та ходити по черзі з різних пристроїв.', homeCreateGift: 'Створити й поширити історію', sample: 'Спробувати 2-хвилинний приклад', sampleNote: 'Безкоштовно, створено вручну, без облікового запису.'
   },
   'ar-SA': {
+    navMenu: 'القائمة',
+    homePersonalDescription: 'مغامرة تخصّك، ترسم اختياراتك مسارها.',
+    homeSharedDescription: 'لغز لشخص مميز، أو رحلة لشخصين.',
     navHome: 'الرئيسية', navMyself: 'أنا', navStories: 'القصص', navArchive: 'الأرشيف', navSettings: 'الإعدادات', navPlans: 'الأسعار', museHome: 'الصفحة الرئيسية لـ Muse',
     settingsEyebrow: 'تفضيلات Muse الخاصة بك', settingsTitle: 'الإعدادات', settingsSubtitle: 'أدر حسابك وملفك الشخصي ولغتك وإشعاراتك.',
     profileHeading: 'ملفك الشخصي', profileNameLabel: 'اسمك', profileNameHelp: 'يُستخدم هذا الاسم عند إنشاء قصة مشتركة والمشاركة في القصص التعاونية.', saveProfile: 'حفظ الاسم', profileSaved: 'تم حفظ اسمك.',

@@ -48,6 +48,7 @@ function mount(file, dependencies, browser) {
     '../lib/profile': dependencies.profile,
     '../lib/useStoryInteraction': dependencies.useStoryInteraction,
     '../lib/storyLanguage': dependencies.storyLanguage,
+    '../lib/storiesHubCopy': plain('src/lib/storiesHubCopy.ts'),
     '../lib/storyPreferences': dependencies.storyPreferences,
     '../lib/interfaceLanguage': dependencies.interfaceLanguage,
     '../lib/interfacePages': dependencies.interfacePages,
@@ -103,6 +104,7 @@ function homeLibrary(entries, error = null, selectionError = false) {
   const component = mount('src/pages/index.tsx', {
     interfaceLanguage: { useInterfaceLanguage: () => 'en-US', interfaceText: key => ({
       homeTitle: 'A story to get lost in.', homeGiftTitle: 'A gift story they’ll remember.',
+      homeSubtitle: 'Muse turns your memories, interests, and relationships into stories you can keep building together.',
       welcomeEyebrow: 'Small adventures. Personal meaning.', homeMyself: 'Myself',
       homeJustForYou: 'Just for you', homeForSomeone: 'For someone else',
       homeCreatePersonal: 'My stories', homeOpenPersonal: 'Open My stories',
@@ -171,8 +173,13 @@ function main() {
       entry('completed', '2026-10-17T00:00:00.000Z', true)
     ])
     const tree = ui.flushEffects()
-    assert.ok(!text(tree).includes('Muse turns your memories, interests, and relationships into stories you can keep building together.'),
-      'Home keeps only the essentials')
+    assert.ok(text(tree).includes('Muse turns your memories, interests, and relationships into stories you can keep building together.'))
+    assert.ok(!text(tree).includes('A gift story they’ll remember.'), 'The hero has one clear headline')
+    assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/shared#new'
+      && node.props['aria-labelledby'] === 'shared-story-title'), 'The whole Shared Story card is an accessible creation link')
+    assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/myself'), 'Personal touches remain available')
+    assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/demo'), 'The free sample remains available')
+    assert.equal(nodes(tree).find(node => node.type === 'source').props.media, '(max-width: 700px)', 'Phones use the panoramic composition')
     assert.ok(text(tree).includes('Story newer-active'))
     assert.ok(text(tree).includes('2/3'))
     assert.equal(button(tree, 'Continue story').props.type, 'button')

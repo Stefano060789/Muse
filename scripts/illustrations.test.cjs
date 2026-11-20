@@ -31,6 +31,12 @@ for (const asset of Object.values(ILLUSTRATION_ASSETS)) {
   assert.equal(ids.length, new Set(ids).size, 'SVG IDs must be unique')
   for (const match of svg.matchAll(/url\(#([^)]+)\)/g)) assert.ok(ids.includes(match[1]), 'Gradient/pattern reference must resolve')
 }
+for (const asset of ['garden-of-stories-portrait.webp', 'garden-of-stories-panorama.webp']) {
+  const image = fs.readFileSync(path.join(root, 'public', 'illustrations', asset))
+  assert.equal(image.toString('ascii', 0, 4), 'RIFF')
+  assert.equal(image.toString('ascii', 8, 12), 'WEBP')
+  assert.ok(image.length < (asset.includes('panorama') ? 100000 : 220000), 'Home artwork stays within its responsive image budget')
+}
 const jsx = (type, props) => ({ type, props })
 const component = { exports: {} }
 new Function('module', 'exports', 'require', compile('src/components/PageIllustration.tsx'))(component, component.exports, id => {

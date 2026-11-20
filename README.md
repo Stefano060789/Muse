@@ -4,9 +4,15 @@
 
 Muse takes its visual direction from Leonardo da Vinci's *Annunciation*:
 warm ivory and limestone surfaces, cypress green, terracotta accents, soft
-daylight and quiet architectural framing. The local SVG illustrations are
-original garden, passage and reading-room compositions, not reproductions of
-the painting. Existing illustration URLs are preserved for compatibility.
+daylight and quiet architectural framing. Home uses a restrained editorial
+layout, fully linked story choices and a compact, keyboard-accessible mobile
+navigation. The Home artwork, "The Garden of Stories", is an original
+composition inspired by Leonardo's palette and sfumato (not a reproduction): a
+glowing book on a stone pedestal releasing swallows over a misty Tuscan garden.
+It is generated from code by `node scripts/render-home-art.cjs` into a desktop
+portrait and a lighter phone panorama (local WebP; no image service is called).
+The other local SVG illustrations are original garden, passage and reading-room
+compositions. Existing illustration URLs are preserved for compatibility.
 Shared global styles carry the palette across navigation, creation, reading,
 pricing and settings without changing story content or interaction.
 
@@ -461,16 +467,16 @@ saves still cannot start a new chapter this way.
 Chapter metadata uses existing JSON storage; no database migration is required.
 Scenes use stable numbers while unfolding, not a growing "Scene 2 of 2" total.
 **Archive** (`/library`) keeps the saved collection and gift management tools.
+It shows completed scene counts for personal stories and, once progress is
+loaded, the furthest playthrough for each gift. Fixed stories show a total;
+unfolding stories show a count only. Reaching the final scene does not by itself
+mean it was completed.
 **Close story** hides a personal story from My stories without concluding or
 deleting it. **Restore to My stories** in Archive brings it back so it can
 continue from the same saved progress. Account journeys sync this reversible
 archive state across devices; legacy browser-only stories remain local.
 Closing/restoring consumes no AI interaction and never resets story allowances.
 If an account journey is unavailable (404), moving fails explicitly and offers
-It shows completed scene counts for personal stories and, once progress is
-loaded, the furthest playthrough for each gift. Fixed stories show a total;
-unfolding stories show a count only. Reaching the final scene does not by itself
-mean it was completed.
 an opt-in browser-copy-only move. This retains its scenes and journey metadata;
 it does not restore online access or promise that the story can continue.
 Hosted installations must apply the updated `supabase/personal-journeys.sql`
@@ -1516,16 +1522,16 @@ answers remain private; matching is normalized exact matching, not fuzzy or
 AI-judged correctness. Avoid writing the final answer or private message in
 an assistance hint unless you intentionally want to reveal it when requested.
 
+My Story AI turns follow a three-try obstacle rule: the story adapts after a
+failed attempt with a subtle hint, then a clearer one, and after the third
+try continues along an alternative path with a modest consequence. This is
+guided by the prompt and the last three actions, not a deterministic counter.
+
 SQLite upgrades the existing local session schema in place. Hosted Supabase
 installations must reapply `supabase/shared-stories.sql` for the updated hint
 progress schema/RPC before using puzzle assistance.
 
 ### Validation
-
-My Story AI turns follow a three-try obstacle rule: the story adapts after a
-failed attempt with a subtle hint, then a clearer one, and after the third
-try continues along an alternative path with a modest consequence. This is
-guided by the prompt and the last three actions, not a deterministic counter.
 
 - `npm run test:personal-journey` - 23 mocked-provider checks using actual
   handlers and SQLite, including cross-process concurrency/restart, all

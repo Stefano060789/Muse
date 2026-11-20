@@ -36,6 +36,9 @@ for (const [pathname, selected] of [
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/)[1]
+  assert.match(html, /aria-expanded="false"/, 'The mobile disclosure starts closed')
+  assert.match(html, /aria-controls="muse-primary-navigation"/)
+  assert.match(html, /<nav id="muse-primary-navigation"[^>]*data-open="false"/, 'One navigation is shared by desktop and mobile')
   assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(match => match[1]), expected)
   const active = [...nav.matchAll(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/g)].map(match => match[1])
   assert.deepEqual(active, selected ? [selected] : [], pathname)
@@ -44,10 +47,13 @@ for (const [pathname, selected] of [
 const recipient = render(React.createElement(Navigation, { pathname: '/shared', recipient: true }))
 assert.ok(recipient.includes('Muse home'))
 assert.ok(!recipient.includes('<nav'), 'Recipients have a quiet brand-only header')
+assert.ok(!recipient.includes('<button'), 'Recipients have no empty menu toggle')
 const italianNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'it-IT' }))
 assert.ok(italianNavigation.includes('Impostazioni'), 'Interface language updates navigation labels')
 assert.ok(italianNavigation.includes('Prezzi'), 'Plans are visible in the localized primary navigation')
 assert.ok(italianNavigation.includes('Storie'), 'Stories is the localized hub destination')
+const arabicNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'ar-SA' }))
+assert.ok(arabicNavigation.includes('aria-label="القائمة"'), 'The mobile menu has a localized accessible name')
 const storiesHub = render(React.createElement(StoriesPage))
 const hubLinks = [...storiesHub.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)]
 assert.ok(hubLinks.some(([, href, label]) => href === '/my-stories' && label.includes('Open My stories')), 'My Story opens the personal story collection')
