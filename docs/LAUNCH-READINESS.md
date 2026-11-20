@@ -2,7 +2,7 @@
 
 Prepared 20 November 2026 from the repository, Vercel project metadata (variable
 names only, values hidden) and public provider pages. Nothing here is legal
-clearance, and nothing in production was changed. The earlier panel evaluation
+clearance. The earlier panel evaluation
 (`Business Memory/Tiles/unwritten-you/evaluation-2026-11-20.md`) recommended a
 smaller pilot first; the owner has chosen to launch the full product, so this
 list is the work needed to make that launch defensible.
@@ -11,11 +11,11 @@ list is the work needed to make that launch defensible.
 
 | Item | Status |
 |---|---|
-| Creator isolation | **Code is already account-based** (Supabase sign-in, `owner_id`, per-account recovery keys, creator-only actions). The security test for it had silently stopped running (stale mocks); it is repaired and extended to prove another account cannot manage, list, share, delete, rename or issue help codes for a story. **Production check still open:** `MUSE_CREATOR_ACCESS_CODE` and `NEXT_PUBLIC_MUSE_CREATOR_LOCKED` still exist as production variables although no source file reads them; remove them after approval. Creator accounts must also be confirmed on the live Supabase project. |
+| Creator isolation | **Code is account-based** (Supabase sign-in, `owner_id`, per-account recovery keys, creator-only actions). Repaired tests cover another account attempting creator actions, but they do not prove hosted isolation. The two unused creator-lock production variables were removed with owner approval; creator accounts and isolation must still be confirmed on the live Supabase project. |
 | Backups | Tooling exists and passes its tests, but **nothing is configured**: this computer has no `psql`, `pg_dump` or `pg_restore`, no backup key, directory or database URL. See "Backups" below. Not done. |
-| Spending cap | **Needs your account settings**; I cannot set them. In-app cap: 100 AI attempts per day (default; no override variable is set). Bound and exact steps below. Not done. |
+| Spending cap | **Not done or verified.** An application request counter is not a hard euro spending limit. Provider and hosting account limits and alerts need separate verification. |
 | `test:library` failure | Fixed (the test expected no share card on an unfinished chapter; the component deliberately shows an in-progress card). Three more stale or broken tests were repaired, one of them caused by my 20 November change (`gift-ui`). |
-| Hosted Supabase check | New read-only script `supabase/verify-production.sql`. **Not run**: it needs you to run it in the Supabase SQL editor. |
+| Hosted Supabase check | New read-only script `supabase/verify-production.sql`. **Not run**: it needs you to run it in the Supabase SQL editor. It is preliminary metadata only, not proof of migration versions, correct function definitions, or RLS isolation. |
 | "Designed to adapt" wording | Done in the creator UI and pre-send check. The README already says the three-try rule is prompt guidance, not a counter. |
 | Privacy notice accuracy | Updated: help codes and attempt counts, and a mislabelled limit (it said "creator-code" attempts; the limit protects the private operator dashboard). Recipients are now told that a link can be forwarded and what the sender can see. |
 | Asset provenance | `docs/ASSET-PROVENANCE.md` lists every shipped file and what is unproven. Most rows need you. |
@@ -39,35 +39,23 @@ Missing or unexpected, and why it matters:
 - **No `MUSE_BACKUP_*` variables.** Expected, since backups are not set up.
 - `LLM_PROVIDER` is stored as a hidden secret, so I could not confirm that
   Anthropic is the live provider. The cost bound below assumes Anthropic.
-- Two unused creator-lock variables (see above).
+- The two unused creator-lock variables were removed on 20 November 2026; the
+  separate operator-access variable was not removed.
 
-## Spending bound for the AI provider
+## AI spending
 
-Published Claude Haiku 5.5 price (prompts up to 100,000 tokens): $0.10 per million
-input tokens and $0.50 per million output tokens, in USD
-([Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing),
-read 20 November 2026). The code limits one call to 9,000 output tokens
-(`src/lib/storyProvider.ts`) and the app to 100 attempts per day
-(`MUSE_AI_DAILY_ATTEMPT_CAP`, default 100; applies only once the operations
-migration is live, which the SQL check confirms).
-
-These are my estimates, not provider data:
-
-- A realistic worst call (35,000 input and 9,000 output tokens) costs about
-  $0.008. 100 attempts per day is about **$0.80 per day**.
-- A pathological call beyond 100,000 input tokens uses the long-context price
-  and could cost about $0.09. 100 such calls per day is about **$9 per day**.
-- A failed call that is retried automatically may count as more than one
-  attempt on the provider's side. I did not verify this.
-
-Even the pathological case is small, but a hard limit belongs in the provider
-account, not only in the app.
+The live provider, model, deployed counter and provider billing behavior have
+not been verified. No reliable cost ceiling can be inferred from the default
+application attempt count. Verify actual provider pricing, input and output
+usage, retries and all other chargeable services before estimating costs.
+Confirm whether each account offers a genuinely enforced limit; alerts,
+application counters and budget settings may not stop spending.
 
 ## Settings you need to make (I cannot do these)
 
-1. **Anthropic Console:** set a monthly spend limit for the workspace that owns
-   the production key, and a notification threshold below it. Pick the USD
-   amount from the EUR amount you accept, using a dated exchange rate.
+1. **Live AI provider:** identify the provider and model, then check whether its
+   account offers an enforced spending limit and alerts. Agree the amounts and
+   currency conversion before changing billing settings.
 2. **Vercel:** confirm the plan, and under Billing turn on spend management with
    an alert and, if offered, automatic pause.
 3. **Supabase:** confirm the plan and the spend cap setting. Read the project's
