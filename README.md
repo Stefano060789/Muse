@@ -467,6 +467,10 @@ continue from the same saved progress. Account journeys sync this reversible
 archive state across devices; legacy browser-only stories remain local.
 Closing/restoring consumes no AI interaction and never resets story allowances.
 If an account journey is unavailable (404), moving fails explicitly and offers
+It shows completed scene counts for personal stories and, once progress is
+loaded, the furthest playthrough for each gift. Fixed stories show a total;
+unfolding stories show a count only. Reaching the final scene does not by itself
+mean it was completed.
 an opt-in browser-copy-only move. This retains its scenes and journey metadata;
 it does not restore online access or promise that the story can continue.
 Hosted installations must apply the updated `supabase/personal-journeys.sql`
@@ -1496,9 +1500,18 @@ listed as a selectable choice. New AI stories include three safe actions
 per scene; older stories use disclosed standard navigation actions.
 
 Creators can supply up to three progressively stronger assistance hints and
-up to five approved alternative answers, one per line. Hints are optional
-and requested individually by the recipient, without a paid AI call or
-advancing to the next scene. Only requested hints are revealed. Alternative
+up to five approved alternative answers, one per line. Write the first hint
+subtly and the last clearly. At the final answer, each unsuccessful answer
+automatically reveals the next hint, up to three; recipients can also ask for
+the remaining hints, without a paid AI call or advancing to the next scene.
+After three unsuccessful answers the recipient sees an 8-character request ID.
+The signed-in creator enters it under **Share and sender tools → Private
+ending details → Help a stuck recipient** to get a code. The code works only
+for that playthrough, after three unsuccessful answers, and solves through the
+normal ending path; it does not expose the answer, needs no database
+migration, stops working when the creator rotates the recipient link, and
+uses the existing guess rate limits. Adventure stories and non-answer endings
+do not offer it. Alternative
 answers remain private; matching is normalized exact matching, not fuzzy or
 AI-judged correctness. Avoid writing the final answer or private message in
 an assistance hint unless you intentionally want to reveal it when requested.
@@ -1508,6 +1521,11 @@ installations must reapply `supabase/shared-stories.sql` for the updated hint
 progress schema/RPC before using puzzle assistance.
 
 ### Validation
+
+My Story AI turns follow a three-try obstacle rule: the story adapts after a
+failed attempt with a subtle hint, then a clearer one, and after the third
+try continues along an alternative path with a modest consequence. This is
+guided by the prompt and the last three actions, not a deterministic counter.
 
 - `npm run test:personal-journey` - 23 mocked-provider checks using actual
   handlers and SQLite, including cross-process concurrency/restart, all

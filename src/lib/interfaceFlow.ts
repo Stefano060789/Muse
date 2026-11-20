@@ -57,7 +57,7 @@ const english = {
   giftNarration: 'Voice style',
   optional: '(optional)',
   onePerLine: 'One per line',
-  hintsHelp: 'Shown on request; no scene is skipped.',
+  hintsHelp: 'Write them from subtle to clear. Each wrong answer reveals the next one; recipients can also ask.',
   alternativesHelp: 'Each accepted answer opens the same ending.',
   interaction: 'How to respond',
   freeInput: 'Write or speak',

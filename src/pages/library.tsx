@@ -163,8 +163,11 @@ export default function LibraryPage() {
                 return <>
                   <p>{entry.story.journey?.status === 'exhausted' ? chapterRecoveryCopy(interfaceLanguage).exhausted
                     : completed ? text('storyCompleted', interfaceLanguage)
-                      : entry.story.journey ? `${text('inProgress', interfaceLanguage)} · ${collectionText.scene(entry.story.currentStep + 1)}`
-                        : `${text('inProgress', interfaceLanguage)} · ${collectionText.sceneRange(Math.min(entry.story.currentStep + 1, entry.story.scenes.length), entry.story.scenes.length)}`}</p>
+                      : text('inProgress', interfaceLanguage)}</p>
+                  <p>{collectionText.completedScenes(
+                    completed ? entry.story.scenes.length : entry.story.currentStep,
+                    entry.story.journey ? undefined : entry.story.scenes.length
+                  )}</p>
                   {entry.story.chapter ? <p>{entry.story.chapter.parentTitle
                     ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
                     : collectionText.chapter(entry.story.chapter.number)}</p> : null}

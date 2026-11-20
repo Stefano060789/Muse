@@ -57,6 +57,8 @@ export interface StoryRepository {
   delete(id: string): Promise<void>
   rotate(id: string, playHash: string): Promise<void>
   advance(id: string, sessionHash: string, action: SharedStoryAction, guess: string, playHash?: string, cooperativeUserId?: string): Promise<PlayerState>
+  /** Answers submitted by one playthrough, including a correct one; 0 when it has not started. */
+  attempts(id: string, sessionHash: string): Promise<number>
   reserve(clientHash: string, kind: RequestKind): Promise<boolean>
   adventure(request: AdventureRequest): Promise<AdventureResult>
   cooperativeReady(): Promise<void>
@@ -148,7 +150,9 @@ export function storyRepository(): StoryRepository {
         sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', false).eq('skipped', false),
         sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', true),
         sessions().select('story_id', { count: 'exact', head: true }).eq('story_id', storyId).eq('solved', false).eq('skipped', true),
-        sessions().select('current_scene').eq('story_id', storyId).order('current_scene', { ascending: false }).limit(1)
+        sessions().select('current_scene,solved,skipped').eq('story_id', storyId)
+          .order('current_scene', { ascending: false }).order('solved', { ascending: false })
+          .order('skipped', { ascending: false }).limit(1)
       ])
       for (const result of [active, solved, skipped, furthest]) if (result.error) throw storyStorageError(result.error)
       const counts = [active.count, solved.count, skipped.count]
@@ -171,7 +175,12 @@ export function storyRepository(): StoryRepository {
         scene = scene === null ? null : 0
         for (const count of completed.values()) scene = Math.max(scene ?? 0, count)
       }
-      return { opened: active.count! + solved.count! + skipped.count!, inProgress: active.count!, solved: solved.count!, skipped: skipped.count!, furthestScene: scene }
+      const furthestPlayer = furthest.data[0]
+      if (furthestPlayer && (typeof furthestPlayer.solved !== 'boolean' || typeof furthestPlayer.skipped !== 'boolean')) {
+        throw storyStorageError()
+      }
+      return { opened: active.count! + solved.count! + skipped.count!, inProgress: active.count!, solved: solved.count!, skipped: skipped.count!, furthestScene: scene,
+        ...(!adventure ? { furthestSceneFinished: Boolean(furthestPlayer?.solved || furthestPlayer?.skipped) } : {}) }
     },
     async studio(request) {
       const { data, error } = await db.rpc('muse_studio_narration', { request })
@@ -386,6 +395,14 @@ export function storyRepository(): StoryRepository {
         .select('id').maybeSingle()
       if (error) throw storyStorageError(error)
       if (!data) throw new SharedStoryError('This story link is invalid, expired, or has been deleted.', 404)
+    },
+    async attempts(id, sessionHash) {
+      const { data, error } = await db.from('shared_story_sessions').select('attempts')
+        .eq('story_id', id).eq('player_hash', sessionHash).maybeSingle()
+      if (error) throw storyStorageError(error)
+      if (!data) return 0
+      if (!Number.isSafeInteger(data.attempts) || data.attempts < 0) throw storyStorageError()
+      return data.attempts
     },
     async delete(id) {
       const { error } = await db.from('shared_stories').delete().eq('id', id)

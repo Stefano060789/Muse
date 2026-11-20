@@ -27,6 +27,7 @@ import { registrationCopy } from '../lib/registrationCopy'
 import { sharedCreationCopy } from '../lib/sharedCreationCopy'
 import { parseSuggestedChoices } from '../lib/freeformStory'
 import { STORY_LANGUAGES, storyLanguage, recipientCopy, type StoryLanguageCode } from '../lib/storyLanguage'
+import { helpCopy } from '../lib/sharedStoryHelpCopy'
 import { parseSharedStoryTranslation, type SharedStoryTranslation } from '../lib/sharedStoryTranslation'
 import { GIFT_DRAFT_KEY, GIFT_OCCASIONS, parseGiftDraft, type GiftDraft, type GiftOccasion } from '../lib/storyGift'
 import { readDraft, removeDraft, writeDraft } from '../lib/browserDrafts'
@@ -288,6 +289,9 @@ export default function SharedStoryPage() {
     setFollowUpRomanceConfirmed(false)
   }, [permissions.accountId])
   const [replyText, setReplyText] = useState('')
+  const [helpCodeInput, setHelpCodeInput] = useState('')
+  const [ownerHelpRequest, setOwnerHelpRequest] = useState('')
+  const [ownerHelpCode, setOwnerHelpCode] = useState('')
   const [replySent, setReplySent] = useState(false)
   const [giftOpened, setGiftOpened] = useState(false)
   const [pendingDraft, setPendingDraft] = useState<GiftDraft | null>(null)
@@ -392,6 +396,7 @@ export default function SharedStoryPage() {
   const activeReaderLanguage = readerLanguage || player?.language || romanceNotice?.language || 'en-US'
   const activeReaderTranslation = readerTranslation?.language === activeReaderLanguage ? readerTranslation : null
   const recipientText = recipientCopy(activeReaderLanguage)
+  const helpText = helpCopy(activeReaderLanguage)
   const recipientLanguage = storyLanguage(activeReaderLanguage)
   const recipientEnding = sharedCreationCopy(recipientLanguage.code)
   const romanceText = romanceCopy(romanceNotice?.language || player?.language)
@@ -1191,18 +1196,34 @@ export default function SharedStoryPage() {
     }
   }
 
-  const act = async (action: 'guess' | 'next' | 'hint' | 'skip' | 'cooperative-pass' | 'ending-choice', choiceIndex?: number) => {
+  const act = async (action: 'guess' | 'next' | 'hint' | 'skip' | 'cooperative-pass' | 'ending-choice' | 'redeem-help', choiceIndex?: number) => {
     if (action === 'skip' && !window.confirm(recipientText.skipConfirm)) return
     setBusy(true)
     setError('')
     interaction.cancelRecording()
     narrator.stop()
     try {
-      const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}), ...(action === 'ending-choice' ? { choiceIndex } : {}) })
+      const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'redeem-help' ? { code: helpCodeInput } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}), ...(action === 'ending-choice' ? { choiceIndex } : {}) })
       applyRecipientPlayer(result.player)
+      if (action === 'redeem-help') { setHelpCodeInput(''); setNotice(helpText.redeemed) }
       if (action !== 'hint') setGuess('')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not continue the story.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const requestHelpCode = async () => {
+    if (!creator) return
+    setBusy(true)
+    setError('')
+    setOwnerHelpCode('')
+    try {
+      const result = await request<{ code: string }>({ action: 'help-code', token: creator.ownerToken, requestId: ownerHelpRequest })
+      setOwnerHelpCode(result.code)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not create a help code.')
     } finally {
       setBusy(false)
     }
@@ -1565,8 +1586,18 @@ export default function SharedStoryPage() {
                     <DictationButton label={recipientText.dictateAnswer} stopLabel={recipientText.stopDictation} stoppingLabel={recipientText.finishingDictation} disabled={busy || !recipientDraft.ready || Boolean(interaction.stoppingTarget) || Boolean(player.cooperative && !player.cooperative.isYourTurn)} recording={interaction.recordingTarget === 'guess' || interaction.stoppingTarget === 'guess'} stopping={interaction.stoppingTarget === 'guess'} onStart={() => interaction.dictate('guess', (value) => setGuess(value.slice(0, 200)))} onStop={() => interaction.stopRecording('guess')} style={buttonStyle} />
                   </div>
                   <p>{recipientText.reviewGuess}</p>
+                  {player.attemptsUsed ? <p role="status">{helpText.attempt(player.attemptsUsed, player.attemptsBeforeHelp ?? 3)}</p> : null}
                   {interaction.stoppingTarget === 'guess' ? <p role="status">{recipientText.finishingDictation}</p> : interaction.recordingTarget === 'guess' ? <p role="status">{interaction.ready ? recipientText.listening : recipientText.startingMicrophone}</p> : null}
                 </form> : null}
+                {player.helpAvailable && !player.solved && !player.skipped ? <section style={cardStyle} aria-label={helpText.title}>
+                  <h2>{helpText.title}</h2>
+                  <p>{helpText.body}</p>
+                  <p><strong>{helpText.requestId}:</strong> <code>{player.helpRequestId}</code></p>
+                  <form onSubmit={(event) => { event.preventDefault(); void act('redeem-help') }}>
+                    <label style={{ fontWeight: 700 }}>{helpText.codeLabel}<input value={helpCodeInput} onChange={(event) => setHelpCodeInput(event.target.value)} maxLength={20} autoComplete="off" required style={fieldStyle} disabled={busy || Boolean(player.cooperative && !player.cooperative.isYourTurn)} /></label>
+                    <button disabled={busy || !helpCodeInput.trim() || Boolean(player.cooperative && !player.cooperative.isYourTurn)} style={primaryStyle}>{helpText.redeem}</button>
+                  </form>
+                </section> : null}
                 {player.sceneIndex + 1 === player.sceneCount && player.endingMode === 'choice' ? <section style={cardStyle} aria-label={recipientEnding.chooseFinal}>
                   <h2>{recipientEnding.chooseFinal}</h2>
                   {player.answerInstruction ? <p>{player.answerInstruction}</p> : null}
@@ -1692,8 +1723,15 @@ export default function SharedStoryPage() {
                 <><h3>Other valid answers</h3><ul>{creator.brief.alternativeAnswers!.map((answer, index) => <li key={index}>{answer}</li>)}</ul></>
               ) : null}
               {(creator.brief.assistanceHints ?? []).length > 0 ? (
-                <><h3>Hints, in reveal order</h3><ol>{creator.brief.assistanceHints!.map((hint, index) => <li key={index}>{hint}</li>)}</ol><p>Shown only when requested.</p></>
+                <><h3>Hints, in reveal order</h3><ol>{creator.brief.assistanceHints!.map((hint, index) => <li key={index}>{hint}</li>)}</ol><p>Each unsuccessful answer reveals the next hint; write the first one subtly and the last one clearly.</p></>
               ) : null}
+              {!creator.brief.adventure && (creator.brief.endingMode ?? 'answer') === 'answer' ? <form aria-label="Help code" onSubmit={(event) => { event.preventDefault(); void requestHelpCode() }} style={{ marginTop: '1rem' }}>
+                <h3>Help a stuck recipient</h3>
+                <p>After three unsuccessful answers the recipient sees a request ID. Enter it here to get a one-time code for that playthrough.</p>
+                <label style={{ fontWeight: 700 }}>Request ID<input value={ownerHelpRequest} onChange={(event) => { setOwnerHelpRequest(event.target.value); setOwnerHelpCode('') }} maxLength={12} autoComplete="off" required style={fieldStyle} /></label>
+                <button disabled={busy || !ownerHelpRequest.trim()} style={buttonStyle}>Create help code</button>
+                {ownerHelpCode ? <p role="status">Send this code: <code>{ownerHelpCode}</code></p> : null}
+              </form> : null}
               {creator.brief.message ? <>
                 <h3>Final message</h3>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{creator.brief.message}</p>

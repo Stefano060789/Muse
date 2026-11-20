@@ -150,6 +150,7 @@ export type CollectionCopy = {
   following: (title: string) => string
   scene: (number: number) => string
   sceneRange: (current: number, total: number) => string
+  completedScenes: (count: number, total?: number) => string
   progressTitle: string
   recipientProgress: string
   loadingProgress: string
@@ -167,6 +168,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Following ${title}`,
     scene: number => `Scene ${number}`,
     sceneRange: (current, total) => `Scene ${current} of ${total}`,
+    completedScenes: (count, total) => total === undefined ? `${count} ${count === 1 ? 'scene' : 'scenes'} completed` : `${count} of ${total} scenes completed`,
     progressTitle: 'Story progress', recipientProgress: 'Recipient progress', loadingProgress: 'Loading progress...',
     viewProgress: 'View story progress', refreshProgress: 'Refresh story progress', notStarted: 'Not started',
     finished: 'Finished', notFinished: 'Not finished',
@@ -177,6 +179,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Dopo ${title}`,
     scene: number => `Scena ${number}`,
     sceneRange: (current, total) => `Scena ${current} di ${total}`,
+    completedScenes: (count, total) => total === undefined ? `${count} ${count === 1 ? 'scena completata' : 'scene completate'}` : `${count} di ${total} scene completate`,
     progressTitle: 'Progresso della storia', recipientProgress: 'Progresso del destinatario', loadingProgress: 'Caricamento progressi…',
     viewProgress: 'Visualizza i progressi', refreshProgress: 'Aggiorna i progressi', notStarted: 'Non iniziata',
     finished: 'Completata', notFinished: 'Non completata',
@@ -187,6 +190,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Después de ${title}`,
     scene: number => `Escena ${number}`,
     sceneRange: (current, total) => `Escena ${current} de ${total}`,
+    completedScenes: (count, total) => total === undefined ? `${count} ${count === 1 ? 'escena completada' : 'escenas completadas'}` : `${count} de ${total} escenas completadas`,
     progressTitle: 'Progreso de la historia', recipientProgress: 'Progreso del destinatario', loadingProgress: 'Cargando progreso…',
     viewProgress: 'Ver progreso de la historia', refreshProgress: 'Actualizar progreso', notStarted: 'Sin empezar',
     finished: 'Completada', notFinished: 'Sin completar',
@@ -197,6 +201,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `接续：${title}`,
     scene: number => `第${number}幕`,
     sceneRange: (current, total) => `第${current}/${total}幕`,
+    completedScenes: (count, total) => total === undefined ? `已完成 ${count} 幕` : `已完成 ${count}/${total} 幕`,
     progressTitle: '故事进度', recipientProgress: '收件人进度', loadingProgress: '正在加载进度…',
     viewProgress: '查看故事进度', refreshProgress: '刷新故事进度', notStarted: '尚未开始',
     finished: '已完成', notFinished: '未完成',
@@ -207,6 +212,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `${title} के बाद`,
     scene: number => `दृश्य ${number}`,
     sceneRange: (current, total) => `दृश्य ${current} / ${total}`,
+    completedScenes: (count, total) => total === undefined ? `${count} दृश्य पूरे` : `${total} में से ${count} दृश्य पूरे`,
     progressTitle: 'कहानी की प्रगति', recipientProgress: 'प्राप्तकर्ता की प्रगति', loadingProgress: 'प्रगति लोड हो रही है…',
     viewProgress: 'कहानी की प्रगति देखें', refreshProgress: 'प्रगति रीफ़्रेश करें', notStarted: 'शुरू नहीं हुई',
     finished: 'पूरी हुई', notFinished: 'पूरी नहीं हुई',
@@ -217,6 +223,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `Продовження: ${title}`,
     scene: number => `Сцена ${number}`,
     sceneRange: (current, total) => `Сцена ${current} із ${total}`,
+    completedScenes: (count, total) => total === undefined ? `Завершено сцен: ${count}` : `Завершено ${count} із ${total} сцен`,
     progressTitle: 'Прогрес історії', recipientProgress: 'Прогрес отримувача', loadingProgress: 'Завантаження прогресу…',
     viewProgress: 'Переглянути прогрес історії', refreshProgress: 'Оновити прогрес', notStarted: 'Ще не розпочато',
     finished: 'Завершено', notFinished: 'Не завершено',
@@ -227,6 +234,7 @@ const collectionCopies: Record<StoryLanguageCode, CollectionCopy> = {
     following: title => `متابعة لـ ${title}`,
     scene: number => `المشهد ${number}`,
     sceneRange: (current, total) => `المشهد ${current} من ${total}`,
+    completedScenes: (count, total) => total === undefined ? `المشاهد المكتملة: ${count}` : `اكتمل ${count} من ${total} من المشاهد`,
     progressTitle: 'تقدّم القصة', recipientProgress: 'تقدّم المستلم', loadingProgress: 'جارٍ تحميل التقدّم…',
     viewProgress: 'عرض تقدّم القصة', refreshProgress: 'تحديث التقدّم', notStarted: 'لم تبدأ',
     finished: 'مكتملة', notFinished: 'غير مكتملة',

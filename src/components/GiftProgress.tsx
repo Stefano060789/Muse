@@ -28,10 +28,12 @@ export default function GiftProgress({ load, sceneCount, adventure, copy, compac
     }
   }
   const total = progress?.sceneCount === undefined ? adventure ? null : sceneCount : progress.sceneCount
-  const reached = !progress?.opened || progress.furthestScene === null ? null : progress.furthestScene + 1
+  const reached = progress?.opened ? progress.furthestScene : null
   const sceneLabel = reached === null ? copy.notStarted
-    : total === null ? copy.scene(reached)
-      : copy.sceneRange(Math.min(reached, total), total)
+    : total === null ? copy.completedScenes(reached)
+      : copy.completedScenes(progress?.furthestSceneFinished && reached === total - 1
+        ? total : Math.min(reached, total - 1), total)
+  const finished = progress && (progress.furthestSceneFinished ?? progress.solved + progress.skipped > 0)
   return <section aria-label={copy.recipientProgress} className={compact ? undefined : 'atelier-card'} style={compact ? { minWidth: 0, maxWidth: '100%' } : undefined}>
     {!compact ? <h2>{copy.progressTitle}</h2> : null}
     <button type="button" className="atelier-button" disabled={busy} onClick={() => void refresh()}>
@@ -39,7 +41,7 @@ export default function GiftProgress({ load, sceneCount, adventure, copy, compac
     </button>
     {error ? <p role="alert">{error}</p> : null}
     {progress ? <>
-      <p role="status">{sceneLabel}{' · '}{progress.solved + progress.skipped > 0 ? copy.finished : copy.notFinished}</p>
+      <p role="status">{sceneLabel}{' · '}{finished ? copy.finished : copy.notFinished}</p>
     </> : null}
   </section>
 }

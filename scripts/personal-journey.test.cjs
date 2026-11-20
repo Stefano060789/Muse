@@ -158,6 +158,8 @@ async function main() {
         assert.ok(!JSON.stringify(recent.input).includes(creation.capability))
         assert.ok(!('scenes' in recent.input) && !('responses' in recent.input), 'No growing transcript sent')
         assert.ok(recent.payload.messages[0].content.includes('selected mood is authoritative'))
+        assert.ok(recent.payload.messages[0].content.includes('up to three tries at each obstacle'))
+        assert.ok(Array.isArray(recent.input.recentActions) && recent.input.recentActions.length <= 3, 'Failed tries are judged from at most three recent actions')
         assert.equal(result.body.snapshot.status, revision + 1 === duration * 3 / 5 ? 'concluded' : 'active')
       }
       assert.equal(result.body.story.scenes.at(-1).title, 'The conclusion')

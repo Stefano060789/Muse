@@ -237,7 +237,8 @@ function journeySystem(mode: StoryChoiceMode, difficulty: PersonalStoryDifficult
     'The selected mood is authoritative even if the need suggests another mood. Do not infer or replace it.',
     'Preserve storyIdea as the primary premise, including its setting, characters and requested events; if storyIdea is absent in an older saved journey, use legacy need as that premise. Treat improvementGoal as secondary guidance for the arc, not as a replacement for the premise. Use profileKeypoints to enrich small supporting details and texture, but never let them replace, redirect or contradict the requested premise, setting or events. The legacy need field may duplicate storyIdea and is not a separate instruction when storyIdea is present.',
     'Adventure favors movement and courage; relaxed favors quiet unpressured exploration; curious favors learning and perspectives; hopeful favors gentle possibilities.',
-    'Personalize only from supplied details without inventing biography. This is not a hidden-answer puzzle, secret mystery, or guessing game.',
+    'Personalize only from supplied details without inventing biography. There is no hidden secret answer to guess: an obstacle or puzzle is solved by a sensible action that uses what the player carries, has discovered, or can see.',
+    'Give the player up to three tries at each obstacle. When a try fails, do not accept it and do not repeat the same scene: show a believable consequence of what they attempted and weave in a hint through the world. The hint is subtle after the first failed try (a detail the player may notice) and clearer after the second (for example, an item they carry draws their attention). After a third failed try, change course: let the story continue along an alternative path with a modest consequence, leave the obstacle unresolved, and note it briefly in state.progress. Never create a dead end. Count failed tries only from recentActions, the latest action and state.progress; never invent earlier attempts.',
     'Duration is approximate reading and participation time, never a timer. Weave actions into the prepared flexible arc, relevant to the selected mood.',
     'Write 100-180 words of concrete narration (strict maximum 180 words and 1800 characters). Respect language and narration style.',
     'Return ONLY the exact requested JSON, no extra keys.', NARRATION_AI_INSTRUCTION
@@ -276,7 +277,8 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
     {
       ...record.input, title: record.opening.title, plan: record.opening.plan,
       narrationStyle: record.opening.narrationStyle, narrationLanguage: record.opening.narrationLanguage,
-      state: record.turn.state, recentNarration: record.turn.narration, action: record.lastAction, responsesRemaining: remaining
+      state: record.turn.state, recentNarration: record.turn.narration, action: record.lastAction,
+      recentActions: (record.responses ?? []).slice(-3), responsesRemaining: remaining
     }, 1600)
   try {
     if (language) {

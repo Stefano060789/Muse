@@ -101,6 +101,7 @@ try {
             following: title => `Following ${title}`,
             scene: number => `Scene ${number}`,
             sceneRange: (current, total) => `Scene ${current} of ${total}`,
+            completedScenes: (count, total) => `${count}${total === undefined ? '' : ` of ${total}`} scenes completed`,
             storage: 'Saved entries include private access links; anyone using this browser can view them. Gift briefs stay saved independently of recipient completion until removed or browser storage is cleared. Server stories do not expire; removing a browser copy does not delete them or disable recipient links. Progress loads only on request, and recipient links work without an account. Share only recipient links; sign in to manage gifts and view progress.'
           }),
           archiveSyncNote: () => 'Account stories sync when you sign in.',
@@ -428,7 +429,8 @@ try {
     try {
       const tree = ui.render(), card = nodes(tree).find(node => node.type === 'article')
       const progress = nodes(card).find(node => node.type === 'p' && textOf(node).includes('In progress'))
-      assert.equal(textOf(progress), 'In progress · Scene 1')
+      assert.equal(textOf(progress), 'In progress')
+      assert.ok(textOf(card).includes('0 scenes completed'), 'Opening scene alone is not completed')
       assert.doesNotMatch(textOf(progress), /attempt|active|reconcil|status/i)
       assert.match(textOf(nodes(card).find(node => node.type === 'details')), /up to\s+3\s+story steps/)
       assert.ok(textOf(nodes(card).find(node => node.type === 'details')).includes('in this browser'))

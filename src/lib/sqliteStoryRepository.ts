@@ -136,10 +136,13 @@ export class SqliteStoryRepository implements StoryRepository {
         max(current_scene) AS furthest_scene FROM shared_story_sessions WHERE story_id = ?`).get(storyId)!
       const turns = adventure ? db.prepare(`SELECT max(completed) AS furthest FROM
         (SELECT count(*) AS completed FROM muse_adventure_requests WHERE story_id = ? AND status = 'done' GROUP BY player_hash)`).get(storyId)! : null
+      const furthest = !adventure ? db.prepare(`SELECT solved, skipped FROM shared_story_sessions
+        WHERE story_id = ? ORDER BY current_scene DESC, solved DESC, skipped DESC LIMIT 1`).get(storyId) : undefined
       return { opened: Number(row.opened), inProgress: Number(row.in_progress), solved: Number(row.solved),
         skipped: Number(row.skipped), furthestScene: adventure
           ? row.opened ? Number(turns?.furthest || 0) : null
-          : row.furthest_scene === null ? null : Number(row.furthest_scene) }
+          : row.furthest_scene === null ? null : Number(row.furthest_scene),
+        ...(!adventure ? { furthestSceneFinished: Boolean(furthest?.solved || furthest?.skipped) } : {}) }
     })
   }
   async studio(request: StudioRequest): Promise<StudioResult> {
@@ -270,6 +273,13 @@ export class SqliteStoryRepository implements StoryRepository {
     return this.transaction(db => {
       const row = db.prepare('SELECT * FROM shared_stories WHERE id = ?').get(id)
       return row ? { ...row, brief: JSON.parse(String(row.brief)), content: JSON.parse(String(row.content)), alternative_answers_normalized: JSON.parse(String(row.alternative_answers_normalized)) } as StoredStory : null
+    })
+  }
+
+  async attempts(id: string, sessionHash: string): Promise<number> {
+    return this.transaction(db => {
+      const row = db.prepare('SELECT attempts FROM shared_story_sessions WHERE story_id = ? AND player_hash = ?').get(id, sessionHash)
+      return row ? Number(row.attempts) : 0
     })
   }
 

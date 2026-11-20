@@ -23,14 +23,15 @@ import { matchesRecoveryKey, recoveryKey } from '../../lib/creatorRecovery'
 import { reserveBillingUsage } from '../../lib/billing'
 import { translateSharedStory } from '../../lib/sharedStoryTranslator'
 import { parseStoryLanguage } from '../../lib/storyLanguage'
+import { HELP_AFTER_FAILED_ATTEMPTS, helpCode, helpRequestId, matchesHelpCode, normalizeHelpRequestId } from '../../lib/sharedStoryHelp'
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } }, maxDuration: 60 }
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const secret = () => randomBytes(32).toString('hex')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const PLAYER_ACTIONS = ['open', 'translate', 'next', 'guess', 'ending-choice', 'hint', 'skip', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
-const OWNER_ACTIONS = ['library', 'activity', 'manage', 'progress', 'share', 'title', 'follow-up', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
+const PLAYER_ACTIONS = ['open', 'translate', 'next', 'guess', 'ending-choice', 'hint', 'skip', 'redeem-help', 'adventure', 'media', 'voice', 'reply', 'studio-audio', 'cooperative-pass']
+const OWNER_ACTIONS = ['library', 'activity', 'manage', 'progress', 'help-code', 'share', 'title', 'follow-up', 'delete', 'media-start', 'media-finish', 'media-cancel', 'media-delete', 'media-preview', 'voice-start', 'voice-finish', 'voice-cancel', 'voice-delete', 'voice-preview', 'studio-status', 'studio-generate']
 
 function followUpField(value: unknown, label: string, maximum: number): string {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum) {
@@ -294,6 +295,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (action === 'progress') {
       return res.status(200).json({ progress: await storyProgress(db, story) })
+    }
+    if (action === 'help-code') {
+      if (story.brief.adventure || (story.brief.endingMode ?? 'answer') !== 'answer') {
+        throw new SharedStoryError('Help codes are available only for stories with a final answer.', 409)
+      }
+      return res.status(200).json({ code: helpCode(story.owner_hash, id, normalizeHelpRequestId(body.requestId)) })
     }
     if (action === 'manage') {
       if (story.brief.gift) await db.giftReady()
@@ -633,6 +640,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!guess) throw new SharedStoryError('Enter an answer before submitting.')
       await reserveRequest(db, req, 'guess')
     }
+    let effectiveAction = action as string
+    const finalScene = story.content.scenes.length - 1
+    const helpEligible = !story.brief.adventure && (story.brief.endingMode ?? 'answer') === 'answer'
+    const coopUser = cooperative ? cooperativeParticipantId : undefined
+    if (action === 'redeem-help') {
+      if (!helpEligible) throw new SharedStoryError('Help codes are available only for stories with a final answer.', 409)
+      await reserveRequest(db, req, 'guess')
+      const requestId = helpRequestId(id, sessionHash)
+      if (!matchesHelpCode(story.owner_hash, id, requestId, body.code)) {
+        throw new SharedStoryError('That help code does not match this playthrough. Check it and the request ID with the sender.', 403)
+      }
+      const current = await db.advance(id, sessionHash, 'open', '', story.play_hash, coopUser)
+      if (current.solved || current.skipped || current.current_scene < finalScene ||
+          await db.attempts(id, sessionHash) < HELP_AFTER_FAILED_ATTEMPTS) {
+        throw new SharedStoryError('A help code can be used only after three unsuccessful answers at the final clue.', 409)
+      }
+      // Reuses the normal solve path so a code never bypasses the final-scene checks.
+      effectiveAction = 'guess'
+      guess = story.answer_normalized
+    }
     if (action === 'ending-choice') {
       if (!Number.isInteger(body.choiceIndex) || Number(body.choiceIndex) < 0 ||
           Number(body.choiceIndex) >= (story.brief.endingChoices?.length ?? 0) || story.brief.endingMode !== 'choice') {
@@ -644,12 +671,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!cooperative) throw new SharedStoryError('Cooperative: this story is not enabled for group play.', 409)
       await db.cooperative({ storyId: id, userId: cooperativeParticipantId, operation: 'pass', sessionHash })
     }
-    const state = await db.advance(id, sessionHash,
-      action === 'adventure' || action === 'cooperative-pass' ? 'open' : action as SharedStoryAction,
-      guess, story.play_hash, cooperative ? cooperativeParticipantId : undefined)
+    let state = await db.advance(id, sessionHash,
+      action === 'adventure' || action === 'cooperative-pass' ? 'open' : effectiveAction as SharedStoryAction,
+      guess, story.play_hash, coopUser)
+    let attemptsUsed = 0
+    if (helpEligible && !state.solved && !state.skipped && state.current_scene >= finalScene) {
+      attemptsUsed = await db.attempts(id, sessionHash)
+      if (effectiveAction === 'guess') {
+        // Creator hints are written subtle first; each failed answer reveals the next one.
+        const target = Math.min(attemptsUsed, HELP_AFTER_FAILED_ATTEMPTS, story.brief.assistanceHints?.length ?? 0)
+        for (let guard = 0; guard < HELP_AFTER_FAILED_ATTEMPTS && state.revealed_hints < target; guard++) {
+          state = await db.advance(id, sessionHash, 'hint', '', story.play_hash, coopUser)
+        }
+      }
+    }
     if (action === 'adventure' && (state.solved || state.skipped)) throw new SharedStoryError('The surprise is already revealed. Reopen to refresh your story.', 409)
-    const feedback = state.skipped ? 'Revealed without solving' : action === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
+    const feedback = state.skipped ? 'Revealed without solving' : effectiveAction === 'guess' ? state.solved ? 'You solved it.' : 'Not quite. Explore the clues and try again.' : undefined
     const player = sharedStoryPlayerView(story.brief, story.content, state, feedback, ready, readyVoice)
+    if (helpEligible && attemptsUsed > 0) {
+      player.attemptsUsed = attemptsUsed
+      player.attemptsBeforeHelp = HELP_AFTER_FAILED_ATTEMPTS
+      if (attemptsUsed >= HELP_AFTER_FAILED_ATTEMPTS) {
+        player.helpAvailable = true
+        player.helpRequestId = helpRequestId(id, sessionHash)
+      }
+    }
     if (action === 'adventure' && !story.brief.adventure) throw new SharedStoryError('This story does not enable live adventure actions.')
     if (story.brief.adventure) {
       const base: AdventureRequest = {

@@ -8,6 +8,7 @@ const source = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', 'sr
 const copy = {
   scene: number => `Scene ${number}`,
   sceneRange: (current, total) => `Scene ${current} of ${total}`,
+  completedScenes: (count, total) => `${count}${total === undefined ? '' : ` of ${total}`} scenes completed`,
   progressTitle: 'Story progress',
   recipientProgress: 'Recipient progress',
   loadingProgress: 'Loading progress...',
@@ -46,14 +47,14 @@ function mount(load, adventure = false, compact = false, snapshot) {
 }
 async function main() {
   let calls = 0, fail = false, release
-  const summary = { opened: 4, inProgress: 2, solved: 1, skipped: 1, furthestScene: 1 }
+  const summary = { opened: 4, inProgress: 2, solved: 1, skipped: 1, furthestScene: 1, furthestSceneFinished: false }
   const ui = mount(async () => { calls++; if (fail) throw new Error('Progress unavailable'); return summary })
   await ui.flush()
   assert.equal(calls, 0, 'Mounting does not fetch or poll')
   ui.button().props.onClick()
   await ui.flush()
   assert.equal(calls, 1)
-  assert.match(ui.text(), /Scene 2 of 3\s+·\s+Finished/)
+  assert.match(ui.text(), /1 of 3 scenes completed\s+·\s+Not finished/, 'An earlier finish does not label the furthest playthrough finished')
   assert.equal(ui.nodes().filter(node => node.type === 'dd').length, 0, 'No playthrough counters clutter the result')
   assert.equal(ui.nodes().filter(node => node.type === 'details').length, 0, 'Progress shows only the scene fraction and finish status')
   await ui.flush()
@@ -69,21 +70,21 @@ async function main() {
   assert.match(empty.text(), /Not started\s+·\s+Not finished/)
   assert.ok(!empty.text().includes('Furthest scene reached'))
   empty.unmount()
-  const live = mount(async () => summary, true)
+  const live = mount(async () => ({ ...summary, furthestSceneFinished: undefined }), true)
   await live.flush(); live.button().props.onClick(); await live.flush()
-  assert.ok(!live.text().includes('Scene 2 of'), 'Live adventure turns are not measured as prepared scenes')
+  assert.ok(!live.text().includes('of 3'), 'Live adventure turns are not measured as prepared scenes')
   assert.match(live.text(), /Finished/)
-  assert.match(live.text(), /Scene 2/)
+  assert.match(live.text(), /1 scenes completed/)
   assert.ok(!live.text().includes('/3'), 'Unbounded live adventures do not show a misleading fraction')
   live.unmount()
   const restored = mount(async () => { throw new Error('Should not refetch on render') }, false, true,
     { opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 1, sceneCount: 5 })
   await restored.flush()
-  assert.match(restored.text(), /Scene 2 of 5\s+·\s+Not finished/, 'Automatically loaded progress uses the authoritative server scene total')
+  assert.match(restored.text(), /1 of 5 scenes completed\s+·\s+Not finished/, 'Automatically loaded progress uses the authoritative server scene total')
   restored.unmount()
   const liveOpening = mount(async () => ({ opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene: 0, sceneCount: null }), true)
   await liveOpening.flush(); liveOpening.button().props.onClick(); await liveOpening.flush()
-  assert.match(liveOpening.text(), /Scene 1\s+·\s+Not finished/)
+  assert.match(liveOpening.text(), /0 scenes completed\s+·\s+Not finished/)
   liveOpening.unmount()
   const compact = mount(async () => summary, false, true)
   await compact.flush()
@@ -93,20 +94,24 @@ async function main() {
   compact.button().props.onClick()
   await compact.flush()
   assert.match(compact.text(), /Refresh story progress/)
-  assert.match(compact.text(), /Scene 2 of 3/)
+  assert.match(compact.text(), /1 of 3 scenes completed/)
   assert.equal(compact.nodes().filter(node => node.type === 'dd').length, 0)
   compact.unmount()
   for (const furthestScene of [0, 2, 50]) {
     const active = mount(async () => ({ opened: 1, inProgress: 1, solved: 0, skipped: 0, furthestScene }))
     await active.flush(); active.button().props.onClick(); await active.flush()
-    assert.ok(active.text().includes(`Scene ${Math.min(furthestScene + 1, 3)} of 3`))
+    assert.ok(active.text().includes(`${Math.min(furthestScene, 2)} of 3 scenes completed`))
     assert.match(active.text(), /Not finished/, 'Last scene reached is not a finished story')
     active.unmount()
   }
-  const revealed = mount(async () => ({ opened: 1, inProgress: 0, solved: 0, skipped: 1, furthestScene: 0 }))
+  const revealed = mount(async () => ({ opened: 1, inProgress: 0, solved: 0, skipped: 1, furthestScene: 0, furthestSceneFinished: true }))
   await revealed.flush(); revealed.button().props.onClick(); await revealed.flush()
-  assert.match(revealed.text(), /Finished/)
+  assert.match(revealed.text(), /0 of 3 scenes completed\s+·\s+Finished/)
   revealed.unmount()
+  const final = mount(async () => ({ ...summary, furthestScene: 2, furthestSceneFinished: true }))
+  await final.flush(); final.button().props.onClick(); await final.flush()
+  assert.match(final.text(), /3 of 3 scenes completed/)
+  final.unmount()
   const pending = mount(() => new Promise(resolve => { release = resolve }))
   await pending.flush()
   const click = pending.button().props.onClick

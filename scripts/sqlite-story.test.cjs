@@ -167,7 +167,7 @@ async function main() {
     const ownerToken = `${fixture.id}.${created.body.ownerToken.split('.')[1]}`
     const token = `${fixture.id}.${created.body.playToken.split('.')[1]}`
     const summary = async () => api({ action: 'progress', token: ownerToken })
-    const empty = { opened: 0, inProgress: 0, solved: 0, skipped: 0, furthestScene: null }
+    const empty = { opened: 0, inProgress: 0, solved: 0, skipped: 0, furthestScene: null, furthestSceneFinished: false }
     const callsBefore = providerCalls
     assert.deepEqual((await summary()).body, { progress: { ...empty, sceneCount: content.scenes.length } })
     assert.equal((await api({ action: 'progress', token })).status, 404)
@@ -183,7 +183,7 @@ async function main() {
     assert.equal((await api({ action: 'guess', token, sessionToken: sessions[1], guess: brief.solution })).status, 200)
     assert.equal((await api({ action: 'skip', token, sessionToken: sessions[2], confirmSkip: true })).status, 200)
     await api({ action: 'open', token, sessionToken: sessions[0] })
-    const expected = { opened: 3, inProgress: 1, solved: 1, skipped: 1, furthestScene: content.scenes.length - 1 }
+    const expected = { opened: 3, inProgress: 1, solved: 1, skipped: 1, furthestScene: content.scenes.length - 1, furthestSceneFinished: true }
     assert.deepEqual((await summary()).body, { progress: { ...expected, sceneCount: content.scenes.length } })
     assert.deepEqual(await storyRepository().progress(fixture.id), expected, 'A fresh repository sees durable progress')
     const serialized = JSON.stringify((await summary()).body)
@@ -338,6 +338,57 @@ async function main() {
     assert.equal((await api({ action: 'hint', token, sessionToken: playerToken })).status, 404)
     await storyRepository().delete(storyId)
     await assert.rejects(() => storyRepository().advance(storyId, hash(playerToken), 'hint', ''), error => error.status === 404)
+  })
+  await check('three failed answers reveal hints gradually, then only the sender can issue a one-session help code', async () => {
+    const hints = ['A faint glint near the lid.', 'Something small from your pocket matters.', 'Try using the brass key on the chest.']
+    const made = await api({ action: 'create', brief: { ...brief, assistanceHints: hints } }, handler, 'help-client')
+    assert.equal(made.status, 201)
+    const { ownerToken, playToken } = made.body
+    const storyId = playToken.split('.')[0]
+    const reach = async () => {
+      const fresh = await api({ action: 'open', token: playToken })
+      for (let i = 1; i < content.scenes.length; i++) await api({ action: 'next', token: playToken, sessionToken: fresh.body.sessionToken })
+      return fresh.body.sessionToken
+    }
+    const sessionToken = await reach()
+    const wrongAnswer = async () => { now += 2000; return api({ action: 'guess', token: playToken, sessionToken, guess: 'open the chest' }, handler, 'help-client') }
+    const first = await wrongAnswer()
+    assert.deepEqual(first.body.player.revealedHints, hints.slice(0, 1))
+    assert.equal(first.body.player.attemptsUsed, 1)
+    assert.equal(first.body.player.helpAvailable, undefined, 'No help request before three tries')
+    const second = await wrongAnswer()
+    assert.deepEqual(second.body.player.revealedHints, hints.slice(0, 2))
+    const third = await wrongAnswer()
+    assert.deepEqual(third.body.player.revealedHints, hints)
+    assert.equal(third.body.player.helpAvailable, true)
+    assert.match(third.body.player.helpRequestId, /^[0-9A-F]{8}$/)
+    assert.ok(!JSON.stringify(third.body).includes(brief.solution))
+    const requestId = third.body.player.helpRequestId
+    assert.equal((await api({ action: 'help-code', token: playToken, requestId })).status, 404, 'Recipient links cannot mint codes')
+    const issued = await api({ action: 'help-code', token: ownerToken, requestId })
+    assert.equal(issued.status, 200, JSON.stringify(issued.body))
+    assert.match(issued.body.code, /^[0-9A-F]{5}-[0-9A-F]{5}$/)
+    assert.equal((await api({ action: 'help-code', token: ownerToken, requestId: 'nope' })).status, 400)
+    const otherSession = await reach()
+    const { helpRequestId } = require(path.join(output, 'lib', 'sharedStoryHelp.js'))
+    const earlyCode = (await api({ action: 'help-code', token: ownerToken, requestId: helpRequestId(storyId, hash(otherSession)) })).body.code
+    now += 2000
+    assert.equal((await api({ action: 'redeem-help', token: playToken, sessionToken: otherSession, code: earlyCode }, handler, 'help-client')).status, 409,
+      'Even a valid code cannot skip the three attempts')
+    assert.equal((await api({ action: 'redeem-help', token: playToken, sessionToken: otherSession, code: issued.body.code }, handler, 'help-client')).status, 403,
+      'A code is bound to its own playthrough')
+    for (let i = 0; i < 3; i++) { now += 2000; await api({ action: 'guess', token: playToken, sessionToken: otherSession, guess: 'wrong' }, handler, 'help-client') }
+    now += 2000
+    assert.equal((await api({ action: 'redeem-help', token: playToken, sessionToken: otherSession, code: issued.body.code }, handler, 'help-client')).status, 403)
+    assert.equal((await api({ action: 'redeem-help', token: playToken, sessionToken, code: 'AAAAA-AAAAA' }, handler, 'help-client')).status, 403)
+    now += 2000
+    const redeemed = await api({ action: 'redeem-help', token: playToken, sessionToken, code: issued.body.code.toLowerCase() }, handler, 'help-client')
+    assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body))
+    assert.equal(redeemed.body.player.message, brief.message)
+    assert.ok(!JSON.stringify(redeemed.body).includes(brief.solution))
+    assert.equal(inspect(db => db.prepare('SELECT solved FROM shared_story_sessions WHERE story_id=? AND player_hash=?').get(storyId, hash(sessionToken))).solved, 1)
+    const adventure = await api({ action: 'create', brief: { ...brief, adventure: { actionBudget: 3 } } }, handler, 'help-client')
+    assert.equal((await api({ action: 'help-code', token: adventure.body.ownerToken, requestId })).status, 409)
   })
   await check('skipping is opt-in, confirmed, session-bound, durable and never counts as solving or AI use', async () => {
     const legacyOpen = await api({ action: 'open', token: created.body.playToken })

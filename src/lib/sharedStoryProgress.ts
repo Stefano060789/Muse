@@ -4,6 +4,7 @@ export type SharedStoryProgress = {
   solved: number
   skipped: number
   furthestScene: number | null
+  furthestSceneFinished?: boolean
   sceneCount?: number | null
 }
 
@@ -20,10 +21,14 @@ export function parseSharedStoryProgress(value: unknown): SharedStoryProgress {
       (!Number.isSafeInteger(progress.sceneCount) || Number(progress.sceneCount) < 1)) {
     throw new Error('The server returned an invalid scene count.')
   }
+  if (progress.furthestSceneFinished !== undefined && typeof progress.furthestSceneFinished !== 'boolean') {
+    throw new Error('The server returned invalid story progress.')
+  }
   return {
     opened: Number(progress.opened), inProgress: Number(progress.inProgress),
     solved: Number(progress.solved), skipped: Number(progress.skipped),
     furthestScene: progress.furthestScene === null ? null : Number(progress.furthestScene),
+    ...(typeof progress.furthestSceneFinished === 'boolean' ? { furthestSceneFinished: progress.furthestSceneFinished } : {}),
     ...(progress.sceneCount !== undefined ? { sceneCount: progress.sceneCount === null ? null : Number(progress.sceneCount) } : {})
   }
 }

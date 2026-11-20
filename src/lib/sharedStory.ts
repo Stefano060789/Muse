@@ -66,6 +66,10 @@ export type SharedStoryPlayer = NarrationMetadata & {
   solved: boolean
   skipped: boolean
   canSkip: boolean
+  attemptsUsed?: number
+  attemptsBeforeHelp?: number
+  helpAvailable?: boolean
+  helpRequestId?: string
   revealedHints: string[]
   hintsRemaining: number
   feedback?: string

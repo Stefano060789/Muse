@@ -599,10 +599,10 @@ async function main() {
           : location.searchParams.get('skipped') === 'eq.true' ? 3 : 1201
         return new Response(null, { status: 200, headers: { 'Content-Range': `0-0/${count}` } })
       }
-      assert.equal(location.searchParams.get('select'), 'current_scene')
-      assert.equal(location.searchParams.get('order'), 'current_scene.desc')
+      assert.equal(location.searchParams.get('select'), 'current_scene,solved,skipped')
+      assert.equal(location.searchParams.get('order'), 'current_scene.desc,solved.desc,skipped.desc')
       assert.equal(location.searchParams.get('limit'), '1')
-      return json([{ current_scene: 1 }])
+      return json([{ current_scene: 1, solved: false, skipped: false }])
     }
     if (location.pathname === '/rest/v1/shared_story_replies') {
       return json(location.searchParams.get('select') === 'message,created_at'
@@ -742,7 +742,7 @@ async function main() {
     assert.equal(progressQueries.length, 0, 'Recipient cannot trigger the progress query')
     const result = await api({ action: 'progress', token: created.body.ownerToken })
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { progress: { opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length } })
+    assert.deepEqual(result.body, { progress: { opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, furthestSceneFinished: false, sceneCount: content.scenes.length } })
     assert.equal(progressQueries.length, 4)
     progressFailure = true
     const unavailable = await api({ action: 'progress', token: created.body.ownerToken })
@@ -757,7 +757,7 @@ async function main() {
     const result = await api({ action: 'library', includeProgress: true })
     assert.equal(result.status, 200)
     assert.deepEqual(result.body.stories[0].progress, {
-      opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, sceneCount: content.scenes.length
+      opened: 1206, inProgress: 1201, solved: 2, skipped: 3, furthestScene: 1, furthestSceneFinished: false, sceneCount: content.scenes.length
     })
     assert.equal(runtimeProviderCalls, calls)
   })
