@@ -53,6 +53,31 @@ included in prepared scene audio. The English handcrafted demo uses public,
 prerecorded Google WaveNet MP3s, with no generation request during playback.
 Translated samples use browser-only speech in the selected interface language.
 
+## HeyGen story reel pilot
+
+The personal-story reel can request one 10-second, vertical 768p HeyGen Video 1
+MP4 from a text prompt. The reader reviews the exact text and explicitly agrees
+to send it and start paid generation; the finished video is previewed before
+manual download or sharing. Nothing is posted automatically. The existing
+local reel remains available under Other reel options.
+
+On the server, set `HEYGEN_API_KEY` and, **only after reviewing HeyGen's
+commercial terms, privacy/DPA, retention, data transfers and current prices**,
+set `HEYGEN_REEL_PROVIDER_APPROVED=true`. Never place the key in client code or
+send it in chat. Restart the server after changing these settings. Existing
+operations safety storage and its hosted migration must be configured.
+
+The pilot reserves $0.36 per request against the owner's $10 aggregate estimated
+budget (at most 27 submissions). This is a conservative estimate based on the
+November 2026 promotional price information, not a billing guarantee: confirm
+current provider pricing, taxes and retries, and set a separate hard spending
+limit with HeyGen if available. A maximum of two submissions per account per
+UTC day is enforced. Failed or uncertain submissions stay counted and
+are not automatically retried. The browser keeps an owner-bound reel reference
+for up to 24 hours in session storage; generated media and its retention are
+subject to HeyGen's terms. No provider video is stored by Muse. The permitted
+output hosts must match HeyGen's returned CDN host; unexpected hosts fail closed.
+
 Muse is a personalized storytelling prototype with three areas:
 
 - **Myself:** a browser-local profile entered by typing or voice.
@@ -234,6 +259,13 @@ Returning visitors can continue their latest unfinished personal story directly
 from Home; completed stories offer **Read again**. Personal touches live on Myself,
 not Home, and personal library cards keep attempt details
 behind an optional disclosure.
+Personal journeys start from the chosen premise, but the AI is instructed to
+follow the player's actions when the story changes direction rather than follow
+a fixed plot. An optional improvement goal provides gentle narrative inspiration,
+not therapy or a guaranteed outcome. Free response permits the widest range of
+actions; suggested-action mode still requires choosing an offered action. The
+selected duration still bounds the number of responses and the final conclusion.
+AI behavior can vary and may not always follow these instructions.
 Personal stories in My stories and Archive offer a local social-card studio,
 including unfinished chapters. Opening sharing automatically selects an excerpt
 from the latest nonempty visited scene, a mood-matched style, saved progress and

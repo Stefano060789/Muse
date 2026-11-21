@@ -10,8 +10,9 @@ import { moodMusicTrack } from '../lib/moodMusic'
 import { PROVIDER_CONSENT_VERSION } from '../lib/providerConsent'
 import type { StoryReelMoment } from '../lib/storyReelLogic'
 import { suggestStoryMotif } from '../lib/storyShareArtwork'
+import HeygenStoryReel from './HeygenStoryReel'
 
-type ReelStory = Pick<PersonalStory, 'title' | 'mood' | 'language' | 'scenes' | 'currentStep'>
+type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'mood' | 'language' | 'scenes' | 'currentStep'>
 
 type EditableMoment = StoryReelMoment & { enabled: boolean }
 
@@ -64,6 +65,18 @@ function storyMoodToSceneMood(story: ReelStory): unknown {
 }
 
 export default function StoryReelComposer({ story, interfaceLanguage }: {
+  story: ReelStory
+  interfaceLanguage: StoryLanguageCode
+}) {
+  return <>
+    <HeygenStoryReel story={story} interfaceLanguage={interfaceLanguage} />
+    <details><summary>Other reel options</summary>
+      <LocalStoryReelComposer story={story} interfaceLanguage={interfaceLanguage} />
+    </details>
+  </>
+}
+
+function LocalStoryReelComposer({ story, interfaceLanguage }: {
   story: ReelStory
   interfaceLanguage: StoryLanguageCode
 }) {

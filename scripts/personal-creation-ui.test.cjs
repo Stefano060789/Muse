@@ -421,6 +421,7 @@ async function main() {
   assert.ok(nodes().some(node => node.type === '../components/ReadAlongText' && node.props.text === 'A light glows.' && node.props.active === false))
   const beforeActiveListen = narrationCalls.length
   activeMode().props.onChange('listen')
+  assert.equal(narrationCalls.length, beforeActiveListen + 1, 'Listen starts during the first click, preserving browser user activation')
   await flush()
   assert.equal(narrationCalls.length, beforeActiveListen + 1, 'Listen immediately starts the active personal scene')
   assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
@@ -441,6 +442,11 @@ async function main() {
   assert.equal(requests.at(-1).action, 'respond')
   assert.equal(requests.at(-1).text, 'I follow the path.')
   assert.equal(responseField().props.value, '', 'Successful continuation clears the submitted response')
+  assert.equal(activeMode().props.mode, null, 'A new journey revision asks how to experience the next scene even when the scene index is unchanged')
+  assert.equal(nodes().find(node => node.type === 'article' && node.props.ref).props.hidden, true, 'The next scene and answer controls stay hidden until Read or Listen is chosen')
+  activeMode().props.onChange('read')
+  await flush()
+  assert.equal(nodes().find(node => node.type === 'article' && node.props.ref).props.hidden, false)
   responseField().props.onChange({ target: { value: 'An answer while syncing.' } })
   await flush()
   const beforeFocus = requests.length
@@ -714,12 +720,14 @@ async function main() {
   assert.equal(narrationCalls.length, beforeCloudListen, 'Selecting Listen cannot silently consent to paid narration')
   const deviceVoice = nodes().find(node => node.type === 'button' && label(node) === 'Use device voice · free')
   assert.ok(deviceVoice, 'Cloud-consent gate offers a free device voice without requiring account settings')
+  const beforeDeviceClick = narrationCalls.length
   deviceVoice.props.onClick()
+  assert.equal(narrationCalls.length, beforeDeviceClick + 1, 'Device voice starts in the click gesture rather than in a later effect')
   await flush()
   assert.equal(cloudProvider, 'browser')
   assert.equal(narrationCalls.length, beforeCloudListen + 1, 'Choosing device voice starts the pending scene narration')
   assert.ok(narrationCalls.at(-1)[0].startsWith('The Door. A light glows.'))
-  assert.deepEqual(narrationCalls.at(-1)[2], { autoPlay: true })
+  assert.deepEqual(narrationCalls.at(-1)[2], { deviceOnly: true, autoPlay: true })
   nodes().find(node => node.type === '../components/StoryModeControl').props.onChange('read')
   await flush()
   cloudProvider = 'google'

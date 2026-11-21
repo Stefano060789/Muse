@@ -110,7 +110,7 @@ export default function StoryPage() {
   const [storyRecapError, setStoryRecapError] = useState('')
   const [archiveReading, setArchiveReading] = useState(false)
   const [experience, setExperience] = useState<{ key: string; mode: StoryMode } | null>(null)
-  const experienceKey = JSON.stringify([story?.id, story?.currentStep, archiveReading, rereading])
+  const experienceKey = JSON.stringify([story?.id, story?.currentStep, story?.journey?.revision, archiveReading, rereading])
   const storyMode = experience?.key === experienceKey ? experience.mode : null
   const setStoryMode = (mode: StoryMode) => setExperience({ key: experienceKey, mode })
   const [chapterFormOpen, setChapterFormOpen] = useState(false)
@@ -130,6 +130,7 @@ export default function StoryPage() {
   const answerWritable = useRef(true)
   const responseInput = useRef<HTMLTextAreaElement>(null)
   const creationSection = useRef<HTMLElement>(null)
+  const modeControlRef = useRef<HTMLDivElement>(null)
   const sceneArticleRef = useRef<HTMLElement>(null)
   const sceneHeadingRef = useRef<HTMLHeadingElement>(null)
   const pendingSceneViewportKey = useRef<string | null>(null)
@@ -615,7 +616,7 @@ export default function StoryPage() {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
   const pendingListen = useRef<{ text: string; context?: NarrationContext } | null>(null)
-  useEffect(() => { setStoryMode(null); pendingListen.current = null }, [story?.id, story?.currentStep, archiveReading, rereading])
+  useEffect(() => { pendingListen.current = null }, [experienceKey])
   useEffect(() => {
     const pending = pendingListen.current
     if (!pending || (narrator.provider !== 'browser' && !narrator.cloudConsent) || storyMode !== 'listen') return
@@ -627,29 +628,32 @@ export default function StoryPage() {
     const sceneKey = `${story.id}:${story.journey?.revision ?? story.currentStep}`
     if (pendingSceneViewportKey.current !== sceneKey) return
     pendingSceneViewportKey.current = null
-    const sceneArticle = sceneArticleRef.current
-    const sceneHeading = sceneHeadingRef.current
-    if (!sceneArticle || !sceneHeading) return
+    const modeControl = modeControlRef.current
+    if (!modeControl) return
     const reduceMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    sceneArticle.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+    modeControl.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
     const activeElement = document.activeElement
     const typing = interaction.recordingTarget === 'response' || interaction.stoppingTarget === 'response' ||
       activeElement === responseInput.current ||
       (activeElement instanceof HTMLElement && (activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(activeElement.tagName)))
-    if (!typing) sceneHeading.focus({ preventScroll: true })
+    if (!typing) modeControl.focus({ preventScroll: true })
   }, [story?.id, story?.currentStep, story?.journey?.revision, interaction.recordingTarget, interaction.stoppingTarget])
   const scenePosition = narrator.activeText === narrationText ? narrator.textPosition : -1
   const changeStoryMode = (mode: StoryMode) => {
-    narrator.stop(); stopRecording(); setStoryMode(mode)
+    stopRecording(); setStoryMode(mode)
     pendingListen.current = null
     if (mode === 'listen') {
       const text = archiveReading || rereading ? `${story?.scenes[0].title}. ${story?.scenes[0].body}` : narrationText
       const playbackContext: NarrationContext = archiveReading || rereading
         ? { sceneMood: story?.scenes[0]?.sceneMood, progress: 0, ending: false }
         : { sceneMood: scene?.sceneMood }
-      if (narrator.provider !== 'browser' && !narrator.cloudConsent) { pendingListen.current = { text, context: playbackContext }; return }
+      if (narrator.provider !== 'browser' && !narrator.cloudConsent) {
+        narrator.stop()
+        pendingListen.current = { text, context: playbackContext }
+        return
+      }
       void narrator.speak(text, playbackContext, { autoPlay: true })
-    }
+    } else narrator.stop()
   }
   const savedScenes = (mode: StoryMode = storyMode) => story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
     {story.scenes.map((savedScene, index) => {
@@ -801,7 +805,9 @@ export default function StoryPage() {
                   </article>)
                   : <p>{recapCopy.noRecap}</p>}
               </section> : null}
-              <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
+              <div ref={modeControlRef} tabIndex={-1}>
+                <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
+              </div>
               {storyMode === 'listen' ? <details>
                 <summary>{flow('audioSettings')}</summary>
                 <NarrationControls narrator={narrator} beforeSpeak={stopRecording} />
@@ -818,14 +824,16 @@ export default function StoryPage() {
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
                 <p>{interfaceCopy.listenDescription}</p>
                 <button type="button" onClick={() => {
-                  pendingListen.current = { text: narrationText, context: { sceneMood: scene?.sceneMood } }
+                  const pending = pendingListen.current
+                  pendingListen.current = null
                   narrator.setDeviceOnly(true)
+                  if (pending) void narrator.speak(pending.text, pending.context, { deviceOnly: true, autoPlay: true })
                 }}>{audioControlsCopy(interfaceLanguage).deviceChoice}</button>
                 <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
                   Send story text to Google Cloud when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}
-              {!archiveReading && !rereading ? <article ref={sceneArticleRef} lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
+              {!archiveReading && !rereading ? <article ref={sceneArticleRef} hidden={storyMode === null} lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
                 <h2 ref={sceneHeadingRef} tabIndex={-1} style={{ margin: '0.5rem 0 1rem' }}>{storyMode !== null ? <ReadAlongText text={sceneTitle} startAt={0} position={scenePosition} active={storyMode === 'listen'} /> : null}</h2>
                 <p className="atelier-prose">{storyMode !== null ? <ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</p>
                 {storyMode === 'listen' ? <>
