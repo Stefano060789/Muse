@@ -31,10 +31,13 @@ remain separate.
 
 > Commercial-readiness restrictions: ElevenLabs narration and Runway video
 > generation are disabled server-side pending commercial entitlement review.
-> Google Cloud narration remains optional when fully configured and consented;
-> story generation continues to use the server-configured Anthropic, OpenAI or
-> Groq provider. See [docs/COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md)
-> for data-use, owner-confirmation and unresolved asset/license audit gates.
+> Story-reel image-provider calls are disabled by default behind explicit server
+> flags, with local artwork fallback when no provider is enabled. Google Cloud
+> narration remains optional when fully configured and consented; story
+> generation continues to use the server-configured Anthropic, OpenAI or Groq
+> provider. See [docs/COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md)
+> and [docs/STORY-REELS.md](docs/STORY-REELS.md) for data-use, owner-confirmation
+> and unresolved asset/license audit gates.
 
 ## Google WaveNet narration
 

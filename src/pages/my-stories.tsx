@@ -6,6 +6,7 @@ import { accountFetch, supabase } from '../lib/accountClient'
 import { collectionCopy, interfacePageText as text } from '../lib/interfacePages'
 import { useInterfaceLanguage } from '../lib/interfaceLanguage'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
+import StoryReelComposer from '../components/StoryReelComposer'
 import StoryArchiveButton from '../components/StoryArchiveButton'
 import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
@@ -119,6 +120,8 @@ export default function MyStoriesPage() {
               {journey?.status === 'exhausted' && journey.revision < journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS ? <button
                 type="button" onClick={() => open(entry, false)}>{chapterRecoveryCopy(interfaceLanguage).recover}</button> : null}
               <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
+              {entry.story.journey?.status === 'concluded' || (!entry.story.journey && completed)
+                ? <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
               <StoryArchiveButton story={entry.story} language={interfaceLanguage} onSaved={refresh} />
             </article>
           })}

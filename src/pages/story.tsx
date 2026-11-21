@@ -34,6 +34,8 @@ import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 import { createStoryRecap, storyRecapCopy, type StoryRecapChapter } from '../lib/storyRecap'
 import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
+import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
+import StoryReelComposer from '../components/StoryReelComposer'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -410,6 +412,8 @@ export default function StoryPage() {
   }
 
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status)
+    : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
+  const reelReady = Boolean(story && (story.journey ? story.journey.status === 'concluded'
     : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
   const responseRequiresAi = Boolean(story?.journey || (story?.generation === 'ai' && story.currentStep < story.scenes.length - 1))
   const recoveringEnding = story?.journey?.status === 'exhausted'
@@ -915,6 +919,10 @@ export default function StoryPage() {
                 {rereading ? savedScenes('read') : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
+                {reelReady ? <>
+                  <PersonalStoryShareCard story={story} interfaceLanguage={interfaceLanguage} />
+                  <StoryReelComposer story={story} interfaceLanguage={interfaceLanguage} />
+                </> : null}
                 <StoryLifeBridge
                   key={`${story.id}:${story.chapter?.number ?? 1}`}
                   story={story}

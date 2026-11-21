@@ -11,6 +11,9 @@ import { requireAccountProviderConsent, requireProviderConsent } from '../../lib
 import { requireRomanceConfirmation, StoryRomanceError } from '../../lib/storyRomance'
 import { reserveBillingUsage } from '../../lib/billing'
 import { generatePersonalStoryShareTeaser, parsePersonalStoryShareInput } from '../../lib/personalStoryShare'
+import { generateStoryReelPlan, parseStoryReelImageRequest, parseStoryReelPlanInput } from '../../lib/storyReel'
+import { generateStoryReelProviderImages, storyReelImageProviderStatus } from '../../lib/storyReelImageProvider'
+import { storyReelPremiumStatus } from '../../lib/storyReelPremium'
 import {
   generateJourneyOpening, generateJourneyTurn, journeyCapability, journeyHash, journeyIdentifier,
   parseJourneyAction, parseJourneyClosingAction, parseJourneyInput, nextChapterInput, publicJourney, type JourneyInput, type JourneyOperation
@@ -70,6 +73,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await reserveBillingUsage(account.id, `interaction:${randomUUID()}`, 'interaction')
       const teaser = await generatePersonalStoryShareTeaser(input)
       return res.status(200).json({ teaser })
+    }
+    if (req.body?.action === 'story-reel-plan') {
+      const source = parseStoryReelPlanInput(req.body)
+      const plan = await generateStoryReelPlan(source, account.id)
+      const provider = storyReelImageProviderStatus()
+      return res.status(200).json({
+        moments: plan.moments,
+        source: plan.source,
+        provider: {
+          ...provider,
+          estimatedImages: plan.moments.length,
+          estimatedAiAttempts: plan.moments.length * provider.estimatedAiAttemptsPerImage
+        },
+        premium: storyReelPremiumStatus()
+      })
+    }
+    if (req.body?.action === 'story-reel-images') {
+      const source = parseStoryReelPlanInput(req.body)
+      const request = parseStoryReelImageRequest(req.body)
+      const images = await generateStoryReelProviderImages(account.id, source, request.moments, request.theme)
+      return res.status(200).json({ images, provider: storyReelImageProviderStatus() })
     }
     if (req.body?.mode === 'journey') {
       const body = (account.permissions?.managed

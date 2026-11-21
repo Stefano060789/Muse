@@ -7,6 +7,7 @@ import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
+import StoryReelComposer from '../components/StoryReelComposer'
 import StoryArchiveButton from '../components/StoryArchiveButton'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
@@ -172,6 +173,8 @@ export default function LibraryPage() {
                     ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
                     : collectionText.chapter(entry.story.chapter.number)}</p> : null}
                   <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
+                  {entry.story.journey?.status === 'concluded' || (!entry.story.journey && completed)
+                    ? <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}
