@@ -1,7 +1,8 @@
 import { NARRATION_PRESETS, type NarrationStyle } from './narration'
 import type { AmbientSound } from './storyAmbience'
+import { sceneMoodDelivery, sceneMoodSoundscape, type SceneMood } from './sceneMood'
 
-export type NarrationContext = { progress?: number; ending?: boolean; sceneKey?: string }
+export type NarrationContext = { progress?: number; ending?: boolean; sceneKey?: string; sceneMood?: SceneMood }
 export type Soundscape = AmbientSound | 'auto'
 export type ImmersivePreferences = { expressive: boolean; soundscape: Soundscape; voiceVolume: number; ambientVolume: number }
 export const IMMERSIVE_PREFERENCES_KEY = 'muse.narration.immersive.v2'
@@ -44,8 +45,10 @@ export function serializeImmersivePreferences(preferences: ImmersivePreferences)
   return JSON.stringify({ version: 2, ...preferences })
 }
 
-export function storySoundscape(text: string, selection: Soundscape): AmbientSound {
+export function storySoundscape(text: string, selection: Soundscape, context: NarrationContext = {}): AmbientSound {
   if (selection !== 'auto') return selection
+  const moodSoundscape = sceneMoodSoundscape(context.sceneMood)
+  if (moodSoundscape) return moodSoundscape
   // Match only the text being narrated, never a private brief or future scene.
   const visible = text.toLowerCase()
   if (/\b(rain(?:ing|fall(?:ing)?|drops?)?|drizzle|rainfall|pioggia|piove|regen|regnet)\b/.test(visible) ||
@@ -80,10 +83,11 @@ export function narrativeDelivery(text: string, style: NarrationStyle, context: 
   const ending = Boolean(context.ending)
   const build = style === 'adventurous' || style === 'playful' ? progress * 0.04
     : style === 'suspenseful' ? -progress * 0.035 : 0
+  const moodDelivery = sceneMoodDelivery(context.sceneMood)
   return {
-    rate: clamp(preset.rate + build + (movement ? 0.025 : 0) - (quiet ? 0.055 : 0) - (ending ? 0.04 : 0) - (question ? 0.015 : 0), 0.86, 1.12),
-    pitch: clamp(1 + (question ? 0.025 : 0) + (style === 'playful' ? 0.015 : 0) - (quiet || ending ? 0.02 : 0), 0.96, 1.06),
-    volume: clamp(preferences.voiceVolume * (quiet ? 0.72 : emphatic ? 1.04 : ending ? 0.94 : 1), 0, 1)
+    rate: clamp(preset.rate + moodDelivery.rate + build + (movement ? 0.025 : 0) - (quiet ? 0.055 : 0) - (ending ? 0.04 : 0) - (question ? 0.015 : 0), 0.86, 1.12),
+    pitch: clamp(1 + moodDelivery.pitch + (question ? 0.025 : 0) + (style === 'playful' ? 0.015 : 0) - (quiet || ending ? 0.02 : 0), 0.96, 1.06),
+    volume: clamp(preferences.voiceVolume * moodDelivery.volume * (quiet ? 0.72 : emphatic ? 1.04 : ending ? 0.94 : 1), 0, 1)
   }
 }
 

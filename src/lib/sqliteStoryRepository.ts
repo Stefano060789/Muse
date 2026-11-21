@@ -528,13 +528,13 @@ export class SqliteStoryRepository implements StoryRepository {
           if (!input.failed) {
             record.opening = input.opening!
             record.turn = input.opening!.turn
-            record.scenes = [{ title: record.opening.title, body: record.turn.narration, question: '', choices: [] }]
+            record.scenes = [{ title: record.opening.title, body: record.turn.narration, question: '', choices: [], sceneMood: record.turn.sceneMood }]
           }
         } else {
           if (!input.failed && !input.turn) throw new SharedStoryError('Journey: missing narration')
           if (!input.failed) {
             record.turn = input.turn!
-            record.scenes.push({ title: input.turn!.concluded ? 'The conclusion' : `Chapter ${record.scenes.length + 1}`, body: input.turn!.narration, question: '', choices: [] })
+            record.scenes.push({ title: input.turn!.concluded ? 'The conclusion' : `Chapter ${record.scenes.length + 1}`, body: input.turn!.narration, question: '', choices: [], sceneMood: input.turn!.sceneMood })
             record.responses.push(record.lastAction)
           }
         }

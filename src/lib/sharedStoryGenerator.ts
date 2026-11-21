@@ -1,6 +1,7 @@
 import { parseGeneratedStory, sceneCountForDuration, SharedStoryError, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { generateStoryJson } from './storyProvider'
 import { NARRATION_AI_INSTRUCTION } from './narration'
+import { SCENE_MOOD_AI_INSTRUCTION } from './sceneMood'
 import { assertAdventurePrivacy } from './sharedAdventure'
 import { storyLanguageInstruction } from './storyLanguage'
 import { romanceInstruction } from './storyRomance'
@@ -58,7 +59,7 @@ export async function generateSharedStory(
     answerInstruction,
     difficultyInstruction,
     (brief.endingMode ?? 'answer') === 'answer' && brief.answerInstruction ? `Final-scene direction (public story information): ${brief.answerInstruction}. Integrate this exact intent clearly and consistently into the final scene without revealing the secret answer.` : '',
-    'Return JSON only, without markdown: {"title":"...","description":"...","narrationStyle":"suspenseful","narrationLanguage":"en-US","scenes":[{"title":"...","body":"...","clue":"...","choices":["...","...","..."]}]}.',
+    'Return JSON only, without markdown: {"title":"...","description":"...","narrationStyle":"suspenseful","narrationLanguage":"en-US","scenes":[{"title":"...","body":"...","clue":"...","choices":["...","...","..."],"sceneMood":"mystery"}]}.',
     brief.adventure
       ? 'Prepare ordered public scenes with flexible exploration inside each. Every prepared scene must be reached before the ending can unlock. The first scene opens the adventure; later scenes prepare indirect clues and discoveries. Include meaningful relationships, useful objects and consequences without revealing private text.'
       : 'Every scene must include exactly three distinct short choices phrased as safe exploratory actions, not secret-answer guesses. Never include a private answer, alternative answer, final message or assistance hint in a choice.',
@@ -80,6 +81,7 @@ export async function generateSharedStory(
     'Target duration includes reading/listening and thinking; it is an estimate, not a countdown.',
     'Do not include the final reveal. Only the server unlocks the creator message, only after reaching the last prepared scene and satisfying the selected ending mode.',
     NARRATION_AI_INSTRUCTION,
+    SCENE_MOOD_AI_INSTRUCTION,
     storyLanguageInstruction(brief.language)
   ].join('\n')
   const { gift: _gift, ...generationBrief } = brief

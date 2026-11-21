@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { answerPersonalStory, loadPersonalStory, savePersonalStory, type PersonalStory, type PersonalStoryDifficulty, type PersonalStoryMood } from '../lib/story'
 import { loadMuseProfile, saveMuseProfile } from '../lib/profile'
 import { useNarration } from '../lib/useNarration'
+import type { NarrationContext } from '../lib/immersiveNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import { audioControlsCopy } from '../lib/audioControlsCopy'
 import ReadAlongText from '../components/ReadAlongText'
@@ -33,6 +34,7 @@ import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 import { createStoryRecap, storyRecapCopy, type StoryRecapChapter } from '../lib/storyRecap'
 import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
+import JourneyReelComposer from '../components/JourneyReelComposer'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -133,7 +135,8 @@ export default function StoryPage() {
     progress: story?.journey ? story.journey.revision / story.journey.maxTurns
       : story ? story.currentStep / Math.max(1, story.scenes.length - 1) : 0,
     ending: story?.journey ? story.journey.status === 'concluded' : Boolean(story && story.currentStep >= story.scenes.length - 1),
-    sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new'
+    sceneKey: story ? `${story.id}:${story.journey?.revision ?? story.currentStep}` : 'new',
+    sceneMood: story?.scenes[story.currentStep]?.sceneMood
   })
   const stopSpeaking = narrator.stop
   const recapCopy = storyRecapCopy(interfaceLanguage)
@@ -592,22 +595,25 @@ export default function StoryPage() {
   const startDictation = () => interaction.dictate('response', value => {
     setResponseDraft(value.slice(0, story?.journey ? 800 : 600))
   })
-  const pendingListen = useRef('')
-  useEffect(() => { setStoryMode(null); pendingListen.current = '' }, [story?.id, story?.currentStep, archiveReading, rereading])
+  const pendingListen = useRef<{ text: string; context?: NarrationContext } | null>(null)
+  useEffect(() => { setStoryMode(null); pendingListen.current = null }, [story?.id, story?.currentStep, archiveReading, rereading])
   useEffect(() => {
-    if (!pendingListen.current || (narrator.provider !== 'browser' && !narrator.cloudConsent) || storyMode !== 'listen') return
-    const text = pendingListen.current
-    pendingListen.current = ''
-    void narrator.speak(text, undefined, { autoPlay: true })
+    const pending = pendingListen.current
+    if (!pending || (narrator.provider !== 'browser' && !narrator.cloudConsent) || storyMode !== 'listen') return
+    pendingListen.current = null
+    void narrator.speak(pending.text, pending.context, { autoPlay: true })
   }, [narrator.cloudConsent, narrator.provider, storyMode])
   const scenePosition = narrator.activeText === narrationText ? narrator.textPosition : -1
   const changeStoryMode = (mode: StoryMode) => {
     narrator.stop(); stopRecording(); setStoryMode(mode)
-    pendingListen.current = ''
+    pendingListen.current = null
     if (mode === 'listen') {
       const text = archiveReading || rereading ? `${story?.scenes[0].title}. ${story?.scenes[0].body}` : narrationText
-      if (narrator.provider !== 'browser' && !narrator.cloudConsent) { pendingListen.current = text; return }
-      void narrator.speak(text, undefined, { autoPlay: true })
+      const playbackContext: NarrationContext = archiveReading || rereading
+        ? { sceneMood: story?.scenes[0]?.sceneMood, progress: 0, ending: false }
+        : { sceneMood: scene?.sceneMood }
+      if (narrator.provider !== 'browser' && !narrator.cloudConsent) { pendingListen.current = { text, context: playbackContext }; return }
+      void narrator.speak(text, playbackContext, { autoPlay: true })
     }
   }
   const savedScenes = (mode: StoryMode = storyMode) => story ? <div lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>
@@ -617,7 +623,7 @@ export default function StoryPage() {
       return <article key={index} className="atelier-card">
         <h3><StoryPassage mode={mode} text={savedScene.title} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></h3>
         <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage mode={mode} text={savedScene.body} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></p>
-        {mode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
+        {mode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} context={{ sceneMood: savedScene.sceneMood, progress: story.scenes.length > 1 ? index / (story.scenes.length - 1) : 0, ending: index === story.scenes.length - 1 }} /> : null}
       </article>
     })}
   </div> : null
@@ -777,7 +783,7 @@ export default function StoryPage() {
                 <summary>{interfaceLanguage === 'en-US' ? 'Enable narration' : interfaceCopy.listenScene}</summary>
                 <p>{interfaceCopy.listenDescription}</p>
                 <button type="button" onClick={() => {
-                  pendingListen.current = narrationText
+                  pendingListen.current = { text: narrationText, context: { sceneMood: scene?.sceneMood } }
                   narrator.setDeviceOnly(true)
                 }}>{audioControlsCopy(interfaceLanguage).deviceChoice}</button>
                 <ExplicitConsent scope="cloudAudio" checked={narrator.cloudConsent} onChange={narrator.setCloudConsent}>
@@ -788,7 +794,7 @@ export default function StoryPage() {
                 <h2 style={{ margin: '0.5rem 0 1rem' }}>{storyMode !== null ? <ReadAlongText text={sceneTitle} startAt={0} position={scenePosition} active={storyMode === 'listen'} /> : null}</h2>
                 <p className="atelier-prose">{storyMode !== null ? <ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</p>
                 {storyMode === 'listen' ? <>
-                {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label={interfaceCopy.listenScene} beforeSpeak={stopRecording} showCloudConsent={false} /> : null}
+                {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label={interfaceCopy.listenScene} beforeSpeak={stopRecording} showCloudConsent={false} context={{ sceneMood: scene?.sceneMood }} /> : null}
                 {narrator.ambientKind && narrator.ambientKind !== 'none' ? <p role="status">{soundscapeLabel(narrator.ambientKind)}</p> : null}
                 {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrationText)}>{flow('retryAmbient')}</button></p> : null}
                 {narrator.error ? <p role="alert">{narrator.error}</p> : null}
@@ -884,6 +890,7 @@ export default function StoryPage() {
                   archiveReading={archiveReading}
                   language={interfaceLanguage}
                 />
+                <JourneyReelComposer story={story} interfaceLanguage={interfaceLanguage} />
               </section> : null}
               <div style={{ marginTop: '2rem' }}>
                 <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>

@@ -3,6 +3,7 @@ import type { SharedMediaKind, SharedMediaMime, SharedVoiceSummary } from './sha
 import { parseStoryChoiceMode, parseSuggestedChoices, SuggestedChoicesError, type StoryChoiceMode } from './freeformStory'
 import { assertStoryNarrationLanguage, parseStoryLanguage, recipientCopy, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { parseStoryRomance, type StoryRomance } from './storyRomance'
+import { parseSceneMood, type SceneMood } from './sceneMood'
 import { SharedStoryError } from './sharedStoryError'
 
 export { SharedStoryError } from './sharedStoryError'
@@ -43,7 +44,7 @@ export type SharedStoryBrief = {
   gift?: SharedStoryGift
 }
 
-export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[] }
+export type SharedStoryScene = { title: string; body: string; clue: string; choices?: string[]; sceneMood?: SceneMood }
 
 export function parseSharedSceneChoices(value: unknown): string[] | undefined {
   if (value === undefined) return undefined
@@ -260,6 +261,13 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
   const input = record(value)
   const title = text(input.title, 'Generated title', 160)
   const description = text(input.description, 'Generated description', 500)
+  let metadata: NarrationMetadata
+  try {
+    assertStoryNarrationLanguage(input.narrationLanguage, brief.language)
+    metadata = parseNarrationMetadata(input, true)
+  } catch (error) {
+    throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid AI narration metadata.', 502)
+  }
   const count = sceneCountForDuration(brief.durationMinutes)
   if (!Array.isArray(input.scenes) || input.scenes.length !== count) {
     throw new SharedStoryError('The AI must return exactly ' + count + ' scenes.', 502)
@@ -272,7 +280,8 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
       title: text(scene.title, 'Scene title', 160),
       body: text(scene.body, 'Scene narration', 6000),
       clue: text(scene.clue, 'Scene clue', 600),
-      ...(scene.choices === undefined || emptyUnusedChoices ? {} : { choices: parseSharedSceneChoices(scene.choices) })
+      ...(scene.choices === undefined || emptyUnusedChoices ? {} : { choices: parseSharedSceneChoices(scene.choices) }),
+      sceneMood: parseSceneMood(scene.sceneMood, metadata.narrationStyle)
     }
   })
   if (brief.adventure?.choiceMode === 'suggested' && scenes.slice(0, -1).some(scene => !scene.choices)) {
@@ -290,12 +299,7 @@ export function parseGeneratedStory(value: unknown, brief: SharedStoryBrief): Sh
   if (words < brief.durationMinutes * 60 || words > brief.durationMinutes * 110) {
     throw new SharedStoryError('The AI returned a story outside the requested narration length. Try generating again.', 502)
   }
-  try {
-    assertStoryNarrationLanguage(input.narrationLanguage, brief.language)
-    return { title, description, scenes, ...parseNarrationMetadata(input, true) }
-  } catch (error) {
-    throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid AI narration metadata.', 502)
-  }
+  return { title, description, scenes, ...metadata }
 }
 
 export function sharedStoryPlayerView(

@@ -4,6 +4,7 @@ import { requireAccount } from '../../lib/accountAuth'
 import { apiSafety, reserveAiAttempt, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { requireCloudAudioConsent } from '../../lib/providerConsent'
+import { parseSceneMood } from '../../lib/sceneMood'
 import { synthesizeGoogleNarration } from '../../lib/googleNarration'
 
 export const config = { api: { bodyParser: { sizeLimit: '64kb' } } }
@@ -35,6 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const mood = String(req.body?.mood || '').trim()
   let style = legacyNarrationStyle(mood)
   let language = 'en-US'
+  let sceneMood: ReturnType<typeof parseSceneMood> | undefined
   try {
     const metadata = parseNarrationMetadata({
       narrationStyle: req.body?.narrationStyle ?? style,
@@ -42,6 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }, true)
     style = metadata.narrationStyle!
     language = metadata.narrationLanguage!
+    sceneMood = req.body?.sceneMood === undefined ? undefined : parseSceneMood(req.body?.sceneMood, style)
   } catch {
     return res.status(400).json({ error: 'Invalid narration style or language.' })
   }
@@ -50,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Text is required (maximum 12000 characters)' })
   }
   try {
-    const audio = await synthesizeGoogleNarration(req.body?.text, language, style, { reserveAttempt: reserveAiAttempt })
+    const audio = await synthesizeGoogleNarration(req.body?.text, language, style, { reserveAttempt: reserveAiAttempt, sceneMood })
     res.setHeader('Content-Type', 'audio/mpeg')
     return res.status(200).send(Buffer.from(audio))
   } catch (error) {

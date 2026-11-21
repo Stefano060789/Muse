@@ -2,6 +2,7 @@ import type { NarrationMetadata } from './narration'
 import type { JourneySnapshot } from './personalJourney'
 import type { StoryLanguageCode } from './storyLanguage'
 import type { StoryRomance } from './storyRomance'
+import type { SceneMood } from './sceneMood'
 import { latestPersonalStory, loadStoryLibrary, saveLibraryPersonalStory } from './storyLibrary'
 
 export type StoryBeat = {
@@ -73,6 +74,7 @@ export type PersonalStory = NarrationMetadata & {
     body: string
     question: string
     choices: string[]
+    sceneMood?: SceneMood
   }>
 }
 

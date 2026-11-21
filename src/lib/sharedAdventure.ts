@@ -4,6 +4,7 @@ import type { StoredStory } from './storyRepository'
 import { generateStoryJson } from './storyProvider'
 import { assertStoryNarrationLanguage, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { romanceInstruction } from './storyRomance'
+import { parseSceneMood, SCENE_MOOD_AI_INSTRUCTION } from './sceneMood'
 import {
   freeformSystemPrompt, parseSuggestedChoices, validatePlayerChoiceSelection,
   type StoryChoiceMode
@@ -12,7 +13,7 @@ import {
 export type AdventureState = {
   inventory: string[]; discoveries: string[]; relationships: string[]; progress: string
 }
-export type AdventureTurn = { narration: string; state: AdventureState; choices?: string[]; sceneIndex?: number }
+export type AdventureTurn = { narration: string; state: AdventureState; choices?: string[]; sceneMood?: import('./sceneMood').SceneMood; sceneIndex?: number }
 export type AdventureView = {
   revision: number; actionsUsed: number; actionsRemaining: number
   budget: number; budgetRemaining: number; pending: boolean; turn: AdventureTurn | null
@@ -68,12 +69,14 @@ export function assertAdventurePrivacy(text: string, brief: SharedStoryBrief, st
   }
 }
 
-export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode: StoryChoiceMode = 'free', exhausted = false, language = brief.language): AdventureTurn {
+export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode: StoryChoiceMode = 'free', exhausted = false, language = brief.language, style?: import('./narration').NarrationStyle): AdventureTurn {
   const invalid = () => new SharedStoryError('The AI response failed adventure validation. This attempt was charged.', 502)
   const isSuggested = mode === 'suggested' && !exhausted
   const keys = isSuggested ? ['narration', 'state', 'choices'] : ['narration', 'state']
-  const object = (input: unknown, expectedKeys: string[]) => {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join() !== expectedKeys.sort().join()) throw invalid()
+  const object = (input: unknown, expectedKeys: string[], optionalKeys: string[] = []) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        expectedKeys.some(key => !Object.prototype.hasOwnProperty.call(input, key)) ||
+        Object.keys(input).some(key => !expectedKeys.includes(key) && !optionalKeys.includes(key))) throw invalid()
     return input as Record<string, unknown>
   }
   const bounded = (input: unknown, max: number) => {
@@ -88,7 +91,7 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
     }
     turnValue = envelope.turn
   }
-  const result = object(turnValue, keys)
+  const result = object(turnValue, keys, ['sceneMood'])
   const state = object(result.state, ['inventory', 'discoveries', 'relationships', 'progress'])
   const list = (input: unknown) => {
     if (!Array.isArray(input) || input.length > 8) throw invalid()
@@ -100,7 +103,8 @@ export function parseAdventureTurn(value: unknown, brief: SharedStoryBrief, mode
   const turn: AdventureTurn = {
     narration: bounded(result.narration, 1800),
     state: { inventory: list(state.inventory), discoveries: list(state.discoveries), relationships: list(state.relationships), progress: bounded(state.progress, 300) },
-    ...(choices ? { choices } : {})
+    ...(choices ? { choices } : {}),
+    sceneMood: parseSceneMood(result.sceneMood, style)
   }
   const words = storyWordCount(turn.narration, language)
   if (words < 30 || words > 180) throw invalid()
@@ -140,13 +144,14 @@ export async function generateAdventureTurn(story: StoredStory, view: AdventureV
     'Stay in the current prepared scene. Never narrate reaching future scenes, conclude the journey, or claim any ending unlocked. The server alone advances prepared scenes and unlocks endings.',
     'When actionsRemaining is 2 or less, bring this local exploration to a resting point. At zero, direct the player to Continue / Next through the remaining prepared scenes without AI cost. Budget exhaustion is never a journey ending or a private-message reveal.',
     mode === 'suggested' && !isExhausted
-      ? 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"},"choices":["...","...","..."]}.'
-      : 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"}}.',
+      ? 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"},"choices":["...","...","..."],"sceneMood":"reflection"}.'
+      : 'Return ONLY JSON with exactly {"narration":"100-180 words, strict maximum 180","state":{"inventory":["short item"],"discoveries":["short clue"],"relationships":["short relationship"],"progress":"short summary"},"sceneMood":"reflection"}.',
     'State lists: at most 8 unique entries each, each at most 120 characters; progress at most 300 characters. Narration at most 1800 characters. No extra keys.',
+    SCENE_MOOD_AI_INSTRUCTION,
     storyLanguageInstruction(language),
     language ? 'For this explicit language, wrap the requested turn JSON in exactly {"narrationLanguage":"' + language + '","turn":{...the requested turn...}}. No other outer keys.' : ''
   ].join('\n')
-  return { ...parseAdventureTurn(await generateStoryJson(system, input, 1600), story.brief, mode, isExhausted, language), sceneIndex }
+  return { ...parseAdventureTurn(await generateStoryJson(system, input, 1600), story.brief, mode, isExhausted, language, story.content.narrationStyle), sceneIndex }
 }
 
 export function adventureChoiceView(view: AdventureView, story: StoredStory, sceneIndex = 0): AdventureView {

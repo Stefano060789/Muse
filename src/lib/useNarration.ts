@@ -54,6 +54,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
   const ambience = useRef<StoryAmbience | null>(null)
   const immersiveRef = useRef(immersive)
   immersiveRef.current = immersive
+  const playbackContextRef = useRef<NarrationContext>(context)
   const active = useRef(0)
   const mounted = useRef(false)
   const audio = useRef<HTMLAudioElement | null>(null)
@@ -158,9 +159,9 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     setAmbientKind('none')
     if (message) setError(message)
   }
-  const startAmbientFor = (text: string) => {
+  const startAmbientFor = (text: string, playbackContext: NarrationContext = context) => {
     const preferences = immersiveRef.current
-    const sound = storySoundscape(text, preferences.soundscape)
+    const sound = storySoundscape(text, preferences.soundscape, playbackContext)
     if (sound === 'none' || preferences.ambientVolume <= 0 || preferences.voiceVolume <= 0) {
       stopAmbient()
       return
@@ -255,6 +256,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
     if (!permissions.ready || permissions.error) { setError(permissions.error || 'Account permissions are still loading. Try again shortly.'); return }
     if (permissions.managed && !permissions.services) { setError('Audio processing permission is disabled. Manage permission in Settings.'); return }
     const id = active.current
+    playbackContextRef.current = playbackContext
     setActiveText(text)
     setTextPosition(0)
     setStatus('loading')
@@ -272,7 +274,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
         return
       }
       // Start in the Play tap's call stack; awaiting Web Audio can lose Safari's user activation.
-      startAmbientFor(text)
+      startAmbientFor(text, playbackContext)
       if (!valid()) return
       const chunks = narrationChunks(text)
       const normalizedText = text.trim().replace(/\s+/g, ' ')
@@ -337,7 +339,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       await browser(); return
     }
     setStatus('loading')
-    if (provider !== 'google' || options.autoPlay) startAmbientFor(text)
+    if (provider !== 'google' || options.autoPlay) startAmbientFor(text, playbackContext)
     const controller = new AbortController()
     request.current = controller
     armTimer(provider === 'google' ? 60000 : 20000, () => controller.abort())
@@ -351,7 +353,10 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       }
       const response = await accountFetch('/api/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION }), signal: controller.signal
+        body: JSON.stringify({
+          text, narrationStyle: style, narrationLanguage: language, consentVersion: MUSE_AI_CONSENT_VERSION,
+          ...(playbackContext.sceneMood ? { sceneMood: playbackContext.sceneMood } : {})
+        }), signal: controller.signal
       })
       if (!response.ok) {
         const unavailable = `Narration provider unavailable (HTTP ${response.status}).`
@@ -524,7 +529,7 @@ export function useNarration(metadata: NarrationMetadata = {}, mood?: string, co
       player.volume = immersiveRef.current.voiceVolume
       if (Number.isFinite(player.duration) && player.duration > 0) setTextPosition(Math.floor(activeText.length * Math.min(1, Math.max(0, player.currentTime / player.duration))))
       setStatus('speaking')
-      startAmbientFor(activeText)
+      startAmbientFor(activeText, playbackContextRef.current)
     },
     onCloudTimeUpdate: (player: HTMLAudioElement) => {
       if (!currentCloudPlayer(player) || audio.current !== player || !Number.isFinite(player.duration) || player.duration <= 0) return

@@ -1,6 +1,7 @@
 import { NARRATION_STYLES, type NarrationStyle } from './narration'
 import type { SharedStoryContent, SharedStoryScene } from './sharedStory'
 import { STORY_LANGUAGES, type StoryLanguageCode } from './storyLanguage'
+import { parseSceneMood } from './sceneMood'
 
 export type SharedStoryTranslation = {
   language: StoryLanguageCode
@@ -37,8 +38,10 @@ export function parseSharedStoryTranslation(
   }
   const scenes = content.scenes.map((item, index) => {
     const source = sourceScenes?.[index]
-    const keys = source?.choices ? 'body,choices,clue,title' : 'body,clue,title'
-    if (!isRecord(item) || Object.keys(item).sort().join() !== keys ||
+    const required = source?.choices ? ['body', 'clue', 'title', 'choices'] : ['body', 'clue', 'title']
+    if (!isRecord(item) ||
+      required.some(key => !Object.prototype.hasOwnProperty.call(item, key)) ||
+      Object.keys(item).some(key => !required.includes(key) && key !== 'sceneMood') ||
       !text(item.title, 160) || !text(item.body, 6000) || !text(item.clue, 600)) {
       throw new Error('The translated story response is invalid.')
     }
@@ -53,7 +56,8 @@ export function parseSharedStoryTranslation(
     }
     return {
       title: item.title, body: item.body, clue: item.clue,
-      ...(choices ? { choices } : {})
+      ...(choices ? { choices } : {}),
+      sceneMood: parseSceneMood(item.sceneMood ?? source?.sceneMood, content.narrationStyle as NarrationStyle)
     }
   })
   return {

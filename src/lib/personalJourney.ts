@@ -5,9 +5,10 @@ import type { PersonalStory, PersonalStoryDifficulty, PersonalStoryMood } from '
 import { SharedStoryError } from './sharedStory'
 import { parsePersonalStoryRequest } from './personalStoryGenerator'
 import { generateStoryJson } from './storyProvider'
-import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadata } from './narration'
+import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadata, type NarrationStyle } from './narration'
 import { assertStoryNarrationLanguage, personalSceneTitle, recipientCopy, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { romanceInstruction, type StoryRomance } from './storyRomance'
+import { parseSceneMood, SCENE_MOOD_AI_INSTRUCTION, type SceneMood } from './sceneMood'
 import {
   boundedStoryList, boundedStoryText, objectWithRequiredKeys, invalidFreeform, parseFreeformState,
   parseStoryChoiceMode, parseSuggestedChoices, validatePlayerChoiceSelection, freeformSystemPrompt,
@@ -40,6 +41,7 @@ export type JourneyTurn = {
   state: FreeformState
   concluded: boolean
   choices?: string[]
+  sceneMood?: SceneMood
 }
 export type JourneyOpening = NarrationMetadata & {
   title: string
@@ -164,7 +166,7 @@ export function parseJourneyClosingAction(body: Record<string, unknown>, record:
   }
   return parseJourneyAction({ ...body, text: JOURNEY_CLOSING_ACTION, choiceMode: 'free' })
 }
-export function parseJourneyTurn(value: unknown, concluding: boolean, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyTurn {
+export function parseJourneyTurn(value: unknown, concluding: boolean, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode, style?: NarrationStyle): JourneyTurn {
   const isSuggested = mode === 'suggested' && !concluding
   const keys = isSuggested ? ['narration', 'state', 'concluded', 'choices'] : ['narration', 'state', 'concluded']
   const input = objectWithRequiredKeys(value, keys)
@@ -172,7 +174,7 @@ export function parseJourneyTurn(value: unknown, concluding: boolean, mode: Stor
   const words = storyWordCount(narration, language)
   if (words < 30 || words > 180 || input.concluded !== concluding) throw invalidFreeform()
   const choices = isSuggested ? parseSuggestedChoices(input.choices) : undefined
-  return { narration, state: parseFreeformState(input.state), concluded: concluding, ...(choices ? { choices } : {}) }
+  return { narration, state: parseFreeformState(input.state), concluded: concluding, ...(choices ? { choices } : {}), sceneMood: parseSceneMood(input.sceneMood, style) }
 }
 export function parseJourneyOpening(value: unknown, mode: StoryChoiceMode = 'free', language?: StoryLanguageCode): JourneyOpening {
   const input = objectWithRequiredKeys(value, ['title', 'description', 'plan', 'turn', 'narrationStyle', 'narrationLanguage'])
@@ -180,9 +182,10 @@ export function parseJourneyOpening(value: unknown, mode: StoryChoiceMode = 'fre
   if (plan.length < 3) throw invalidFreeform()
   try {
     assertStoryNarrationLanguage(input.narrationLanguage, language)
+    const metadata = parseNarrationMetadata(input, true)
     return {
       title: boundedStoryText(input.title, 160), description: boundedStoryText(input.description, 500), plan,
-      ...parseNarrationMetadata(input, true), turn: parseJourneyTurn(input.turn, false, mode, language),
+      ...metadata, turn: parseJourneyTurn(input.turn, false, mode, language, metadata.narrationStyle),
       choiceMode: mode
     }
   } catch { throw invalidFreeform() }
@@ -241,7 +244,7 @@ function journeySystem(mode: StoryChoiceMode, difficulty: PersonalStoryDifficult
     'Give the player up to three tries at each obstacle. When a try fails, do not accept it and do not repeat the same scene: show a believable consequence of what they attempted and weave in a hint through the world. The hint is subtle after the first failed try (a detail the player may notice) and clearer after the second (for example, an item they carry draws their attention). After a third failed try, change course: let the story continue along an alternative path with a modest consequence, leave the obstacle unresolved, and note it briefly in state.progress. Never create a dead end. Count failed tries only from recentActions, the latest action and state.progress; never invent earlier attempts.',
     'Duration is approximate reading and participation time, never a timer. Weave actions into the prepared flexible arc, relevant to the selected mood.',
     'Write 100-180 words of concrete narration (strict maximum 180 words and 1800 characters). Respect language and narration style.',
-    'Return ONLY the exact requested JSON, no extra keys.', NARRATION_AI_INSTRUCTION
+    'Return ONLY the exact requested JSON, no extra keys.', NARRATION_AI_INSTRUCTION, SCENE_MOOD_AI_INSTRUCTION
   ].join('\n')
 }
 export async function generateJourneyOpening(input: JourneyInput): Promise<JourneyOpening> {
@@ -252,8 +255,8 @@ export async function generateJourneyOpening(input: JourneyInput): Promise<Journ
     ? 'Provide 3 to 5 distinct proposed actions in turn.choices (each at most 160 characters). Give each a meaningfully different player intent or likely outcome; do not use paraphrases, near-duplicates or formatting variations.'
     : 'Leave room for freeform actions without fixed choice menus.'
   const turnJson = mode === 'suggested'
-    ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."]}'
-    : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false}'
+    ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."],"sceneMood":"reflection"}'
+    : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"sceneMood":"reflection"}'
   return parseJourneyOpening(await generateStoryJson(
     system + '\nPrepare 3-5 compact arc points (each at most 180 characters) and the opening in ONE response. ' + choicePrompt + ' Return {"title":"...","description":"...","narrationStyle":"warm","narrationLanguage":"' + (input.language ?? 'en-US') + '","plan":["..."],"turn":' + turnJson + '}. Choose a valid narration style.', input, 2600), mode, input.language)
 }
@@ -268,10 +271,10 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
     ? 'This is the FINAL paid response. Deliver an actual meaningful conclusion resolving the arc and reflecting the latest action, state and consequences. Write the closing scene yourself: narrate the resolution and its emotional aftermath, rather than asking the player to write or choose the ending. No unresolved required next action or question, no invitation to respond, no cliffhanger requiring continuation. Set concluded:true.'
     : ('There are ' + remaining + ' responses left after this one. ' + (remaining <= 2 ? 'Draw threads together toward the ending.' : 'Develop the flexible arc.') + ' Set concluded:false.' + (mode === 'suggested' ? ' Provide 3 to 5 distinct proposed actions in choices (each at most 160 characters), with meaningfully different player intents or likely outcomes; do not use paraphrases, near-duplicates or formatting variations.' : ''))
   const turnJson = isFinal
-    ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":true}'
+    ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":true,"sceneMood":"reflection"}'
     : mode === 'suggested'
-      ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."]}'
-      : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false}'
+      ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."],"sceneMood":"reflection"}'
+      : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"sceneMood":"reflection"}'
   const generated = await generateStoryJson(
     system + '\n' + turnPrompt + '\nReturn ' + (language ? '{"narrationLanguage":"' + language + '","turn":' + turnJson + '}' : turnJson) + '.',
     {
@@ -284,9 +287,9 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
     if (language) {
       const envelope = objectWithRequiredKeys(generated, ['narrationLanguage', 'turn'])
       assertStoryNarrationLanguage(envelope.narrationLanguage, language)
-      return parseJourneyTurn(envelope.turn, isFinal, mode, language)
+      return parseJourneyTurn(envelope.turn, isFinal, mode, language, record.opening.narrationStyle)
     }
-    return parseJourneyTurn(generated, isFinal, mode)
+    return parseJourneyTurn(generated, isFinal, mode, undefined, record.opening.narrationStyle)
   } catch (error) {
     throw new SharedStoryError(error instanceof Error ? error.message : 'Invalid journey language response.', 502)
   }

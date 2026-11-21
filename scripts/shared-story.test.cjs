@@ -50,7 +50,8 @@ async function main() {
       narrationStyle: 'suspenseful', narrationLanguage: 'en-US',
       scenes: Array.from({ length: count }, (_, index) => ({
         title: `Discovery ${index + 1}`, body: Array(words).fill('wonder').join(' '),
-        clue: 'Look where your favourite constellations were once drawn.'
+        clue: 'Look where your favourite constellations were once drawn.',
+        sceneMood: 'mystery'
       }))
     }
   }
@@ -126,6 +127,19 @@ async function main() {
     for (const puzzleDifficulty of [null, '', 'impossible']) {
       assert.throws(() => parseSharedStoryBrief({ ...brief, puzzleDifficulty }), /puzzle difficulty/)
     }
+  })
+  await check('scene mood parsing accepts valid values and falls back safely for legacy output', () => {
+    const mooded = {
+      ...content,
+      scenes: content.scenes.map((scene, index) => ({
+        ...scene,
+        ...(index === 0 ? { sceneMood: 'nature' } : index === 1 ? { sceneMood: 'unknown' } : {})
+      }))
+    }
+    const parsed = parseGeneratedStory(mooded, brief)
+    assert.equal(parsed.scenes[0].sceneMood, 'nature')
+    assert.equal(parsed.scenes[1].sceneMood, 'mystery')
+    assert.equal(parsed.scenes[2].sceneMood, 'mystery')
   })
   await check('5/10/15/20 minutes scale scene count and validated narration length', () => {
     for (const minutes of [5, 10, 15, 20]) {
@@ -513,7 +527,7 @@ async function main() {
     assert.deepEqual(JSON.parse(providerRequest.messages[0].content).profileKeypoints, ['I love stars'])
   })
   await check('My Story continuations respond to answers and preserve previous scenes', async () => {
-    const changed = { ...personalContent.scenes[1], body: 'Your choice of the garden leads to a new constellation.' }
+    const changed = { ...personalContent.scenes[1], body: 'Your choice of the garden leads to a new constellation.', sceneMood: 'reflection' }
     global.fetch = async (_url, options) => {
       providerRequest = JSON.parse(options.body)
       return anthropicResponse({ scene: changed, narrationStyle: 'warm', narrationLanguage: 'en-US' })

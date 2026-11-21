@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { NARRATION_PRESETS, NARRATION_STYLES, type NarrationStyle } from './narration'
 import { SharedStoryError } from './sharedStory'
+import { parseSceneMood, sceneMoodDelivery } from './sceneMood'
 import { googleHostedConfigured, googleHostedOperation } from './googleNarrationHosted'
 
 const RETENTION = 30 * 86400000
@@ -12,13 +13,13 @@ const MAX_CACHE = 128 * 1024 * 1024
 type GoogleVoiceModel = 'wavenet' | 'chirp3-hd'
 // Names verified against Google's supported-voices catalog; never fall back across languages.
 const VOICES: Record<string, [string, string, GoogleVoiceModel?]> = {
-  'en-us': ['en-US', 'en-US-Wavenet-F'], 'zh-cn': ['cmn-CN', 'cmn-CN-Wavenet-A'],
-  'cmn-cn': ['cmn-CN', 'cmn-CN-Wavenet-A'], 'hi-in': ['hi-IN', 'hi-IN-Wavenet-A'],
-  'es-es': ['es-ES', 'es-ES-Wavenet-F'], 'ar-sa': ['ar-XA', 'ar-XA-Wavenet-A'],
-  'ar-xa': ['ar-XA', 'ar-XA-Wavenet-A'], 'it-it': ['it-IT', 'it-IT-Wavenet-E'],
-  'fr-fr': ['fr-FR', 'fr-FR-Wavenet-F'], 'de-de': ['de-DE', 'de-DE-Wavenet-G'],
-  'ja-jp': ['ja-JP', 'ja-JP-Wavenet-A'], 'pt-br': ['pt-BR', 'pt-BR-Wavenet-A'],
-  'uk-ua': ['uk-UA', 'uk-UA-Chirp3-HD-Achernar', 'chirp3-hd']
+  'en-us': ['en-US', 'en-US-Chirp3-HD-Leda', 'chirp3-hd'], 'zh-cn': ['cmn-CN', 'cmn-CN-Chirp3-HD-Leda', 'chirp3-hd'],
+  'cmn-cn': ['cmn-CN', 'cmn-CN-Chirp3-HD-Leda', 'chirp3-hd'], 'hi-in': ['hi-IN', 'hi-IN-Chirp3-HD-Leda', 'chirp3-hd'],
+  'es-es': ['es-ES', 'es-ES-Chirp3-HD-Leda', 'chirp3-hd'], 'ar-sa': ['ar-XA', 'ar-XA-Chirp3-HD-Leda', 'chirp3-hd'],
+  'ar-xa': ['ar-XA', 'ar-XA-Chirp3-HD-Leda', 'chirp3-hd'], 'it-it': ['it-IT', 'it-IT-Chirp3-HD-Leda', 'chirp3-hd'],
+  'fr-fr': ['fr-FR', 'fr-FR-Chirp3-HD-Leda', 'chirp3-hd'], 'de-de': ['de-DE', 'de-DE-Chirp3-HD-Leda', 'chirp3-hd'],
+  'ja-jp': ['ja-JP', 'ja-JP-Chirp3-HD-Leda', 'chirp3-hd'], 'pt-br': ['pt-BR', 'pt-BR-Chirp3-HD-Leda', 'chirp3-hd'],
+  'uk-ua': ['uk-UA', 'uk-UA-Chirp3-HD-Leda', 'chirp3-hd']
 }
 
 function failure(code: string, message: string, status = 503): SharedStoryError & { code: string } {
@@ -38,13 +39,14 @@ export function googleNarrationConfiguration() {
     retentionDays: 30, maxCharacters: 12000, languages: Object.keys(VOICES) }
 }
 
-export function googleVoice(language: string, style: NarrationStyle) {
+export function googleVoice(language: string, style: NarrationStyle, sceneMood?: unknown) {
   if (typeof language !== 'string' || !Object.prototype.hasOwnProperty.call(VOICES, language.toLowerCase()) ||
       !NARRATION_STYLES.includes(style)) {
     throw failure('google-unsupported-voice', 'Unsupported Google narration language or style.', 400)
   }
   const [languageCode, name, model = 'wavenet'] = VOICES[language.toLowerCase()]
-  return { languageCode, name, model, speakingRate: NARRATION_PRESETS[style].rate,
+  const moodRate = sceneMood === undefined ? 0 : sceneMoodDelivery(parseSceneMood(sceneMood, style)).rate
+  return { languageCode, name, model, speakingRate: Math.min(2, Math.max(0.25, NARRATION_PRESETS[style].rate + moodRate)),
     pitch: style === 'playful' ? 0.5 : style === 'suspenseful' ? -0.5 : 0 }
 }
 
@@ -179,11 +181,11 @@ async function providerChunk(text: string, voice: ReturnType<typeof googleVoice>
 
 export async function synthesizeGoogleNarration(
   text: string, language: string, style: NarrationStyle,
-  options: { reserveAttempt?: () => Promise<void> } = {}
+  options: { reserveAttempt?: () => Promise<void>; sceneMood?: unknown } = {}
 ): Promise<Uint8Array> {
   const configuration = googleNarrationConfiguration()
   if (!configuration.available) throw failure('google-not-configured', 'Google narration requires an enabled provider, server key, explicit character budget and persistent private storage.')
-  const voice = googleVoice(language, style)
+  const voice = googleVoice(language, style, options.sceneMood)
   if (typeof text !== 'string' || text.length > 24000 || !text.trim() ||
       /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text) ||
       /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text)) {
@@ -195,7 +197,7 @@ export async function synthesizeGoogleNarration(
     ? { languageCode: voice.languageCode, name: voice.name, speakingRate: voice.speakingRate, pitch: voice.pitch }
     : voice
   const hash = createHash('sha256').update(JSON.stringify([
-    voice.model === 'wavenet' ? 'google-mp3-v1' : 'google-mp3-v2', text, cacheVoice, style
+    voice.model === 'wavenet' ? 'google-mp3-v1' : 'google-mp3-v3', text, cacheVoice, style
   ])).digest('hex')
   const hosted = googleHostedConfigured()
   const token = randomUUID()

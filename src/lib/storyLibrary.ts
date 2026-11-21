@@ -6,6 +6,7 @@ import type { JourneyDuration, JourneySnapshot } from './personalJourney'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from './journeyLimits'
 import { assertStoryNarrationLanguage, parseStoryLanguage } from './storyLanguage'
 import { parseStoryRomance } from './storyRomance'
+import { parseSceneMood } from './sceneMood'
 
 export const STORY_LIBRARY_KEY = 'muse-story-library'
 const PERSONAL_KEY = 'muse-personal-story'
@@ -79,9 +80,13 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   assertStoryNarrationLanguage(input.narrationLanguage, language)
   const mood = input.mood
   if (mood !== 'adventure' && mood !== 'relaxed' && mood !== 'curious' && mood !== 'hopeful') throw new Error('Invalid story mood.')
+  const metadata = narration(input)
   const scenes = list(input.scenes).map(value => {
     const scene = record(value)
-    return { title: text(scene.title), body: text(scene.body), question: text(scene.question), choices: strings(scene.choices) }
+    return {
+      title: text(scene.title), body: text(scene.body), question: text(scene.question), choices: strings(scene.choices),
+      sceneMood: parseSceneMood(scene.sceneMood, metadata.narrationStyle)
+    }
   })
   if (!scenes.length || typeof input.currentStep !== 'number' || !Number.isInteger(input.currentStep) || input.currentStep < 0 || input.currentStep >= scenes.length) throw new Error('Invalid story progress.')
   if (input.generation !== undefined && input.generation !== 'ai') throw new Error('Invalid story generation.')
@@ -114,7 +119,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
     id: identifier(input.id), mood, title: text(input.title), description: text(input.description),
     currentStep: input.currentStep, createdAt: date(input.createdAt), responses: strings(input.responses), scenes,
     ...(journey ? { journey } : {}),
-    ...narration(input),
+    ...metadata,
     ...(input.generation === 'ai' ? { generation: 'ai' } : {}),
     ...(input.need !== undefined ? { need: text(input.need) } : {}),
     ...(input.storyIdea !== undefined ? { storyIdea: text(input.storyIdea, 1000) } : {}),
@@ -126,9 +131,14 @@ export function validatePersonalStory(value: unknown): PersonalStory {
 export function validateCreatorStory(value: unknown): CreatorStory {
   const input = record(value)
   const content = record(input.content)
+  const metadata = narration(content)
   const scenes = list(content.scenes).map(value => {
     const scene = record(value)
-    return { title: text(scene.title), body: text(scene.body), clue: text(scene.clue), ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) }) }
+    return {
+      title: text(scene.title), body: text(scene.body), clue: text(scene.clue),
+      ...(scene.choices === undefined ? {} : { choices: parseSharedSceneChoices(scene.choices) }),
+      sceneMood: parseSceneMood(scene.sceneMood, metadata.narrationStyle)
+    }
   })
   if (!scenes.length) throw new Error('Missing shared story scenes.')
   const brief = parseSharedStoryBrief(input.brief, { allowEmptyMessage: true })
@@ -138,7 +148,7 @@ export function validateCreatorStory(value: unknown): CreatorStory {
     ...(input.recovered === true ? { recovered: true } : {}),
     ...(input.playToken !== undefined ? { playToken: identifier(input.playToken) } : {}),
     expiresAt: input.expiresAt === null ? null : date(input.expiresAt), brief,
-    content: { title: text(content.title), description: text(content.description), scenes, ...narration(content) }
+    content: { title: text(content.title), description: text(content.description), scenes, ...metadata }
   }
 }
 

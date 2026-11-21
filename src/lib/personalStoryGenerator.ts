@@ -2,9 +2,10 @@ import { randomUUID } from 'crypto'
 import { SharedStoryError } from './sharedStory'
 import { generateStoryJson } from './storyProvider'
 import type { PersonalStory, PersonalStoryDifficulty, PersonalStoryMood } from './story'
-import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata } from './narration'
+import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationStyle } from './narration'
 import { assertStoryNarrationLanguage, parseStoryLanguage, storyLanguageInstruction, type StoryLanguageCode } from './storyLanguage'
 import { parseStoryRomance, requireRomanceConfirmation, romanceInstruction, type StoryRomance } from './storyRomance'
+import { parseSceneMood, SCENE_MOOD_AI_INSTRUCTION } from './sceneMood'
 
 function romanceField(value: unknown, confirmation?: unknown, creating = false): { romance?: StoryRomance } {
   try {
@@ -57,14 +58,15 @@ function keypoints(value: unknown): string[] {
   return value.map((point) => text(point, 'Profile key point', 180))
 }
 
-function scene(value: unknown): PersonalStory['scenes'][number] {
+function scene(value: unknown, style?: NarrationStyle): PersonalStory['scenes'][number] {
   const input = object(value)
   if (!Array.isArray(input.choices) || input.choices.length !== 3) throw new SharedStoryError('Each scene needs three choices.')
   return {
     title: text(input.title, 'Scene title', 160),
     body: text(input.body, 'Scene narration', 2500),
     question: text(input.question, 'Scene question', 300),
-    choices: input.choices.map((choice) => text(choice, 'Scene choice', 200))
+    choices: input.choices.map((choice) => text(choice, 'Scene choice', 200)),
+    sceneMood: parseSceneMood(input.sceneMood, style)
   }
 }
 
@@ -102,10 +104,11 @@ export function parsePersonalStoryRequest(value: unknown) {
   }
   const createdAt = text(saved.createdAt, 'Creation date', 40)
   if (!Number.isFinite(Date.parse(createdAt))) throw new SharedStoryError('Personal story creation date is invalid.')
+  const metadata = narration(saved, false, parseStoryLanguage(saved.language))
   const story: PersonalStory = {
     ...romanceField(saved.romance),
     ...languageField(saved.language),
-    ...narration(saved, false, parseStoryLanguage(saved.language)),
+    ...metadata,
     difficulty: difficulty(saved.difficulty),
     id: text(saved.id, 'Story ID', 80),
     createdAt,
@@ -119,7 +122,7 @@ export function parsePersonalStoryRequest(value: unknown) {
     profileKeypoints: keypoints(saved.profileKeypoints),
     currentStep: Number(saved.currentStep),
     responses: saved.responses.map((answer) => text(answer, 'Previous answer', 600)),
-    scenes: saved.scenes.map(scene)
+    scenes: saved.scenes.map(value => scene(value, metadata.narrationStyle))
   }
   return { action: 'continue' as const, story, answer: text(input.answer, 'Your answer', 600) }
 }
@@ -135,24 +138,26 @@ const SYSTEM = [
   'Each scene has title, body (100-180 words), question, and exactly three short choices.',
   'Match the selected story difficulty: gentle uses welcoming, clearly signposted obstacles; balanced uses a few clues or decisions that reward attention; challenging connects multiple concrete details and meaningful obstacles while remaining fair. Never use timers, obscure outside knowledge, or dead ends.',
   'Return valid JSON only, without markdown.',
-  NARRATION_AI_INSTRUCTION
+  NARRATION_AI_INSTRUCTION,
+  SCENE_MOOD_AI_INSTRUCTION
 ].join('\n')
 
 export async function generatePersonalStory(input: ReturnType<typeof parsePersonalStoryRequest>): Promise<PersonalStory> {
   if (input.action === 'create') {
-    const generated = await generateStoryJson(`${SYSTEM}\nSelected story difficulty: ${input.difficulty}.\n${romanceInstruction(input.romance)}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[...]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
+    const generated = await generateStoryJson(`${SYSTEM}\nSelected story difficulty: ${input.difficulty}.\n${romanceInstruction(input.romance)}\nCreate exactly three scenes with an opening, development and gentle ending. Return this top-level JSON shape with every required field: {"title":"...","description":"...","narrationStyle":"calm","narrationLanguage":"en-US","scenes":[{"title":"...","body":"...","question":"...","choices":["...","...","..."],"sceneMood":"reflection"}]}. The style and language shown are examples; choose valid values matching this story.\n${storyLanguageInstruction(input.language)}`, input, 2600)
     try {
       const content = object(generated)
       if (!Array.isArray(content.scenes) || content.scenes.length !== 3) throw new SharedStoryError('The AI must return three personal story scenes.')
+      const metadata = narration(content, true, input.language)
       return {
         id: randomUUID(), createdAt: new Date().toISOString(), generation: 'ai',
         ...(input.language ? { language: input.language } : {}),
         ...(input.romance ? { romance: input.romance } : {}),
-        ...narration(content, true, input.language),
+        ...metadata,
         title: text(content.title, 'Story title', 160),
         description: text(content.description, 'Story description', 500),
         mood: input.mood, difficulty: input.difficulty, need: input.need, storyIdea: input.storyIdea, improvementGoal: input.improvementGoal, profileKeypoints: input.profileKeypoints,
-        currentStep: 0, responses: [], scenes: content.scenes.map(scene)
+        currentStep: 0, responses: [], scenes: content.scenes.map(value => scene(value, metadata.narrationStyle))
       }
     } catch (error) {
       if (error instanceof SharedStoryError) throw new SharedStoryError(error.message, 502)
@@ -162,7 +167,7 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
   const { story, answer } = input
   const nextStep = story.currentStep + 1
   const generated = await generateStoryJson(
-    `${SYSTEM}\nSelected story difficulty: ${story.difficulty ?? 'balanced'}.\n${romanceInstruction(story.romance)}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."]}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
+    `${SYSTEM}\nSelected story difficulty: ${story.difficulty ?? 'balanced'}.\n${romanceInstruction(story.romance)}\nRewrite only scene ${nextStep + 1} of 3 so it meaningfully follows the latest answer. ${nextStep === 2 ? 'This is the final scene: bring the narrative to a gentle conclusion.' : 'Develop the narrative toward the planned ending.'} Return this top-level JSON shape with every required field: {"narrationStyle":"calm","narrationLanguage":"en-US","scene":{"title":"...","body":"...","question":"...","choices":["...","...","..."],"sceneMood":"reflection"}}. narrationStyle and narrationLanguage are required siblings of scene, not inside scene. The style and language shown are examples; choose valid values matching the continuation.\n${storyLanguageInstruction(story.language)}`,
     {
       mood: story.mood, difficulty: story.difficulty ?? 'balanced', need: story.need, storyIdea: story.storyIdea, improvementGoal: story.improvementGoal, profileKeypoints: story.profileKeypoints,
       ...(story.language ? { language: story.language } : {}),
@@ -174,10 +179,11 @@ export async function generatePersonalStory(input: ReturnType<typeof parsePerson
   )
   try {
     const content = object(generated)
-    const nextScene = scene(content.scene)
+    const metadata = narration(content, true, story.language)
+    const nextScene = scene(content.scene, metadata.narrationStyle)
     return {
       ...story, currentStep: nextStep, responses: [...story.responses, answer],
-      ...narration(content, true, story.language),
+      ...metadata,
       scenes: story.scenes.map((current, index) => index === nextStep ? nextScene : current)
     }
   } catch (error) {

@@ -87,15 +87,19 @@ async function main() {
   assert.equal(google.googleNarrationConfiguration().reason, 'hosted-storage-required')
   reset()
   for (const [language, expected] of Object.entries({
-    'en-US': 'en-US-Wavenet-F', 'zh-CN': 'cmn-CN-Wavenet-A', 'cmn-CN': 'cmn-CN-Wavenet-A',
-    'hi-IN': 'hi-IN-Wavenet-A', 'es-ES': 'es-ES-Wavenet-F', 'ar-SA': 'ar-XA-Wavenet-A',
-    'ar-XA': 'ar-XA-Wavenet-A', 'it-IT': 'it-IT-Wavenet-E', 'fr-FR': 'fr-FR-Wavenet-F',
-    'de-DE': 'de-DE-Wavenet-G', 'ja-JP': 'ja-JP-Wavenet-A', 'pt-BR': 'pt-BR-Wavenet-A'
-  })) assert.equal(google.googleVoice(language, 'warm').name, expected)
-  assert.deepEqual(google.googleVoice('uk-UA', 'warm'), {
-    languageCode: 'uk-UA', name: 'uk-UA-Chirp3-HD-Achernar', model: 'chirp3-hd', speakingRate: 0.98, pitch: 0
-  })
+    'en-US': 'en-US-Chirp3-HD-Leda', 'zh-CN': 'cmn-CN-Chirp3-HD-Leda', 'cmn-CN': 'cmn-CN-Chirp3-HD-Leda',
+    'hi-IN': 'hi-IN-Chirp3-HD-Leda', 'es-ES': 'es-ES-Chirp3-HD-Leda', 'ar-SA': 'ar-XA-Chirp3-HD-Leda',
+    'ar-XA': 'ar-XA-Chirp3-HD-Leda', 'it-IT': 'it-IT-Chirp3-HD-Leda', 'fr-FR': 'fr-FR-Chirp3-HD-Leda',
+    'de-DE': 'de-DE-Chirp3-HD-Leda', 'ja-JP': 'ja-JP-Chirp3-HD-Leda', 'pt-BR': 'pt-BR-Chirp3-HD-Leda',
+    'uk-UA': 'uk-UA-Chirp3-HD-Leda'
+  })) {
+    const voice = google.googleVoice(language, 'warm')
+    assert.equal(voice.name, expected)
+    assert.equal(voice.model, 'chirp3-hd')
+  }
+  assert.equal(google.googleVoice('ar-SA', 'warm').languageCode, 'ar-XA')
   assert.equal(google.googleVoice('en-US', 'calm').speakingRate, 0.95)
+  assert.ok(google.googleVoice('en-US', 'warm', 'reflection').speakingRate < google.googleVoice('en-US', 'warm').speakingRate)
   assert.equal(google.googleVoice('en-US', 'playful').pitch, 0.5)
   await rejects(() => synth('hello', 'en-GB'), 'google-unsupported-voice', 400)
   await rejects(() => synth('hello', 'constructor'), 'google-unsupported-voice')
@@ -107,7 +111,7 @@ async function main() {
   reset('ukrainian', '10000')
   const ukrainianAudio = await synth('Серце Пустелі та Дракон', 'uk-UA')
   assert.ok(ukrainianAudio instanceof Uint8Array)
-  assert.equal(requests[0].voice.name, 'uk-UA-Chirp3-HD-Achernar')
+  assert.equal(requests[0].voice.name, 'uk-UA-Chirp3-HD-Leda')
   assert.equal(requests[0].voice.languageCode, 'uk-UA')
   assert.equal(requests[0].audioConfig.audioEncoding, 'MP3')
   assert.equal(requests[0].audioConfig.speakingRate, 0.98)

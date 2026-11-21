@@ -10,6 +10,7 @@ import MicrophoneCheck from '../components/MicrophoneCheck'
 import DictationButton from '../components/DictationButton'
 import { recipientShareDetails, sharedStoryPreviewText } from '../lib/sharedStorySharing'
 import { useNarration } from '../lib/useNarration'
+import type { NarrationContext } from '../lib/immersiveNarration'
 import NarrationControls, { NarrationButton } from '../components/NarrationControls'
 import StoryModeControl, { type StoryMode } from '../components/StoryModeControl'
 import StoryPassage from '../components/StoryPassage'
@@ -319,10 +320,11 @@ export default function SharedStoryPage() {
       : player ? player.sceneIndex / Math.max(1, player.sceneCount - 1) : 0,
     ending: player ? player.solved || player.skipped : undefined,
     sceneKey: player ? `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
-      : creator?.ownerToken || 'new'
+      : creator?.ownerToken || 'new',
+    sceneMood: player?.adventure?.turn?.sceneMood ?? player?.scene.sceneMood
   })
-  const pendingListen = useRef<{ text: string; context?: { progress?: number; ending?: boolean } } | null>(null)
-  const startListening = (text: string, context?: { progress?: number; ending?: boolean }) => {
+  const pendingListen = useRef<{ text: string; context?: NarrationContext } | null>(null)
+  const startListening = (text: string, context?: NarrationContext) => {
     if (narrator.provider !== 'browser' && !narrator.cloudConsent) {
       pendingListen.current = { text, context }
       return
@@ -360,13 +362,13 @@ export default function SharedStoryPage() {
         const endingText = player.endingMode === 'automatic'
           ? `${player.scene.title}. ${player.scene.body}${player.message ? `\n\n${player.message}` : ''}`
           : player.message
-        if (endingText) startListening(endingText, { progress: 1, ending: true })
+        if (endingText) startListening(endingText, { progress: 1, ending: true, sceneMood: player.scene.sceneMood })
       } else if (player?.adventure) {
-        startListening(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`)
+        startListening(player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`, { sceneMood: player.adventure.turn?.sceneMood ?? player.scene.sceneMood })
       } else if (creator?.brief.adventure) {
-        startListening(sharedStoryPreviewText(creator.content))
+        startListening(sharedStoryPreviewText(creator.content), { sceneMood: creator.content.scenes[0]?.sceneMood })
       } else if (creator) setStudioPlayRequest(value => value + 1)
-      else if (player) startListening(`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`)
+      else if (player) startListening(`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`, { sceneMood: player.scene.sceneMood })
     } else pendingListen.current = null
   }
   useEffect(() => {
@@ -1341,7 +1343,7 @@ export default function SharedStoryPage() {
     )
   }
 
-  const audioButton = (text: string) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label={interfaceCopy.listen} beforeSpeak={beforeDeviceListen} /> : null
+  const audioButton = (text: string, context?: NarrationContext) => storyMode === 'listen' ? <NarrationButton narrator={narrator} text={text} label={interfaceCopy.listen} beforeSpeak={beforeDeviceListen} context={context} /> : null
 
   const shareDetails = origin && creator?.playToken ? recipientShareDetails(publicOrigin || origin, creator.playToken) : null
   const selectedOccasion = GIFT_OCCASIONS.find(item => item.id === brief.gift?.occasion)
@@ -1464,7 +1466,7 @@ export default function SharedStoryPage() {
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
                   <h2>{passage(player.scene.title)}</h2>
                   <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
-                  {storyMode === 'listen' ? audioButton(`${player.scene.title}. ${player.scene.body}`) : null}
+                  {storyMode === 'listen' ? audioButton(`${player.scene.title}. ${player.scene.body}`, { sceneMood: player.scene.sceneMood, progress: 1, ending: true }) : null}
                 </section> : null}
                 <p><strong>{player.skipped ? recipientText.skipped : player.endingMode === 'automatic' || player.endingMode === 'choice' ? recipientEnding.completed : recipientText.solved}</strong></p>
                 <SharedStoryReveal message={player.message} media={player.media ? revealMedia ?? { kind: player.media.kind, state: 'loading' } : null}
@@ -1504,7 +1506,7 @@ export default function SharedStoryPage() {
                 </p> : null}
                 {storyMode === 'listen' ? <details open><summary>Device voice (optional, quality varies)</summary>
                   <p>Prepared cloud recordings do not cover live adventure turns. This option uses your phone&apos;s voice, not Google narration.</p>
-                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} deviceVoice />
+                  <NarrationButton narrator={narrator} text={player.adventure.turn?.narration || `${player.scene.body} ${player.scene.clue}`} label={recipientText.playAdventure} beforeSpeak={beforeDeviceListen} deviceVoice context={{ sceneMood: player.adventure.turn?.sceneMood ?? player.scene.sceneMood }} />
                 </details> : null}
                 <details style={{ margin: '1rem 0' }}><summary>{recipientText.yourJourney}</summary>
                 <p>{recipientText.adventureBudget(player.adventure.actionsRemaining, player.adventure.budgetRemaining, player.adventure.budget)}</p>
@@ -1554,7 +1556,7 @@ export default function SharedStoryPage() {
                   </details>
                   <details><summary>Use free device voice instead</summary>
                     <p>If the words move but you hear no voice, check your device volume or try this voice.</p>
-                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} deviceVoice />
+                    <NarrationButton narrator={narrator} text={`${player.scene.title}. ${player.scene.body} ${player.scene.clue}`} label={recipientText.playScene} beforeSpeak={beforeDeviceListen} deviceVoice context={{ sceneMood: player.scene.sceneMood }} />
                   </details>
                   </> : null}
                   {player.sceneIndex + 1 < player.sceneCount ? <>
@@ -1669,7 +1671,7 @@ export default function SharedStoryPage() {
               </> : <p>Live AI scenes cannot use prepared Studio recordings. Free device speech is available below; its quality depends on your device.</p>}
               <details>
                 <summary>Use free device voice instead</summary>
-                <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen with device voice (quality varies)" beforeSpeak={beforeDeviceListen} deviceVoice />
+                <NarrationButton narrator={narrator} text={sharedStoryPreviewText(creator.content)} label="Listen with device voice (quality varies)" beforeSpeak={beforeDeviceListen} deviceVoice context={{ sceneMood: creator.content.scenes[0]?.sceneMood }} />
                 <details><summary>Device voice and background settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
               </details>
               <details><summary>Audio and atmosphere settings</summary><NarrationControls narrator={narrator} beforeSpeak={beforeDeviceListen} /></details>
@@ -1684,7 +1686,7 @@ export default function SharedStoryPage() {
                 <h2>{passage(scene.title)}</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(scene.body)}</p>
                 <p><strong>Clue:</strong> {passage(scene.clue)}</p>
-                {storyMode === 'listen' ? <details><summary>Listen to this scene</summary>{audioButton(`${scene.body} ${scene.clue}`)}</details> : null}
+                {storyMode === 'listen' ? <details><summary>Listen to this scene</summary>{audioButton(`${scene.body} ${scene.clue}`, { sceneMood: scene.sceneMood, progress: creator.content.scenes.length > 1 ? index / (creator.content.scenes.length - 1) : 0, ending: index === creator.content.scenes.length - 1 })}</details> : null}
               </article>
             ))}
             </details>
@@ -1735,7 +1737,7 @@ export default function SharedStoryPage() {
               {creator.brief.message ? <>
                 <h3>Final message</h3>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{creator.brief.message}</p>
-                <NarrationButton narrator={narrator} text={creator.brief.message} label="Preview the final message" beforeSpeak={beforeDeviceListen} context={{ progress: 1, ending: true }} />
+                <NarrationButton narrator={narrator} text={creator.brief.message} label="Preview the final message" beforeSpeak={beforeDeviceListen} context={{ progress: 1, ending: true, sceneMood: creator.content.scenes.at(-1)?.sceneMood }} />
               </> : <p>Photo or video reveal only.</p>}
               <section aria-label="Final photo or video" style={{ marginTop: '1rem' }}>
                 <h3>Final photo or video</h3>
