@@ -55,7 +55,11 @@ export function NarrationButton({ narrator, text, beforeSpeak, label: requestedL
       <button type="button" style={buttonStyle} aria-label={`${copy.stop}: ${label}`} onClick={narrator.stop}>{copy.stop}</button>
     </div> : current ? <PlaybackButtons narrator={narrator} label={label} />
       : <button type="button" style={buttonStyle} disabled={!text.trim() || elsewhere} title={elsewhere ? 'Stop the current narration before listening to this.' : undefined}
-        onClick={() => { beforeSpeak?.(); void narrator.speak(text, context, deviceVoice ? { deviceOnly: true } : undefined) }}>{label}</button>}
+        onClick={() => {
+          beforeSpeak?.()
+          const playback = deviceVoice ? { deviceOnly: true } : narrator.provider === 'google' ? { autoPlay: true } : undefined
+          void narrator.speak(text, context, playback)
+        }}>{label}</button>}
   </div>
 }
 

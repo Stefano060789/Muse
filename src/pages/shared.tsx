@@ -306,6 +306,9 @@ export default function SharedStoryPage() {
   const creatorForm = useRef<HTMLFormElement>(null)
   const storedVoiceAudio = useRef<HTMLAudioElement>(null)
   const studioAudio = useRef<HTMLAudioElement>(null)
+  const recipientSceneArticleRef = useRef<HTMLElement>(null)
+  const recipientSceneHeadingRef = useRef<HTMLHeadingElement>(null)
+  const pendingRecipientSceneKey = useRef<string | null>(null)
   const [studioScene, setStudioScene] = useState(0)
   const [experience, setExperience] = useState<{ key: string; mode: StoryMode } | null>(null)
   const experienceKey = JSON.stringify([playToken, player?.sceneIndex, player?.adventure?.revision, player?.solved, player?.skipped, creator?.ownerToken, studioScene])
@@ -374,10 +377,27 @@ export default function SharedStoryPage() {
   useEffect(() => {
     narrator.stop(); studioAudio.current?.pause()
     pendingListen.current = null
+    pendingRecipientSceneKey.current = null
     setStoryMode(null)
     setStudioPlayRequest(0)
     setStudioReadAlong({ text: '', position: 0, active: false })
   }, [playToken, player?.sceneIndex, player?.adventure?.revision, player?.solved, player?.skipped, creator?.ownerToken, studioScene])
+  useEffect(() => {
+    if (!player || !playToken) return
+    const sceneKey = `${playToken}:${player.adventure?.revision ?? player.sceneIndex}:${player.solved}:${player.skipped}`
+    if (pendingRecipientSceneKey.current !== sceneKey) return
+    pendingRecipientSceneKey.current = null
+    const recipientSceneArticle = recipientSceneArticleRef.current
+    const recipientSceneHeading = recipientSceneHeadingRef.current
+    if (!recipientSceneArticle || !recipientSceneHeading) return
+    const reduceMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    recipientSceneArticle.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+    const activeElement = document.activeElement
+    const typing = interaction.recordingTarget === 'guess' || interaction.stoppingTarget === 'guess' ||
+      interaction.recordingTarget === 'adventure-action' || interaction.stoppingTarget === 'adventure-action' ||
+      (activeElement instanceof HTMLElement && (activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(activeElement.tagName)))
+    if (!typing) recipientSceneHeading.focus({ preventScroll: true })
+  }, [playToken, player?.sceneIndex, player?.adventure?.revision, player?.solved, player?.skipped, interaction.recordingTarget, interaction.stoppingTarget])
   const passage = (text: string) => <StoryPassage text={text} mode={storyMode}
     narrationText={narrator.activeText || studioReadAlong.text}
     position={narrator.activeText ? narrator.textPosition : studioReadAlong.position}
@@ -436,6 +456,16 @@ export default function SharedStoryPage() {
     setReaderLanguage(translation?.language ?? selectedLanguage)
     setSourcePlayer(next)
     setPlayer(localizeRecipientPlayer(next, translation))
+  }
+  const queueRecipientSceneViewportUpdate = (previous: SharedStoryPlayer | null, next: SharedStoryPlayer) => {
+    if (!previous || !playToken) return
+    const previousRevision = previous.adventure?.revision
+    const nextRevision = next.adventure?.revision
+    const advanced = typeof previousRevision === 'number' && typeof nextRevision === 'number'
+      ? nextRevision > previousRevision
+      : next.sceneIndex > previous.sceneIndex
+    if (!advanced) return
+    pendingRecipientSceneKey.current = `${playToken}:${nextRevision ?? next.sceneIndex}:${next.solved}:${next.skipped}`
   }
   const applyStoryPreferences = () => {
     try {
@@ -1204,9 +1234,12 @@ export default function SharedStoryPage() {
     setError('')
     interaction.cancelRecording()
     narrator.stop()
+    const previousPlayer = sourcePlayer ?? player
+    pendingRecipientSceneKey.current = null
     try {
       const result = await recipientRequest<PlayerResponse>({ action, token: playToken, sessionToken, ...(action === 'guess' ? { guess } : {}), ...(action === 'redeem-help' ? { code: helpCodeInput } : {}), ...(action === 'skip' ? { confirmSkip: true } : {}), ...(action === 'ending-choice' ? { choiceIndex } : {}) })
       applyRecipientPlayer(result.player)
+      queueRecipientSceneViewportUpdate(previousPlayer, result.player)
       if (action === 'redeem-help') { setHelpCodeInput(''); setNotice(helpText.redeemed) }
       if (action !== 'hint') setGuess('')
     } catch (error) {
@@ -1239,11 +1272,15 @@ export default function SharedStoryPage() {
 
   const adventureAction = async (refresh = false, selectedChoice?: string) => {
       if (!player?.adventure) return
+      const previousPlayer = sourcePlayer ?? player
       if (!refresh && !hasExplicitConsent(aiConsent)) {
         setError('Review the AI disclosure and check the consent box before sending this action.')
         return
       }
-      if (!refresh) setAiConsent(false)
+      if (!refresh) {
+        setAiConsent(false)
+        pendingRecipientSceneKey.current = null
+      }
       setBusy(true)
       setError('')
       if (!refresh) { interaction.cancelRecording(); narrator.stop() }
@@ -1268,7 +1305,10 @@ export default function SharedStoryPage() {
         }
         const response = await accountFetch('/api/shared-story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...submission, ...(romanceAccepted ? { romanceConfirmed: true } : {}) }) })
         const data = await response.json()
-        if (data.player) applyRecipientPlayer(data.player)
+        if (data.player) {
+          applyRecipientPlayer(data.player)
+          if (!refresh) queueRecipientSceneViewportUpdate(previousPlayer, data.player)
+        }
         if (!refresh && data.player && (!data.player.adventure?.pending || response.ok)) {
           window.localStorage.removeItem(storageKey)
         }
@@ -1461,10 +1501,10 @@ export default function SharedStoryPage() {
               {narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice}</p> : null}
             </> : null}
             {player.solved || player.skipped ? (
-              <article style={cardStyle}>
+              <article ref={recipientSceneArticleRef} style={cardStyle}>
                 {player.endingMode === 'automatic' ? <section aria-label={recipientText.scene(player.sceneIndex + 1, player.sceneCount)}>
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
-                  <h2>{passage(player.scene.title)}</h2>
+                  <h2 ref={recipientSceneHeadingRef} tabIndex={-1}>{passage(player.scene.title)}</h2>
                   <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
                   {storyMode === 'listen' ? audioButton(`${player.scene.title}. ${player.scene.body}`, { sceneMood: player.scene.sceneMood, progress: 1, ending: true }) : null}
                 </section> : null}
@@ -1492,9 +1532,9 @@ export default function SharedStoryPage() {
               </article>
             ) : (
               <>
-              {player.adventure ? <article style={cardStyle}>
+              {player.adventure ? <article ref={recipientSceneArticleRef} style={cardStyle}>
                 <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
-                <h2>{passage(player.scene.title)}</h2>
+                <h2 ref={recipientSceneHeadingRef} tabIndex={-1}>{passage(player.scene.title)}</h2>
                 <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
                 <p><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
                 {player.adventure.turn ? <section>
@@ -1537,9 +1577,9 @@ export default function SharedStoryPage() {
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
                   <button type="button" disabled={busy || player.adventure.pending || Boolean(player.cooperative && !player.cooperative.isYourTurn)} onClick={() => void act('next')} style={{ ...primaryStyle, marginTop: '1rem' }}>{recipientEnding.continueScenes}</button>
                 </> : null}
-              </article> : <article style={cardStyle}>
+              </article> : <article ref={recipientSceneArticleRef} style={cardStyle}>
                   <p>{recipientText.scene(player.sceneIndex + 1, player.sceneCount)}</p>
-                  <h2>{passage(player.scene.title)}</h2>
+                  <h2 ref={recipientSceneHeadingRef} tabIndex={-1}>{passage(player.scene.title)}</h2>
                     <p style={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{passage(player.scene.body)}</p>
                     <p style={{ lineHeight: 1.7 }}><strong>{recipientText.clue}:</strong> {passage(player.scene.clue)}</p>
                   {storyMode === 'listen' ? <>

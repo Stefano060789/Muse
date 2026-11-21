@@ -527,6 +527,10 @@ async function main() {
     assert.ok(ui.includes('window.setTimeout') && ui.includes('window.clearTimeout'))
     assert.ok(!ui.includes('Sync saved progress (no AI call)'))
     assert.ok(ui.includes('!story.journey ? <>'))
+    assert.ok(ui.includes('pendingSceneViewportKey.current'))
+    assert.ok(ui.includes("window.matchMedia('(prefers-reduced-motion: reduce)')"))
+    assert.ok(ui.includes("sceneArticle.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })"))
+    assert.ok(ui.includes("sceneHeading.focus({ preventScroll: true })"))
   })
   await check('personal deletion requires account ownership, cascades requests without resetting budgets or calling AI', async () => {
     const created = await api(newCreation())

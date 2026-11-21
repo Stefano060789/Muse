@@ -34,7 +34,6 @@ import { chapterRecoveryCopy } from '../lib/chapterRecoveryCopy'
 import { createStoryRecap, storyRecapCopy, type StoryRecapChapter } from '../lib/storyRecap'
 import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
-import JourneyReelComposer from '../components/JourneyReelComposer'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
@@ -129,6 +128,9 @@ export default function StoryPage() {
   const answerWritable = useRef(true)
   const responseInput = useRef<HTMLTextAreaElement>(null)
   const creationSection = useRef<HTMLElement>(null)
+  const sceneArticleRef = useRef<HTMLElement>(null)
+  const sceneHeadingRef = useRef<HTMLHeadingElement>(null)
+  const pendingSceneViewportKey = useRef<string | null>(null)
   const requestLock = useRef(false)
   const deletedOnServer = useRef<string | null>(null)
   const narrator = useNarration(story || {}, story?.mood || selectedMood, {
@@ -356,6 +358,16 @@ export default function StoryPage() {
     }
   }
 
+  const queueSceneViewportUpdate = (previousStory: PersonalStory, nextStory: PersonalStory) => {
+    if (previousStory.id !== nextStory.id) return
+    const previousRevision = previousStory.journey?.revision
+    const nextRevision = nextStory.journey?.revision
+    const advanced = typeof previousRevision === 'number' && typeof nextRevision === 'number'
+      ? nextRevision > previousRevision
+      : nextStory.currentStep > previousStory.currentStep
+    if (!advanced) return
+    pendingSceneViewportKey.current = `${nextStory.id}:${nextRevision ?? nextStory.currentStep}`
+  }
   const begin = async () => {
     if (requestLock.current || preparation) return
     if (!hasExplicitConsent(aiConsent)) {
@@ -524,9 +536,11 @@ export default function StoryPage() {
     stopSpeaking()
     interaction.cancelRecording()
     try {
+      const previousStory = story
       if (story.journey) {
         setReconciled(false)
-        await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice, consentVersion })
+        const result = await requestJourney({ action: 'respond', id: story.id, capability: story.journey.capability, revision: story.journey.revision, requestId: crypto.randomUUID(), text: choice, consentVersion })
+        if (result.story) queueSceneViewportUpdate(previousStory, result.story)
         setResponseDraft(current => current === choice ? '' : current)
         return
       }
@@ -534,6 +548,7 @@ export default function StoryPage() {
         ? await requestStory({ action: 'continue', story, answer: choice, consentVersion })
         : answerPersonalStory(story, choice)
       persistStory(nextStory)
+      queueSceneViewportUpdate(previousStory, nextStory)
       setResponseDraft(current => current === choice ? '' : current)
     } catch (error) {
       setStoryError(error instanceof Error ? error.message : 'Could not continue your story.')
@@ -603,6 +618,22 @@ export default function StoryPage() {
     pendingListen.current = null
     void narrator.speak(pending.text, pending.context, { autoPlay: true })
   }, [narrator.cloudConsent, narrator.provider, storyMode])
+  useEffect(() => {
+    if (!story) return
+    const sceneKey = `${story.id}:${story.journey?.revision ?? story.currentStep}`
+    if (pendingSceneViewportKey.current !== sceneKey) return
+    pendingSceneViewportKey.current = null
+    const sceneArticle = sceneArticleRef.current
+    const sceneHeading = sceneHeadingRef.current
+    if (!sceneArticle || !sceneHeading) return
+    const reduceMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    sceneArticle.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+    const activeElement = document.activeElement
+    const typing = interaction.recordingTarget === 'response' || interaction.stoppingTarget === 'response' ||
+      activeElement === responseInput.current ||
+      (activeElement instanceof HTMLElement && (activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(activeElement.tagName)))
+    if (!typing) sceneHeading.focus({ preventScroll: true })
+  }, [story?.id, story?.currentStep, story?.journey?.revision, interaction.recordingTarget, interaction.stoppingTarget])
   const scenePosition = narrator.activeText === narrationText ? narrator.textPosition : -1
   const changeStoryMode = (mode: StoryMode) => {
     narrator.stop(); stopRecording(); setStoryMode(mode)
@@ -790,8 +821,8 @@ export default function StoryPage() {
                   Send story text to Google Cloud when I choose Listen. New recordings use the narration allowance; saved recordings are reused. <Link href="/privacy">Privacy</Link>
                 </ExplicitConsent>
               </details> : null}
-              {!archiveReading && !rereading ? <article lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
-                <h2 style={{ margin: '0.5rem 0 1rem' }}>{storyMode !== null ? <ReadAlongText text={sceneTitle} startAt={0} position={scenePosition} active={storyMode === 'listen'} /> : null}</h2>
+              {!archiveReading && !rereading ? <article ref={sceneArticleRef} lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined} style={{ maxWidth: 760, background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem' }}>
+                <h2 ref={sceneHeadingRef} tabIndex={-1} style={{ margin: '0.5rem 0 1rem' }}>{storyMode !== null ? <ReadAlongText text={sceneTitle} startAt={0} position={scenePosition} active={storyMode === 'listen'} /> : null}</h2>
                 <p className="atelier-prose">{storyMode !== null ? <ReadAlongText text={sceneBody} startAt={sceneBodyStart} position={scenePosition} active={storyMode === 'listen'} /> : null}</p>
                 {storyMode === 'listen' ? <>
                 {narrator.activeText === narrationText ? <NarrationButton narrator={narrator} text={narrationText} label={interfaceCopy.listenScene} beforeSpeak={stopRecording} showCloudConsent={false} context={{ sceneMood: scene?.sceneMood }} /> : null}
@@ -890,7 +921,6 @@ export default function StoryPage() {
                   archiveReading={archiveReading}
                   language={interfaceLanguage}
                 />
-                <JourneyReelComposer story={story} interfaceLanguage={interfaceLanguage} />
               </section> : null}
               <div style={{ marginTop: '2rem' }}>
                 <button type="button" className="atelier-secondary" disabled={isGenerating || Boolean(story.journey?.pending)} onClick={() => void deleteStory()}>Delete story</button>

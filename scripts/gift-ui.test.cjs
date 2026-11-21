@@ -288,6 +288,11 @@ async function main() {
     assert.equal(creationCopy.sharedCreationCopy(locale).completed, expected,
       `${locale} has localized story-completion copy`)
   }
+  const sharedPage = fs.readFileSync(path.join(root, 'src', 'pages', 'shared.tsx'), 'utf8')
+  assert.ok(sharedPage.includes('pendingRecipientSceneKey.current'))
+  assert.ok(sharedPage.includes("window.matchMedia('(prefers-reduced-motion: reduce)')"))
+  assert.ok(sharedPage.includes("recipientSceneArticle.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })"))
+  assert.ok(sharedPage.includes("recipientSceneHeading.focus({ preventScroll: true })"))
   const wizard = await mount('#new')
   assert.equal(wizard.requests.length, 0, 'Opening the creator never prepares a story')
   assert.ok(!wizard.nodes().some(node => node.props['aria-label'] === 'Five minutes together'),

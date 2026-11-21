@@ -1026,6 +1026,11 @@ async function main() {
     assert.match(paused, /aria-label="Resume: Listen to scene two"/)
     assert.match(paused, /aria-label="Stop:/)
     assert.ok(!paused.includes('aria-label="Pause:'))
+    const controlsSource = fs.readFileSync(path.join(root, 'src', 'components', 'NarrationControls.tsx'), 'utf8')
+    assert.ok(controlsSource.includes("narrator.provider === 'google' ? { autoPlay: true } : undefined"),
+      'Google Listen taps request direct playback in the same click gesture')
+    assert.ok(controlsSource.includes("deviceVoice ? { deviceOnly: true } : narrator.provider === 'google' ? { autoPlay: true } : undefined"),
+      'Device voice buttons keep the free local-only path')
     const longVoice = { ...voice('Microsoft Extremely Long Natural Online Voice Name With Many Words (English United States)', 'en-US'), localService: false }
     const html = renderToStaticMarkup(createElement(controls.default, { narrator: { ...speaking, voices: [...voices, longVoice], voiceNotice: 'Remembered voice gone.', preferenceNotice: 'Storage blocked.' } }))
     const selects = html.match(/<select[^>]*>/g)
