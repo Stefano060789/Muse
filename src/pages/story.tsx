@@ -26,7 +26,7 @@ import { readDraft, writeDraft, removeDraft } from '../lib/browserDrafts'
 import { loadStoryPreferences, saveStoryPreferences } from '../lib/storyPreferences'
 import { PERSONAL_DRAFT_KEY, isPersonalDraft, isResponseDraft, responseDraftKey } from '../lib/personalDraft'
 import { accountFetch } from '../lib/accountClient'
-import { interfacePageText as pageText } from '../lib/interfacePages'
+import { collectionCopy, interfacePageText as pageText } from '../lib/interfacePages'
 import { interfaceText, useInterfaceLanguage } from '../lib/interfaceLanguage'
 import { interfaceFlowText as flowText, type InterfaceFlowKey } from '../lib/interfaceFlow'
 import { JOURNEY_ENDING_RECOVERY_ATTEMPTS } from '../lib/journeyLimits'
@@ -414,8 +414,6 @@ export default function StoryPage() {
 
   const finished = Boolean(story && (story.journey ? ['concluded', 'exhausted'].includes(story.journey.status)
     : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
-  const reelReady = Boolean(story && (story.journey ? story.journey.status === 'concluded'
-    : story.responses.length >= story.scenes.length || (story.generation === 'ai' && story.currentStep === story.scenes.length - 1)))
   const responseRequiresAi = Boolean(story?.journey || (story?.generation === 'ai' && story.currentStep < story.scenes.length - 1))
   const recoveringEnding = story?.journey?.status === 'exhausted'
   const recoveryCopy = chapterRecoveryCopy(interfaceLanguage)
@@ -662,7 +660,7 @@ export default function StoryPage() {
       return <article key={index} className="atelier-card">
         <h3><StoryPassage mode={mode} text={savedScene.title} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></h3>
         <p style={{ whiteSpace: 'pre-wrap' }}><StoryPassage mode={mode} text={savedScene.body} narrationText={narrator.activeText} position={narrator.textPosition} active={active} /></p>
-        {mode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} context={{ sceneMood: savedScene.sceneMood, progress: story.scenes.length > 1 ? index / (story.scenes.length - 1) : 0, ending: index === story.scenes.length - 1 }} /> : null}
+        {mode === 'listen' ? <NarrationButton narrator={narrator} text={text} beforeSpeak={stopRecording} showCloudConsent={false} context={{ sceneMood: savedScene.sceneMood, progress: story.scenes.length > 1 ? index / (story.scenes.length - 1) : 0, ending: index === story.scenes.length - 1 && (!story.journey || story.journey.status === 'concluded') }} /> : null}
       </article>
     })}
   </div> : null
@@ -780,12 +778,11 @@ export default function StoryPage() {
               <h1 className="story-reading-title" lang={story.language} dir={story.language ? storyLanguage(story.language).dir : undefined}>{story.title}</h1>
               <p aria-live="polite">
                 {story.journey ? `${chapterLabel(story.chapter?.number ?? 1)} · ` : story.chapter ? `${chapterLabel(story.chapter.number)} · ` : ''}
-                {formatFlow('sceneProgress', {
-                  current: story.currentStep + 1,
-                  total: story.journey ? story.journey.maxTurns + 1 : story.scenes.length
-                })}
+                {story.journey ? collectionCopy(interfaceLanguage).scene(story.currentStep + 1)
+                  : formatFlow('sceneProgress', { current: story.currentStep + 1, total: story.scenes.length })}
                 {story.chapter?.parentId ? <> · <button type="button" onClick={openPreviousChapter}>{flow('readPreviousChapter')}</button></> : null}
               </p>
+              <StoryReelComposer key={`${story.id}:${story.currentStep}`} story={story} interfaceLanguage={interfaceLanguage} />
               <button type="button" className="atelier-secondary" aria-expanded={storyRecapOpen}
                 aria-controls="story-recap" onClick={toggleStoryRecap}>
                 {storyRecapOpen ? recapCopy.hide : recapCopy.show}
@@ -927,10 +924,7 @@ export default function StoryPage() {
                 {rereading ? savedScenes('read') : null}
                 {rereading && storyMode === 'listen' && narrator.error ? <p role="alert">{narrator.error}</p> : null}
                 {rereading && storyMode === 'listen' && narrator.ambientNotice ? <p role="alert">{narrator.ambientNotice} <button type="button" onClick={() => narrator.startAmbientFor(narrator.activeText)}>{flow('retryAmbient')}</button></p> : null}
-                {reelReady ? <>
-                  <PersonalStoryShareCard story={story} interfaceLanguage={interfaceLanguage} />
-                  <StoryReelComposer story={story} interfaceLanguage={interfaceLanguage} />
-                </> : null}
+                <PersonalStoryShareCard story={story} interfaceLanguage={interfaceLanguage} />
                 <StoryLifeBridge
                   key={`${story.id}:${story.chapter?.number ?? 1}`}
                   story={story}

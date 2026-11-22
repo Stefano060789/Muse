@@ -50,6 +50,7 @@ async function main() {
   process.env.HEYGEN_REEL_PROVIDER_APPROVED = 'true'
   assert.equal(reel.heygenConfigured(), true)
   await assert.rejects(reel.createHeygenReel('owner-a', { ...input, approved: false }), /approve/)
+  await assert.rejects(reel.createHeygenReel('owner-a', { ...input, prompt: 'x'.repeat(4001) }), /approve/)
   assert.equal(calls.length, 0)
   const created = await reel.createHeygenReel('owner-a', input)
   assert.equal(created.status, 'pending')

@@ -93,6 +93,7 @@ try {
         if (name === '../components/ShareGiftStory') return { __esModule: true, default: 'share-gift-story' }
         if (name === '../components/GiftStoryPreview') return { __esModule: true, default: 'gift-story-preview' }
         if (name === '../components/PersonalStoryShareCard') return { __esModule: true, default: 'personal-story-share-card' }
+        if (name === '../components/StoryReelComposer') return { __esModule: true, default: 'story-reel-composer' }
         if (name === '../components/StoryArchiveButton') return { __esModule: true, default: 'story-archive-button' }
         if (name === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
         if (name === '../lib/interfacePages') return {
@@ -166,7 +167,8 @@ try {
     lib.saveLibraryPersonalStory(a, store)
     lib.saveLibraryCreatorStory(b, store)
     assert.equal(read(store).library.entries.length, 2)
-    assert.equal(store.getItem('muse-personal-story'), JSON.stringify(a))
+    const stripMood = story => ({ ...story, scenes: story.scenes.map(({ sceneMood, ...scene }) => scene) })
+    assert.deepEqual(stripMood(JSON.parse(store.getItem('muse-personal-story'))), a)
   })
   check('retains many personal and shared stories without arbitrary eviction', () => {
     const store = memory()

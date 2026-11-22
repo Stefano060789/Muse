@@ -56,10 +56,22 @@ Translated samples use browser-only speech in the selected interface language.
 ## HeyGen story reel pilot
 
 The personal-story reel can request one 10-second, vertical 768p HeyGen Video 1
-MP4 from a text prompt. The reader reviews the exact text and explicitly agrees
-to send it and start paid generation; the finished video is previewed before
-manual download or sharing. Nothing is posted automatically. The existing
-local reel remains available under Other reel options.
+MP4, including for an unfinished story. Muse prepares an editable trailer
+prompt from saved scenes and player choices; the reader reviews the exact text,
+removes private details, and explicitly agrees to send it and start paid
+generation. This is one generated scene, not a complete multi-scene film;
+character fidelity is not guaranteed. The finished video is previewed before
+manual download or sharing. Nothing is posted automatically. Local animated
+cards remain available separately and are not HeyGen videos.
+The duration selector also shows 30 seconds and 1, 2 and 3 minutes, but those lengths cannot
+be generated yet: they require a separate integration and verified pricing
+and spending controls. Selecting one never submits the 10-second pilot instead.
+The pricing page describes the planned video allowances: one 10-second reel
+during the trial and 60 seconds per billing month for Plus (for example,
+six 10-second, two 30-second, or one 60-second reel). Planned add-on packs
+are 60 seconds for €3.99 and 120 seconds for €6.99; neither packs nor checkout
+are available. These allowances are not yet enforced or available as plan benefits. Video Agent is listed as
+planned and cannot be selected; it is not integrated.
 
 On the server, set `HEYGEN_API_KEY` and, **only after reviewing HeyGen's
 commercial terms, privacy/DPA, retention, data transfers and current prices**,
@@ -500,7 +512,10 @@ can explicitly recover a real ending with up to two additional ending-only
 attempts, then start the next chapter. Unfinished journeys and legacy browser-only
 saves still cannot start a new chapter this way.
 Chapter metadata uses existing JSON storage; no database migration is required.
-Scenes use stable numbers while unfolding, not a growing "Scene 2 of 2" total.
+Personal journeys show scene numbers without promising a fixed total: failed
+attempts can consume the response allowance without producing a scene, so the
+chapter may end with fewer scenes than the maximum. Attempts and their status
+are shown in story details.
 **Archive** (`/library`) keeps the saved collection and gift management tools.
 It shows completed scene counts for personal stories and, once progress is
 loaded, the furthest playthrough for each gift. Fixed stories show a total;

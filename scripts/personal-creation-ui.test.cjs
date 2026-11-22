@@ -405,8 +405,8 @@ async function main() {
   const progressCopy = flatten(tree).filter(value => typeof value === 'string').join(' ')
   assert.ok(progressCopy.includes('tentativi usati') && progressCopy.includes('In corso'),
     'Progress counters and journey status follow the interface language')
-  assert.ok(progressCopy.includes('Capitolo 1') && progressCopy.includes('Scena 1 di 4'),
-    'The chapter scene counter is visible and localized')
+  assert.ok(progressCopy.includes('Capitolo 1') && progressCopy.includes('Scena 1') && !progressCopy.includes('Scena 1 di 4'),
+    'The unfolding chapter scene number is localized without promising a fixed total')
   assert.ok(nodes().some(node => node.props['aria-label'] === 'La tua risposta'),
     'Response controls follow the interface language after story progress')
   assert.ok(nodes().find(node => node.type === '../components/StoryModeControl').props.copy.listenDescription.includes('suoni ambientali'),
@@ -496,8 +496,10 @@ async function main() {
   }
   slots.length = 0; effects.length = 0
   await flush()
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 2') && !label(node).includes('of 4')),
+    'Failed attempts do not leave a misleading fixed scene total')
   assert.ok(!nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'),
-    'The optional ending control stays hidden at Scene 2 of 4 even when an earlier failed attempt consumed a turn')
+    'The optional ending control stays hidden at Scene 2 even when an earlier failed attempt consumed a turn')
   assert.ok(responseField(), 'The final available turn keeps the response box available')
   assert.ok(find('button', 'Send response'), 'The player can use the last turn to respond')
   const beforeClosingStory = structuredClone(loadedStory)
@@ -507,7 +509,7 @@ async function main() {
   }
   slots.length = 0; effects.length = 0
   await flush()
-  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 3 of 4')))
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 3') && !label(node).includes('of 4')))
   assert.ok(nodes().some(node => node.props['aria-label'] === 'Chapter closing scene'),
     'The optional ending control becomes available at the last available scene')
   const lastAvailableScene = structuredClone(loadedStory)
@@ -599,6 +601,8 @@ async function main() {
   slots.length = 0; effects.length = 0
   await flush()
   assert.ok(nodes().some(node => node.type === 'h2' && label(node) === 'Chapter 1 · Complete'))
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('Scene 2') && !label(node).includes('of 4')),
+    'A concluded chapter with fewer saved scenes does not claim that more scenes remain')
   const parentStory = structuredClone(loadedStory)
   const beforeChapterForm = requests.length
   await click('Continue · Chapter 2')
@@ -660,6 +664,11 @@ async function main() {
   await flush()
   const recoveryPermission = () => nodes().find(node => node.type === '../components/ExplicitConsent' && label(node).includes('write its ending'))
   assert.ok(recoveryPermission(), 'Exhausted chapters offer ending-specific processing consent')
+  await click('Read again')
+  activeMode().props.onChange('listen')
+  await flush()
+  assert.ok(nodes().filter(node => node.type === '../components/NarrationButton').every(node => !node.props.context?.ending),
+    'Rereading an exhausted unfinished chapter does not mark its last saved scene as an ending')
   assert.equal(find('button', 'Retry closing scene').props.disabled, true)
   const beforeEndingRecovery = requests.length
   await click('Retry closing scene')

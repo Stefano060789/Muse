@@ -118,6 +118,15 @@ export default function BillingPage() {
             {renderPlanCards(['free', 'annual'])}
           </div>
         </section>
+        <section aria-labelledby="video-options-heading" style={{ margin: '2rem 0' }}>
+          <h2 id="video-options-heading">{copy.videoHeading}</h2>
+          <p style={{ lineHeight: 1.7 }}>{copy.videoDescription}</p>
+          <ul style={{ lineHeight: 1.7 }}>
+            <li>{copy.videoStandard}</li>
+            <li>{copy.videoAgent}</li>
+          </ul>
+          <p style={{ lineHeight: 1.7 }}>{copy.videoPacks}</p>
+        </section>
         <p style={{ lineHeight: 1.7 }}>{copy.checkoutHelp}</p>
         <p style={{ lineHeight: 1.7 }}>{copy.priceNotice}</p>
         <details style={{ borderTop: '1px solid #d9cfc5', paddingTop: '1rem', lineHeight: 1.75 }}>

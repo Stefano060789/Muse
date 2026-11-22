@@ -74,7 +74,7 @@ export async function createHeygenReel(owner: string, body: unknown) {
   requirePilotApproval()
   key()
   if (!object(body) || body.approved !== true || body.consentVersion !== HEYGEN_REEL_CONSENT ||
-      typeof body.prompt !== 'string' || body.prompt.trim().length < 20 || body.prompt.length > 700 ||
+      typeof body.prompt !== 'string' || body.prompt.trim().length < 20 || body.prompt.length > 4000 ||
       /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(body.prompt) ||
       typeof body.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.id) ||
       typeof body.created !== 'number' || !Number.isSafeInteger(body.created) ||

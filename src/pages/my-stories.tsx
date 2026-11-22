@@ -119,9 +119,8 @@ export default function MyStoriesPage() {
               </div> : <button type="button" className="atelier-button" onClick={() => open(entry, completed)}>{journey?.status === 'exhausted' ? text('readSavedScenes', interfaceLanguage) : completed ? text('readStory', interfaceLanguage) : text('continueStory', interfaceLanguage)}</button>}
               {journey?.status === 'exhausted' && journey.revision < journey.maxTurns + JOURNEY_ENDING_RECOVERY_ATTEMPTS ? <button
                 type="button" onClick={() => open(entry, false)}>{chapterRecoveryCopy(interfaceLanguage).recover}</button> : null}
+              <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} />
               <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
-              {entry.story.journey?.status === 'concluded' || (!entry.story.journey && completed)
-                ? <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
               <StoryArchiveButton story={entry.story} language={interfaceLanguage} onSaved={refresh} />
             </article>
           })}

@@ -172,9 +172,8 @@ export default function LibraryPage() {
                   {entry.story.chapter ? <p>{entry.story.chapter.parentTitle
                     ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
                     : collectionText.chapter(entry.story.chapter.number)}</p> : null}
+                  <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} />
                   <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
-                  {entry.story.journey?.status === 'concluded' || (!entry.story.journey && completed)
-                    ? <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} /> : null}
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}

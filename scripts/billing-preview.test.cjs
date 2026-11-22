@@ -44,6 +44,9 @@ for (const locale of locales) {
   assert.ok(Object.values(copy).every(value => typeof value === 'string' && value.trim()))
   const plans = localizedBillingPlans(locale)
   assert.deepEqual(plans.map(plan => plan.amount), [0, 0, 8.99, 89.99])
+  assert.ok(plans.find(plan => plan.id === 'trial').features.includes(copy.trialVideo))
+  assert.ok(plans.find(plan => plan.id === 'monthly').features.includes(copy.monthlyVideo))
+  assert.ok(plans.find(plan => plan.id === 'annual').features.includes(copy.monthlyVideo))
   const html = renderToStaticMarkup(React.createElement(BillingPage))
   assert.ok(html.includes(textMarkup(copy.title)))
   for (const plan of plans) {
@@ -57,7 +60,7 @@ for (const locale of locales) {
     'trialIntro', 'trialHelp', 'noCard', 'checkoutHelp', 'packageHeading', 'packageIntro',
     'personalOptionName', 'sharedGiftOptionName', 'packageAccessHeading', 'packageAccessIntro',
     'otherOptionsHeading', 'priceNotice', 'allowanceDefinition',
-    'freeActions', 'limits', 'storageHelp'
+    'freeActions', 'limits', 'storageHelp', 'videoHeading', 'videoDescription', 'videoStandard', 'videoAgent', 'videoPacks'
   ]) {
     assert.ok(html.includes(textMarkup(copy[key])), `${locale} must show ${key}`)
   }

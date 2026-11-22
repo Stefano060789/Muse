@@ -12,7 +12,7 @@ import type { StoryReelMoment } from '../lib/storyReelLogic'
 import { suggestStoryMotif } from '../lib/storyShareArtwork'
 import HeygenStoryReel from './HeygenStoryReel'
 
-type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'mood' | 'language' | 'scenes' | 'currentStep'>
+type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'mood' | 'language' | 'scenes' | 'responses' | 'currentStep'>
 
 type EditableMoment = StoryReelMoment & { enabled: boolean }
 
@@ -70,7 +70,7 @@ export default function StoryReelComposer({ story, interfaceLanguage }: {
 }) {
   return <>
     <HeygenStoryReel story={story} interfaceLanguage={interfaceLanguage} />
-    <details><summary>Other reel options</summary>
+    <details><summary>{interfaceLanguage === 'it-IT' ? 'Cartoline animate (non HeyGen)' : 'Animated story cards (not HeyGen)'}</summary>
       <LocalStoryReelComposer story={story} interfaceLanguage={interfaceLanguage} />
     </details>
   </>

@@ -46,7 +46,11 @@ async function main() {
   const module = { exports: {} }
   const sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   const window = { setTimeout, clearTimeout }
-  const fixture = { id: 'synthetic', title: 'The Lantern', currentStep: 0, scenes: [{ body: 'A lantern glows beside a quiet forest path.' }] }
+  const fixture = { id: 'synthetic', title: 'The Lantern', currentStep: 1,
+    responses: ['Follow the fox', 'Unseen choice'],
+    scenes: [{ body: 'A lantern glows beside a quiet forest path.' },
+      { body: 'A fox guides the traveler toward an ancient bridge.' },
+      { body: 'An unseen final scene.' }] }
   new Function('module', 'exports', 'require', 'sessionStorage', 'window', code)(module, module.exports, id => {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
@@ -63,19 +67,59 @@ async function main() {
   const nodes = () => flatten(tree).filter(node => node && typeof node === 'object')
   const button = text => nodes().find(node => node.type === 'button' && label(node) === text)
   await flush()
-  button('Create my story reel').props.onClick()
+  button('Create HeyGen video').props.onClick()
   await flush()
   assert.equal(calls.filter(item => item.action === 'create').length, 0, 'Opening the panel does not create a paid reel')
   assert.equal(button('Create video').props.disabled, true)
+  const prompt = nodes().find(node => node.type === 'textarea').props.value
+  assert.match(prompt, /Follow the fox/)
+  assert.match(prompt, /fox guides the traveler/)
+  assert.doesNotMatch(prompt, /Unseen choice|unseen final scene/i, 'Unvisited scenes and choices are not sent')
+  const longPrompt = module.exports.storyReelPrompt({
+    ...fixture, currentStep: 40,
+    scenes: Array.from({ length: 41 }, () => ({ body: '🌳'.repeat(100) })),
+    responses: Array.from({ length: 40 }, () => 'a'.repeat(100))
+  })
+  assert.ok(longPrompt.length <= 4000)
+  assert.match(longPrompt, /Some later story moments were omitted/)
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(longPrompt),
+    'Truncation preserves valid surrogate pairs')
   const checkbox = nodes().find(node => node.type === 'input' && node.props.type === 'checkbox')
   checkbox.props.onChange({ target: { checked: true } })
   await flush()
   assert.equal(button('Create video').props.disabled, false)
+  const selects = nodes().filter(node => node.type === 'select')
+  const model = selects.find(node => node.props.defaultValue === 'heygen-video-1')
+  assert.ok(model, 'Video 1 is the only selectable video model')
+  assert.equal(model.props.children[1].props.value, 'video-agent')
+  assert.equal(model.props.children[1].props.disabled, true, 'Video Agent is not implemented')
+  const duration = selects.find(node => node.props.value === 10)
+  assert.deepEqual(duration.props.children.map(option => option.props.value), [10, 30, 60, 120, 180])
+  for (const seconds of [30, 60, 120, 180]) {
+    duration.props.onChange({ target: { value: String(seconds) } })
+    await flush()
+    assert.ok(nodes().some(node => node.props.role === 'status' && label(node).includes('Longer videos are not available yet')))
+    assert.equal(button('Create video').props.disabled, true)
+    button('Create video').props.onClick()
+    await flush()
+    assert.equal(calls.filter(item => item.action === 'create').length, 0)
+  }
+  duration.props.onChange({ target: { value: '10' } })
+  await flush()
+  assert.equal(button('Create video').props.disabled, true, 'Changing duration requires fresh consent')
+  nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+  await flush()
+  nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: `${prompt} ` } })
+  await flush()
+  assert.equal(button('Create video').props.disabled, true, 'Editing the disclosed text requires fresh approval')
+  nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+  await flush()
   button('Create video').props.onClick()
   await flush()
   assert.deepEqual(calls.map(item => item.action), ['availability', 'create', 'status', 'video'])
   assert.equal(calls[1].approved, true)
   assert.match(calls[1].prompt, /lantern/i)
+  assert.match(calls[1].prompt, /Follow the fox/)
   assert.equal(storage.get('muse-heygen-reel:synthetic'), 'synthetic-signed-reference')
   assert.equal(button('Download MP4').props.disabled, true, 'Preview is required before download')
   assert.equal(button('Share reel').props.disabled, true, 'Preview is required before sharing')

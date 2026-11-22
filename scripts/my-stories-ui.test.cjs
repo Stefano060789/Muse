@@ -44,6 +44,7 @@ async function mount({ signedIn = false, responseError = '', invalid = false, se
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === 'next/head' || id === 'next/link') return { __esModule: true, default: id }
     if (id.endsWith('/PersonalStoryShareCard')) return { __esModule: true, default: 'PersonalStoryShareCard' }
+    if (id.endsWith('/StoryReelComposer')) return { __esModule: true, default: 'StoryReelComposer' }
     if (id.endsWith('/StoryArchiveButton')) return { __esModule: true, default: 'StoryArchiveButton' }
     if (id.endsWith('/interfacePages')) return {
       collectionCopy: () => ({
@@ -139,6 +140,9 @@ async function main() {
   assert.deepEqual(hub.nodes().filter(node => node.type === 'PersonalStoryShareCard')
     .map(node => node.props.story.title), ['Active story', 'Completed story', 'Next chapter', 'Saved scenes'],
   'Both ongoing and completed personal stories expose the local share-card studio')
+  assert.deepEqual(hub.nodes().filter(node => node.type === 'StoryReelComposer')
+    .map(node => node.props.story.title), ['Active story', 'Completed story', 'Next chapter', 'Saved scenes'],
+  'HeyGen creation is available for ongoing and unfinished stories as well')
   await hub.click('Continue to Chapter 2')
   assert.deepEqual(hub.navigations.at(-1), '/story?continue=1', 'A completed chapter exposes a direct next-chapter action')
   await hub.click('Read Chapter 1')
