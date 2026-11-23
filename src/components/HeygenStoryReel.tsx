@@ -3,7 +3,7 @@ import { accountFetch } from '../lib/accountClient'
 import type { PersonalStory } from '../lib/story'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
 
-type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'scenes' | 'responses' | 'currentStep'>
+type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'scenes' | 'responses' | 'currentStep' | 'journey'>
 const consentVersion = 'heygen-reel-2026-11'
 
 function excerpt(value: string, limit: number) {
@@ -30,7 +30,7 @@ export function storyReelPrompt(story: ReelStory) {
   return prompt.length <= 4000 ? prompt : `${excerpt(prompt, 3940)}\n\n[Some later story moments were omitted.]`
 }
 
-export default function HeygenStoryReel({ story, interfaceLanguage }: { story: ReelStory; interfaceLanguage: StoryLanguageCode }) {
+export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }: { story: ReelStory; interfaceLanguage: StoryLanguageCode; canCreate: boolean }) {
   const italian = interfaceLanguage === 'it-IT'
   const [open, setOpen] = useState(false)
   const [duration, setDuration] = useState(10)
@@ -125,7 +125,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
   }
 
   async function run(reference?: string) {
-    if (active.current || (!reference && (duration !== 10 || !consent || prompt.trim().length < 20))) return
+    if (active.current || (!reference && (!canCreate || !story.journey || duration !== 10 || !consent || prompt.trim().length < 20))) return
     const controller = new AbortController()
     active.current = true
     operation.current = controller
@@ -133,9 +133,12 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
     try {
       let reel = reference
       if (!reel) {
+        const journey = story.journey
+        if (!canCreate || !journey) throw new Error('Finish this chapter before creating a video.')
         setUncertain(true)
         const response = await request('create', {
           id: crypto.randomUUID(), created: Date.now(), prompt: prompt.trim(),
+          storyId: story.id, storyCapability: journey.capability,
           approved: true, consentVersion
         }, controller.signal)
         const data: unknown = await response.json()
@@ -180,9 +183,10 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
     clipUrl.current = ''
     setToken(''); setClip(null); setViewed(false); setConsent(false); setUncertain(false); setError(''); setNotice('')
   }
+  if (!canCreate && !token) return null
   return <section className="story-reel">
     <button type="button" className="atelier-button" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      {italian ? 'Crea video' : 'Create video'}
+      {canCreate ? (italian ? 'Crea video' : 'Create video') : (italian ? 'Controlla video esistente' : 'Check existing video')}
     </button>
     {open ? <div className="story-reel-panel">
       <h3>{italian ? 'Video verticale della tua storia' : 'Your vertical story video'}</h3>
@@ -231,7 +235,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
           <button type="button" disabled={!viewed} onClick={() => void share()}>{italian ? 'Condividi reel' : 'Share reel'}</button>
         </div>
       </section> : null}
-      {token && !busy ? <button type="button" onClick={startAnother}>{italian ? 'Prepara un altro reel' : 'Prepare another reel'}</button> : null}
+      {canCreate && token && !busy ? <button type="button" onClick={startAnother}>{italian ? 'Prepara un altro reel' : 'Prepare another reel'}</button> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {uncertain && !token && !busy ? <p>Submission may have been charged. Check HeyGen usage before starting another reel; no automatic retry was made.</p> : null}

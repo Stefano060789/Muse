@@ -55,8 +55,12 @@ Translated samples use browser-only speech in the selected interface language.
 
 ## HeyGen story reel pilot
 
-The personal-story reel can request one 10-second, vertical 768p HeyGen Video 1
-MP4, including for an unfinished story. Muse prepares an editable trailer
+After a personal journey chapter is concluded, the personal-story reel can
+request one 10-second, vertical 768p HeyGen Video 1 MP4. The server verifies
+the chapter belongs to the account and has a saved conclusion before generation;
+active, exhausted and pending chapters cannot generate videos. Legacy browser-only
+stories cannot be verified as completed and cannot create new videos. Existing
+reel references can still be checked and downloaded. Muse prepares an editable trailer
 prompt from saved scenes and player choices; the reader reviews the exact text,
 removes private details, and explicitly agrees to send it and start paid
 generation. This is one generated scene, not a complete multi-scene film;
@@ -273,8 +277,10 @@ not Home, and personal library cards keep attempt details
 behind an optional disclosure.
 Personal journeys start from the chosen premise, but the AI is instructed to
 follow the player's actions when the story changes direction rather than follow
-a fixed plot. An optional improvement goal provides gentle narrative inspiration,
-not therapy or a guaranteed outcome. Free response permits the widest range of
+a fixed plot. Five difficulty levels range from guided help through supported,
+balanced and challenging play to fair traps, tricks and unexpected detours.
+At every level an optional improvement goal shapes relevant situations and
+perspectives, without therapy or a guaranteed outcome. Free response permits the widest range of
 actions; suggested-action mode still requires choosing an offered action. The
 selected duration still bounds the number of responses and the final conclusion.
 AI behavior can vary and may not always follow these instructions.
@@ -1280,8 +1286,9 @@ The initial mood, duration, cap, opted-in five profile points and prepared
 plan are authoritative server data. Live prompts send only that bounded
 input, compact state (inventory/discoveries/relationships/progress), the most
 recent narration and the latest action—not a growing transcript. Narration
-is typically 100–180 words (validated 30–180, maximum 1800 characters),
-with a strict 1600 output-token limit for opening and live responses.
+is requested at 100–150 words and under 1500 characters (validated 30–180,
+maximum 1800 characters), with an output-token limit of 2600 for openings and
+1600 for live responses.
 Exact JSON keys, bounded unique lists, language/style and the final
 conclusion flag are validated. Personal journeys have **no hidden answer,
 private puzzle message or Shared Story record**.
@@ -1290,7 +1297,12 @@ Atomic durable request-ID/fingerprint reservations occur **before AI calls**.
 Repeated IDs reconcile current results without a second call; changed text,
 stale revisions and concurrent different submissions are blocked. Failures,
 invalid output, abandoned calls and restarts conservatively consume attempts.
-Pending attempts expire after 90 seconds as failed; never auto-retry or refund.
+Pending attempts expire after 90 seconds as failed; they are not retried or refunded.
+For a live player response only, invalid JSON, failed story validation or
+truncated provider output gets at most one automatic provider retry within
+the same reservation, with corrective format guidance. This can make two
+provider calls; it does not reserve a second player attempt. Other failures,
+opening preparation and ending-only recovery are not automatically retried.
 Opening preparation also uses the existing 5/hour/connection and 100/day
 generation limits. Live responses share the existing configurable UTC daily
 cap with Shared Adventure in the same database row.
@@ -1309,8 +1321,9 @@ entries does not reset or delete server allowance.
 
 Choose **Free choice** (typed or reviewed dictated actions) or **Suggested
 choices** (3-5 action buttons) before creating a journey. Both modes narrate
-meaningful consequences using one AI call per response. Suggestions are generated
-within that same call, with no extra request; final conclusions offer no actions.
+meaningful consequences using one AI call per response, except for the bounded
+automatic retry described above. Suggestions are generated within the response
+call, with no separate request; final conclusions offer no actions.
 The selected mode is immutable server data. Only the offered actions can be
 submitted in suggested mode, and stale or arbitrary submissions cannot reserve
 new paid attempts. Choice mode and current actions survive library saves and

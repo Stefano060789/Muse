@@ -36,15 +36,16 @@ import { fitTextareaToContent } from '../lib/textareaVisibility'
 import StoryLifeBridge from '../components/StoryLifeBridge'
 import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 import StoryReelComposer from '../components/StoryReelComposer'
+import { PERSONAL_STORY_DIFFICULTIES, isPersonalStoryDifficulty } from '../lib/personalStoryDifficulty'
 const PREPARATION_KEY = 'muse-personal-journey-preparation'
 type Preparation = { id: string; capability: string }
 
 const moods: Array<{ key: PersonalStoryMood }> = [
   { key: 'adventure' }, { key: 'relaxed' }, { key: 'curious' }, { key: 'hopeful' }
 ]
-const difficulties: PersonalStoryDifficulty[] = ['gentle', 'balanced', 'challenging']
 const difficultyCopyKeys: Record<PersonalStoryDifficulty, InterfaceFlowKey> = {
-  gentle: 'difficultyGentle', balanced: 'difficultyBalanced', challenging: 'difficultyChallenging'
+  gentle: 'difficultyGentle', easy: 'difficultyEasy', balanced: 'difficultyBalanced',
+  challenging: 'difficultyChallenging', expert: 'difficultyExpert'
 }
 const moodCopyKeys: Record<PersonalStoryMood, { title: InterfaceFlowKey; description: InterfaceFlowKey }> = {
   adventure: { title: 'moodAdventure', description: 'moodAdventureDescription' },
@@ -715,11 +716,11 @@ export default function StoryPage() {
               </label>
               <label style={{ display: 'block', marginTop: '1rem' }}>{flow('storyDifficulty')}
                 <select aria-label={flow('storyDifficulty')} value={difficulty} disabled={isGenerating || Boolean(preparation)} onChange={event => {
-                  if (!difficulties.includes(event.target.value as PersonalStoryDifficulty)) return
-                  setDifficulty(event.target.value as PersonalStoryDifficulty)
+                  if (!isPersonalStoryDifficulty(event.target.value)) return
+                  setDifficulty(event.target.value)
                   setAiConsent(false)
                 }}>
-                  {difficulties.map(level => <option key={level} value={level}>{flow(difficultyCopyKeys[level])}</option>)}
+                  {PERSONAL_STORY_DIFFICULTIES.map((level, index) => <option key={level} value={level}>{index + 1} · {flow(difficultyCopyKeys[level])}</option>)}
                 </select>
               </label>
               <p className="atelier-note">{flow('difficultyAttention')}</p>

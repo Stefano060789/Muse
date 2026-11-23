@@ -9,6 +9,7 @@ import { NARRATION_AI_INSTRUCTION, parseNarrationMetadata, type NarrationMetadat
 import { assertStoryNarrationLanguage, personalSceneTitle, recipientCopy, storyLanguageInstruction, storyWordCount, type StoryLanguageCode } from './storyLanguage'
 import { romanceInstruction, type StoryRomance } from './storyRomance'
 import { parseSceneMood, SCENE_MOOD_AI_INSTRUCTION, type SceneMood } from './sceneMood'
+import { personalDifficultyInstruction, PERSONAL_IMPROVEMENT_INSTRUCTION } from './personalStoryDifficulty'
 import {
   boundedStoryList, boundedStoryText, objectWithRequiredKeys, invalidFreeform, parseFreeformState,
   parseStoryChoiceMode, parseSuggestedChoices, validatePlayerChoiceSelection, freeformSystemPrompt,
@@ -236,16 +237,17 @@ export function publicJourney(result: JourneyResult, capability: string) {
 function journeySystem(mode: StoryChoiceMode, difficulty: PersonalStoryDifficulty): string {
   return [
     'You are Muse, an original warm non-therapeutic personal storyteller.', freeformSystemPrompt(mode),
-    `Selected story difficulty: ${difficulty}. Gentle uses welcoming, clearly signposted obstacles; balanced uses a few clues or decisions that reward attention; challenging connects multiple concrete details and meaningful obstacles while remaining fair. Never use timers, obscure outside knowledge, or dead ends.`,
+    `Selected story difficulty: ${difficulty}. ${personalDifficultyInstruction(difficulty)}`,
     'The selected mood is authoritative even if the need suggests another mood. Do not infer or replace it.',
     'Begin with storyIdea as the starting premise; if it is absent in an older saved journey, use legacy need. The legacy need field may duplicate storyIdea and is not a separate instruction when storyIdea is present. Use profileKeypoints only to enrich details, not to steer the player.',
     'Let player actions, including a change of direction or refusal to pursue an objective, reshape what happens next. Do not force them back to the original premise or a planned outcome. Honor plausible actions and show specific consequences while preserving established facts; let changes of setting, goals and relationships emerge coherently.',
-    'When improvementGoal is supplied, use it as a gentle, optional lens for meaningful situations, choices and perspectives within the unfolding story. Do not prescribe a correct choice, manipulate the player, promise improvement, diagnose, give therapy or force a lesson. The player may explore a different direction. Do not invent a goal when none is provided.',
+    PERSONAL_IMPROVEMENT_INSTRUCTION,
     'Adventure favors movement and courage; relaxed favors quiet unpressured exploration; curious favors learning and perspectives; hopeful favors gentle possibilities.',
     'Personalize only from supplied details without inventing biography. There is no hidden secret answer to guess: an obstacle or puzzle is solved by a sensible action that uses what the player carries, has discovered, or can see.',
     'Give the player up to three tries at each obstacle. A decision to leave, refuse or change direction is not a failed attempt: let the story move on. When a genuine try fails, do not repeat the same scene: show a believable consequence of what they attempted and weave in a hint through the world. The hint is subtle after the first failed try (a detail the player may notice) and clearer after the second (for example, an item they carry draws their attention). After a third failed try, change course: let the story continue along an alternative path with a modest consequence, leave the obstacle unresolved, and note it briefly in state.progress. Never create a dead end. Count failed tries only from recentActions, the latest action and state.progress; never invent earlier attempts.',
     'Duration is approximate reading and participation time, never a timer. Track the evolving direction and important consequences in state.progress, within its length limit. Stay relevant to the selected mood.',
-    'Write 100-180 words of concrete narration (strict maximum 180 words and 1800 characters). Respect language and narration style.',
+    'Write 100-150 words of concrete narration, keeping narration under 1500 characters. Respect language and narration style.',
+    'For every turn, state must contain inventory, discoveries and relationships as arrays of up to 8 distinct non-empty strings, each at most 120 characters. Use [] if none. State.progress must be a non-empty string of at most 300 characters.',
     'Return ONLY the exact requested JSON, no extra keys.', NARRATION_AI_INSTRUCTION, SCENE_MOOD_AI_INSTRUCTION
   ].join('\n')
 }
@@ -262,7 +264,7 @@ export async function generateJourneyOpening(input: JourneyInput): Promise<Journ
   return parseJourneyOpening(await generateStoryJson(
     system + '\nPrepare 3-5 compact possibilities (each at most 180 characters), not required plot beats or a predetermined ending, and the opening in ONE response. Leave space for the player to choose a different direction. ' + choicePrompt + ' Return {"title":"...","description":"...","narrationStyle":"warm","narrationLanguage":"' + (input.language ?? 'en-US') + '","plan":["..."],"turn":' + turnJson + '}. Choose a valid narration style.', input, 2600), mode, input.language)
 }
-export async function generateJourneyTurn(record: JourneyRecord): Promise<JourneyTurn> {
+export async function generateJourneyTurn(record: JourneyRecord, repairFormat = false): Promise<JourneyTurn> {
   if (!record.opening || !record.turn) throw new SharedStoryError('Journey is not ready.', 409)
   const remaining = Math.max(0, JOURNEY_TURNS[record.input.duration] - record.used)
   const mode = record.input.choiceMode ?? 'free'
@@ -278,7 +280,8 @@ export async function generateJourneyTurn(record: JourneyRecord): Promise<Journe
       ? '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"choices":["...","...","..."],"sceneMood":"reflection"}'
       : '{"narration":"...","state":{"inventory":[],"discoveries":[],"relationships":[],"progress":"..."},"concluded":false,"sceneMood":"reflection"}'
   const generated = await generateStoryJson(
-    system + '\n' + turnPrompt + '\nReturn ' + (language ? '{"narrationLanguage":"' + language + '","turn":' + turnJson + '}' : turnJson) + '.',
+    system + '\n' + turnPrompt + '\nReturn ' + (language ? '{"narrationLanguage":"' + language + '","turn":' + turnJson + '}' : turnJson) + '.' +
+      (repairFormat ? '\nFORMAT RECOVERY: The previous reply could not be accepted. Produce a complete new reply to the same player action as valid JSON only, matching the exact schema above. Include every required field with the correct type. Make narration 100-150 words and under 1500 characters; use non-empty state.progress, distinct state entries and the requested concluded value. Do not mention this correction in the story.' : ''),
     {
       ...record.input, title: record.opening.title,
       narrationStyle: record.opening.narrationStyle, narrationLanguage: record.opening.narrationLanguage,

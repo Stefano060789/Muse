@@ -25,6 +25,65 @@ async function main() {
     return { allowed: true, used: used + 1, notify: false }
   }
   const reel = load('src/lib/heygenReel.ts', { './operationsStore': { consumeOperation }, './sharedStory': { SharedStoryError } })
+  const chapterId = crypto.randomUUID(), capability = 'a'.repeat(64)
+  let accountId = 'owner-a', providerCreates = 0
+  let chapter = { snapshot: { status: 'active', pending: false }, record: { turn: { concluded: false } } }
+  const handler = load('src/pages/api/heygen-reel.ts', {
+    '../../lib/accountAuth': { requireAccount: async () => ({ id: accountId }) },
+    '../../lib/providerConsent': { requireAccountProviderConsent() {} },
+    '../../lib/operations': { apiSafety: async () => true, reportOperation: async () => {} },
+    '../../lib/sharedStory': { SharedStoryError },
+    '../../lib/heygenReel': {
+      heygenConfigured: () => true,
+      createHeygenReel: async () => { providerCreates++; return { token: 'existing', status: 'pending' } },
+      heygenReelStatus: async () => ({ status: 'completed' }), downloadHeygenReel: async () => Buffer.from('video')
+    },
+    '../../lib/storyRequestLimits': { storyDatabase: () => ({ personalJourney: async request => {
+      if (request.accountId !== 'owner-a' || request.id !== chapterId) throw new SharedStoryError('Journey: session unavailable', 404)
+      assert.equal(request.operation, 'view')
+      assert.equal(request.capabilityHash, crypto.createHash('sha256').update(capability).digest('hex'))
+      return chapter
+    } }) },
+    '../../lib/sharedAdventure': { adventureGlobalCap: () => 100 },
+    '../../lib/personalJourney': {
+      journeyIdentifier: value => {
+        if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value)) throw new SharedStoryError('Invalid chapter.')
+        return value
+      },
+      journeyCapability: value => {
+        if (typeof value !== 'string' || !/^[0-9a-f]{64}$/i.test(value)) throw new SharedStoryError('Invalid capability.')
+        return value
+      },
+      journeyHash: value => crypto.createHash('sha256').update(value).digest('hex')
+    }
+  }).default
+  async function endpoint(body) {
+    const res = {
+      statusCode: 200, body: null, setHeader() {},
+      status(code) { this.statusCode = code; return this },
+      json(value) { this.body = value; return this },
+      send(value) { this.body = value; return this }
+    }
+    await handler({ method: 'POST', body }, res)
+    return res
+  }
+  const videoRequest = { action: 'create', storyId: chapterId, storyCapability: capability }
+  assert.equal((await endpoint({ action: 'create' })).statusCode, 400)
+  for (const [status, pending, concluded] of [
+    ['active', false, false], ['exhausted', false, false],
+    ['concluded', true, true], ['concluded', false, false]
+  ]) {
+    chapter = { snapshot: { status, pending }, record: { turn: { concluded } } }
+    assert.equal((await endpoint(videoRequest)).statusCode, 409)
+  }
+  chapter = { snapshot: { status: 'concluded', pending: false }, record: { turn: { concluded: true } } }
+  accountId = 'owner-b'
+  assert.equal((await endpoint(videoRequest)).statusCode, 404, 'Another account cannot use the completed chapter')
+  assert.equal(providerCreates, 0, 'Unfinished and unauthorized chapters never invoke paid generation')
+  accountId = 'owner-a'
+  assert.equal((await endpoint(videoRequest)).statusCode, 200)
+  assert.equal(providerCreates, 1)
+  assert.equal((await endpoint({ action: 'status', token: 'existing' })).statusCode, 200, 'Existing videos remain accessible')
   process.env.HEYGEN_API_KEY = 'synthetic-key'
   delete process.env.HEYGEN_REEL_PROVIDER_APPROVED
   const input = {

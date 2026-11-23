@@ -1,5 +1,6 @@
 import type { StoryChoiceMode } from './freeformStory'
 import type { PersonalStoryDifficulty, PersonalStoryMood } from './story'
+import { isPersonalStoryDifficulty } from './personalStoryDifficulty'
 import type { StoryRomance } from './storyRomance'
 import { isStoryPreferences, type StoryPreferences } from './storyPreferences'
 
@@ -19,7 +20,7 @@ export function isPersonalDraft(value: unknown): value is PersonalDraft {
   const hasSeparateIdeas = validText(draft.storyIdea) && validText(draft.improvementGoal)
   return (hasLegacyIdea || hasSeparateIdeas) &&
     typeof draft.mood === 'string' && ['adventure', 'relaxed', 'curious', 'hopeful'].includes(draft.mood) &&
-    (draft.difficulty === undefined || ['gentle', 'balanced', 'challenging'].includes(String(draft.difficulty))) &&
+    (draft.difficulty === undefined || isPersonalStoryDifficulty(draft.difficulty)) &&
     typeof draft.choiceMode === 'string' && ['free', 'suggested'].includes(draft.choiceMode) &&
     (draft.romance === undefined || draft.romance === 'sweet' || draft.romance === 'spicy') &&
     typeof draft.useProfile === 'boolean' && typeof draft.profileDraft === 'string' && draft.profileDraft.length <= 4000 &&

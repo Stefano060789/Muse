@@ -173,7 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ].includes(error.message)
             if (body.action !== 'respond' || !retryableStoryOutput) throw error
             automaticRetryAttempted = true
-            generated = { turn: await generateJourneyTurn(reserved.record) }
+            generated = { turn: await generateJourneyTurn(reserved.record, true) }
           }
         }
         const finished = await db.personalJourney({ ...common, operation: 'finish', requestId: operation.requestId, fingerprint: operation.fingerprint, ...generated })

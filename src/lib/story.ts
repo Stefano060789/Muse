@@ -48,7 +48,8 @@ export type StoryTemplate = {
 }
 
 export type PersonalStoryMood = 'adventure' | 'relaxed' | 'curious' | 'hopeful'
-export type PersonalStoryDifficulty = 'gentle' | 'balanced' | 'challenging'
+export type { PersonalStoryDifficulty } from './personalStoryDifficulty'
+import type { PersonalStoryDifficulty } from './personalStoryDifficulty'
 
 export type PersonalStory = NarrationMetadata & {
   archived?: boolean

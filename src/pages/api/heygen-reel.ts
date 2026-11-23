@@ -4,6 +4,9 @@ import { requireAccountProviderConsent } from '../../lib/providerConsent'
 import { apiSafety, reportOperation } from '../../lib/operations'
 import { SharedStoryError } from '../../lib/sharedStory'
 import { createHeygenReel, downloadHeygenReel, heygenConfigured, heygenReelStatus } from '../../lib/heygenReel'
+import { storyDatabase } from '../../lib/storyRequestLimits'
+import { adventureGlobalCap } from '../../lib/sharedAdventure'
+import { journeyCapability, journeyHash, journeyIdentifier } from '../../lib/personalJourney'
 
 export const config = { api: { bodyParser: { sizeLimit: '16kb' }, responseLimit: false }, maxDuration: 60 }
 
@@ -20,6 +23,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.body?.action === 'availability') return res.status(200).json({ available: heygenConfigured() })
     if (req.body?.action === 'create') {
       if (account.id !== 'local-development') requireAccountProviderConsent(account.permissions)
+      const chapter = await storyDatabase().personalJourney({
+        operation: 'view', id: journeyIdentifier(req.body.storyId), accountId: account.id,
+        capabilityHash: journeyHash(journeyCapability(req.body.storyCapability)), cap: adventureGlobalCap()
+      })
+      if (chapter.snapshot.pending || chapter.snapshot.status !== 'concluded' || !chapter.record.turn?.concluded) {
+        throw new SharedStoryError('Finish this chapter before creating a video.', 409)
+      }
       return res.status(200).json(await createHeygenReel(account.id, req.body))
     }
     if (req.body?.action === 'status') {

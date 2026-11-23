@@ -1,4 +1,5 @@
 import type { PersonalStory, PersonalStoryDifficulty } from './story'
+import { isPersonalStoryDifficulty } from './personalStoryDifficulty'
 import { parseSharedSceneChoices, parseSharedStoryBrief, type SharedStoryBrief, type SharedStoryContent } from './sharedStory'
 import { NARRATION_STYLES, validateNarrationLanguage, type NarrationMetadata } from './narration'
 import { parseFreeformState, parseStoryChoiceMode, parseSuggestedChoices } from './freeformStory'
@@ -73,7 +74,7 @@ export function validatePersonalStory(value: unknown): PersonalStory {
   }
   const romance = parseStoryRomance(input.romance)
   const difficulty = input.difficulty === undefined ? undefined : input.difficulty
-  if (difficulty !== undefined && !['gentle', 'balanced', 'challenging'].includes(String(difficulty))) {
+  if (difficulty !== undefined && !isPersonalStoryDifficulty(difficulty)) {
     throw new Error('Invalid personal story difficulty.')
   }
   const language = parseStoryLanguage(input.language)

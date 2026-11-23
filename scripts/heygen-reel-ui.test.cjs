@@ -47,6 +47,7 @@ async function main() {
   const sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   const window = { setTimeout, clearTimeout }
   const fixture = { id: 'synthetic', title: 'The Lantern', currentStep: 1,
+    journey: { status: 'concluded', pending: false, capability: 'a'.repeat(64) },
     responses: ['Follow the fox', 'Unseen choice'],
     scenes: [{ body: 'A lantern glows beside a quiet forest path.' },
       { body: 'A fox guides the traveler toward an ancient bridge.' },
@@ -64,6 +65,12 @@ async function main() {
   const composerTree = composer.exports.default({ story: fixture, interfaceLanguage: 'it-IT' })
   assert.equal(composerTree.type, Heygen, 'Only the HeyGen video creation remains')
   assert.equal(composerTree.props.story, fixture)
+  assert.equal(composerTree.props.canCreate, true)
+  for (const [status, pending] of [['active', false], ['exhausted', false], ['concluded', true]]) {
+    const story = { ...fixture, journey: { ...fixture.journey, status, pending } }
+    assert.equal(composer.exports.default({ story, interfaceLanguage: 'it-IT' }).props.canCreate, false)
+  }
+  assert.equal(composer.exports.default({ story: { ...fixture, journey: undefined }, interfaceLanguage: 'it-IT' }).props.canCreate, false)
   new Function('module', 'exports', 'require', 'sessionStorage', 'window', code)(module, module.exports, id => {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
@@ -72,7 +79,7 @@ async function main() {
   }, sessionStorage, window)
   const flush = async () => {
     for (let i = 0; i < 4; i++) {
-      cursor = 0; tree = module.exports.default({ story: fixture, interfaceLanguage: 'en-US' })
+      cursor = 0; tree = module.exports.default({ story: fixture, interfaceLanguage: 'en-US', canCreate: true })
       for (const effect of effects.splice(0)) effect()
       await new Promise(resolve => setImmediate(resolve))
     }
@@ -131,6 +138,8 @@ async function main() {
   await flush()
   assert.deepEqual(calls.map(item => item.action), ['availability', 'create', 'status', 'video'])
   assert.equal(calls[1].approved, true)
+  assert.equal(calls[1].storyId, fixture.id)
+  assert.equal(calls[1].storyCapability, fixture.journey.capability)
   assert.match(calls[1].prompt, /lantern/i)
   assert.match(calls[1].prompt, /Follow the fox/)
   assert.equal(storage.get('muse-heygen-reel:synthetic'), 'synthetic-signed-reference')
@@ -144,6 +153,16 @@ async function main() {
   await flush()
   assert.equal(storage.has('muse-heygen-reel:synthetic'), false)
   assert.equal(button('Generate video').props.disabled, true, 'Another paid reel needs fresh approval')
+  slots.length = 0
+  effects.length = 0
+  storage.set('muse-heygen-reel:synthetic', 'synthetic-signed-reference')
+  for (let i = 0; i < 2; i++) {
+    cursor = 0
+    tree = module.exports.default({ story: fixture, interfaceLanguage: 'en-US', canCreate: false })
+    for (const effect of effects.splice(0)) effect()
+  }
+  assert.ok(button('Check existing video'), 'An existing video remains accessible before chapter completion')
+  assert.ok(!button('Create video'), 'An unfinished chapter cannot start a new video')
   console.log('PASS HeyGen reel requires consent, creates once, previews MP4 and supports another approved reel')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

@@ -106,6 +106,7 @@ async function main() {
     if (id.endsWith('/browserDrafts')) return plain('src/lib/browserDrafts.ts', browser)
     if (id.endsWith('/storyPreferences')) return plain('src/lib/storyPreferences.ts', browser)
     if (id.endsWith('/personalDraft')) return plain('src/lib/personalDraft.ts', browser)
+    if (id.endsWith('/personalStoryDifficulty')) return plain('src/lib/personalStoryDifficulty.ts')
     if (id.endsWith('/storyRomance')) return plain('src/lib/storyRomance.ts')
     if (id.endsWith('/registrationCopy')) return plain('src/lib/registrationCopy.ts')
     if (id.endsWith('/legalContact')) return { hasExplicitConsent: value => value === true, MUSE_AI_CONSENT_VERSION: consentVersion }
@@ -203,7 +204,9 @@ async function main() {
   language.props.onChange({ target: { value: 'ar-SA' } })
   const difficulty = nodes().find(node => node.props['aria-label'] === 'Story difficulty')
   assert.ok(difficulty, 'My Story offers a difficulty selection')
-  difficulty.props.onChange({ target: { value: 'challenging' } })
+  assert.deepEqual(flatten(difficulty).filter(node => node?.type === 'option').map(option => option.props.value),
+    ['gentle', 'easy', 'balanced', 'challenging', 'expert'])
+  difficulty.props.onChange({ target: { value: 'expert' } })
   nodes().find(node => node.props['aria-label'] === 'What story do you have in mind? (optional)').props.onChange({ target: { value: 'A fictional evening in a garden.' } })
   nodes().find(node => node.props['aria-label'] === 'What would you like to change or improve? (optional)').props.onChange({ target: { value: 'A gentle change in perspective.' } })
   nodes().find(node => node.props['aria-label'] === 'What should Muse remember?').props.onChange({ target: { value: 'I love gardens' } })
@@ -261,7 +264,7 @@ async function main() {
   await click('Create story')
   assert.equal(requests.length, 1)
   assert.equal(requests[0].language, 'ar-SA')
-  assert.equal(requests[0].difficulty, 'challenging')
+  assert.equal(requests[0].difficulty, 'expert')
   assert.equal(requests[0].romance, 'spicy')
   assert.equal(requests[0].romanceConfirmed, true)
   assert.equal(requests[0].storyIdea, 'A changed fictional evening.')
@@ -273,7 +276,9 @@ async function main() {
   await click('Discard draft')
   const savedCreation = JSON.parse(storage.get('muse-personal-creation-draft'))
   assert.equal(savedCreation.language, 'ar-SA')
-  assert.equal(savedCreation.difficulty, 'challenging', 'Story difficulty is restored from a saved creation draft')
+  assert.equal(savedCreation.difficulty, 'expert', 'The new expert difficulty is saved in the creation draft')
+  assert.equal(plain('src/lib/personalDraft.ts').isPersonalDraft({ ...savedCreation, difficulty: 'easy' }), true,
+    'The new easy difficulty is accepted when restoring a draft')
   assert.equal(savedCreation.storyIdea, 'A changed fictional evening.')
   assert.equal(savedCreation.improvementGoal, 'A gentle change in perspective.')
   assert.equal('aiConsent' in savedCreation, false, 'Drafts never persist AI authorization')

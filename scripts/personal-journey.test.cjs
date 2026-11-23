@@ -9,7 +9,7 @@ const output = fs.mkdtempSync(path.join(__dirname, '.personal-journey-tests-'))
 const original = { env: { ...process.env }, fetch: global.fetch, now: Date.now, window: global.window }
 const filename = path.join(output, 'journeys.sqlite')
 let now = Math.floor(Date.now() / 3600000) * 3600000 + 60000
-let passed = 0, calls = 0, childCalls = 0, providerMode = 'ok', hold, received
+let passed = 0, calls = 0, heygenCalls = 0, childCalls = 0, providerMode = 'ok', hold, received
 let consentVersion
 const requests = []
 const state = { inventory: ['a lantern'], discoveries: ['a sheltered garden'], relationships: ['a welcoming gardener'], progress: 'You found a quiet place to explore.' }
@@ -30,7 +30,7 @@ function responseBody(created, revision = created.snapshot.revision, requestId =
 }
 async function main() {
   execFileSync(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
-    'src/pages/api/personal-story.ts', 'src/pages/api/shared-story.ts',
+    'src/pages/api/personal-story.ts', 'src/pages/api/shared-story.ts', 'src/pages/api/heygen-reel.ts',
     '--outDir', output, '--module', 'commonjs', '--target', 'es2020', '--esModuleInterop', '--skipLibCheck', '--noEmit', 'false'], { cwd: root, stdio: 'inherit' })
   process.env.STORY_STORAGE = 'sqlite'; process.env.MUSE_SQLITE_PATH = filename
   process.env.LLM_PROVIDER = 'GROQ'; process.env.LLM_API_KEY = 'mock-journey-key'
@@ -41,11 +41,16 @@ async function main() {
   Date.now = () => now
   const handlerPath = path.join(output, 'pages', 'api', 'personal-story.js')
   const handler = require(handlerPath).default
+  const heygenHandler = require(path.join(output, 'pages', 'api', 'heygen-reel.js')).default
   const { storyRepository } = require(path.join(output, 'lib', 'storyRepository.js'))
   const journey = require(path.join(output, 'lib', 'personalJourney.js'))
   consentVersion = require(path.join(output, 'lib', 'legalContact.js')).MUSE_AI_CONSENT_VERSION
   const library = require(path.join(output, 'lib', 'storyLibrary.js'))
   global.fetch = async (url, options) => {
+    if (String(url) === 'https://api.heygen.com/v3/models/videos') {
+      heygenCalls++
+      return Response.json({ data: { video_id: 'synthetic_video' } })
+    }
     assert.equal(String(url), 'https://api.groq.com/openai/v1/chat/completions', 'No real network endpoint allowed')
     calls++
     const payload = JSON.parse(options.body)
@@ -56,9 +61,11 @@ async function main() {
     if (providerMode === 'network') throw new Error('private-provider-error-with-secret')
     if (providerMode === 'status') return new Response('private-api-key', { status: 401 })
     let value
-    if (providerMode === 'invalid-once') {
+    if (providerMode === 'invalid-once' && !payload.messages[0].content.includes('FORMAT RECOVERY:')) {
       value = { narration: 'short', state, concluded: false }
+    } else if (providerMode === 'invalid-once') {
       providerMode = 'ok'
+      value = { narration: input.responsesRemaining === 0 ? conclusion : narration, state, concluded: input.responsesRemaining === 0 }
     } else if (providerMode === 'invalid') value = { narration: 'short', state, concluded: false }
     else if (providerMode === 'extra') value = input.responsesRemaining === undefined
       ? { ...opening, providerNote: 'ignored', turn: { ...opening.turn, providerNote: 'ignored', state: { ...state, providerNote: 'ignored' } } }
@@ -165,7 +172,7 @@ async function main() {
         assert.ok(recent.payload.messages[0].content.includes('up to three tries at each obstacle'))
         assert.ok(recent.payload.messages[0].content.includes('A decision to leave, refuse or change direction is not a failed attempt'))
         assert.ok(recent.payload.messages[0].content.includes('Do not force them back to the original premise or a planned outcome'))
-        assert.ok(recent.payload.messages[0].content.includes('gentle, optional lens'))
+        assert.ok(recent.payload.messages[0].content.includes('At every difficulty, when an improvementGoal is supplied'))
         assert.ok(recent.payload.messages[0].content.includes('do not prescribe a correct choice') || recent.payload.messages[0].content.includes('Do not prescribe a correct choice'))
         assert.ok(recent.payload.messages[0].content.includes('Track the evolving direction'))
         assert.ok(Array.isArray(recent.input.recentActions) && recent.input.recentActions.length <= 3, 'Failed tries are judged from at most three recent actions')
@@ -183,6 +190,62 @@ async function main() {
       assert.equal(calls, atCap)
     })
   }
+  await check('five difficulties persist and guide opening and turns toward the player goal', async () => {
+    const levels = [
+      ['gentle', /Level 1: Guide the player/],
+      ['easy', /Level 2: Offer gentle choices/],
+      ['balanced', /Level 3: Offer meaningful choices/],
+      ['challenging', /Level 4: Introduce more complex obstacles/],
+      ['expert', /Level 5: Introduce fair fictional traps/]
+    ]
+    for (const [level, instruction] of levels) {
+      const creation = newCreation(5, level)
+      let result = await api(creation)
+      assert.equal(result.status, 200)
+      assert.match(requests.at(-1).payload.messages[0].content, instruction)
+      assert.match(requests.at(-1).payload.messages[0].content, /At every difficulty, when an improvementGoal is supplied/)
+      assert.equal(library.validatePersonalStory(result.body.story).difficulty, level)
+      result = await api(responseBody(result.body))
+      assert.equal(result.status, 200)
+      assert.match(requests.at(-1).payload.messages[0].content, instruction)
+      assert.equal(requests.at(-1).input.improvementGoal, creation.improvementGoal)
+      const resumed = await api({ mode: 'journey', action: 'resume', id: creation.id, capability: creation.capability })
+      assert.equal(resumed.body.story.difficulty, level)
+      assert.equal(resumed.body.story.improvementGoal, creation.improvementGoal)
+      assert.equal((await api({ mode: 'journey', action: 'delete', id: creation.id, capability: creation.capability })).body.deleted, true)
+    }
+  })
+  await check('video creation checks the real saved chapter before any HeyGen request', async () => {
+    process.env.HEYGEN_API_KEY = 'synthetic-heygen-key'
+    process.env.HEYGEN_REEL_PROVIDER_APPROVED = 'true'
+    const creation = newCreation()
+    let result = await api(creation)
+    const videoBody = {
+      action: 'create', id: randomUUID(), created: Date.now(), storyId: creation.id,
+      storyCapability: creation.capability, prompt: 'A lantern glows beside a quiet forest path.',
+      approved: true, consentVersion: 'heygen-reel-2026-11', snapshot: { status: 'concluded' }
+    }
+    const video = async () => {
+      const res = {
+        statusCode: 200, body: null, setHeader() {},
+        status(code) { this.statusCode = code; return this },
+        json(value) { this.body = value; return this }
+      }
+      await heygenHandler({ method: 'POST', headers: { host: 'localhost:3000' },
+        socket: { remoteAddress: 'synthetic-video-client' }, body: videoBody }, res)
+      return res
+    }
+    const before = heygenCalls
+    assert.equal((await video()).statusCode, 409, 'A forged client snapshot cannot unlock an active chapter')
+    assert.equal(heygenCalls, before)
+    for (let step = 0; step < 3; step++) result = await api(responseBody(result.body))
+    assert.equal(result.body.snapshot.status, 'concluded')
+    assert.equal((await video()).statusCode, 200)
+    assert.equal(heygenCalls, before + 1)
+    assert.equal((await api({ mode: 'journey', action: 'delete', id: creation.id, capability: creation.capability })).body.deleted, true)
+    delete process.env.HEYGEN_API_KEY
+    delete process.env.HEYGEN_REEL_PROVIDER_APPROVED
+  })
   await check('harmless extra provider fields do not invalidate otherwise complete story output', async () => {
     const creation = newCreation()
     providerMode = 'extra'
@@ -317,6 +380,24 @@ async function main() {
     assert.equal(retried.body.story.responses.length, 1)
     assert.equal(calls, before + 2, 'The incomplete model output is followed by one automatic provider retry')
     assert.equal(dayUsed(), beforeBudget + 1, 'The player action budget is charged once for the automatic retry')
+    const [first, second] = requests.slice(-2)
+    assert.ok(!first.payload.messages[0].content.includes('FORMAT RECOVERY:'))
+    assert.match(second.payload.messages[0].content, /FORMAT RECOVERY:.*complete new reply.*valid JSON/)
+    assert.deepEqual(second.input, first.input, 'The retry keeps the original action and story context')
+  })
+  await check('a corrected final response concludes without consuming another player attempt', async () => {
+    let result = await api(newCreation())
+    for (let step = 0; step < 2; step++) result = await api(responseBody(result.body))
+    const before = calls, beforeBudget = dayUsed()
+    providerMode = 'invalid-once'
+    result = await api(responseBody(result.body))
+    providerMode = 'ok'
+    assert.equal(result.body.status, 'done')
+    assert.equal(result.body.snapshot.status, 'concluded')
+    assert.equal(result.body.snapshot.revision, 3)
+    assert.equal(result.body.story.scenes.at(-1).body, conclusion)
+    assert.equal(calls, before + 2)
+    assert.equal(dayUsed(), beforeBudget + 1)
   })
   await check('abandoned reservation survives restart, expires as consumed, and late completion cannot overwrite', async () => {
     const op = { operation: 'reserve', id: concurrency.story.id, accountId: 'local-development', capabilityHash: journey.journeyHash(concurrency.story.journey.capability), cap: 1000, ...journey.parseJourneyAction(responseBody(concurrency)) }
