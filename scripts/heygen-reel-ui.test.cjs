@@ -51,6 +51,19 @@ async function main() {
     scenes: [{ body: 'A lantern glows beside a quiet forest path.' },
       { body: 'A fox guides the traveler toward an ancient bridge.' },
       { body: 'An unseen final scene.' }] }
+  const composer = { exports: {} }
+  const composerCode = ts.transpileModule(fs.readFileSync(path.join(root, 'src/components/StoryReelComposer.tsx'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
+  }).outputText
+  const Heygen = () => null
+  new Function('module', 'exports', 'require', composerCode)(composer, composer.exports, id => {
+    if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
+    if (id === './HeygenStoryReel') return { __esModule: true, default: Heygen }
+    throw new Error(`Unexpected composer dependency ${id}`)
+  })
+  const composerTree = composer.exports.default({ story: fixture, interfaceLanguage: 'it-IT' })
+  assert.equal(composerTree.type, Heygen, 'Only the HeyGen video creation remains')
+  assert.equal(composerTree.props.story, fixture)
   new Function('module', 'exports', 'require', 'sessionStorage', 'window', code)(module, module.exports, id => {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
@@ -67,10 +80,10 @@ async function main() {
   const nodes = () => flatten(tree).filter(node => node && typeof node === 'object')
   const button = text => nodes().find(node => node.type === 'button' && label(node) === text)
   await flush()
-  button('Create HeyGen video').props.onClick()
+  button('Create video').props.onClick()
   await flush()
   assert.equal(calls.filter(item => item.action === 'create').length, 0, 'Opening the panel does not create a paid reel')
-  assert.equal(button('Create video').props.disabled, true)
+  assert.equal(button('Generate video').props.disabled, true)
   const prompt = nodes().find(node => node.type === 'textarea').props.value
   assert.match(prompt, /Follow the fox/)
   assert.match(prompt, /fox guides the traveler/)
@@ -87,7 +100,7 @@ async function main() {
   const checkbox = nodes().find(node => node.type === 'input' && node.props.type === 'checkbox')
   checkbox.props.onChange({ target: { checked: true } })
   await flush()
-  assert.equal(button('Create video').props.disabled, false)
+  assert.equal(button('Generate video').props.disabled, false)
   const selects = nodes().filter(node => node.type === 'select')
   const model = selects.find(node => node.props.defaultValue === 'heygen-video-1')
   assert.ok(model, 'Video 1 is the only selectable video model')
@@ -99,22 +112,22 @@ async function main() {
     duration.props.onChange({ target: { value: String(seconds) } })
     await flush()
     assert.ok(nodes().some(node => node.props.role === 'status' && label(node).includes('Longer videos are not available yet')))
-    assert.equal(button('Create video').props.disabled, true)
-    button('Create video').props.onClick()
+    assert.equal(button('Generate video').props.disabled, true)
+    button('Generate video').props.onClick()
     await flush()
     assert.equal(calls.filter(item => item.action === 'create').length, 0)
   }
   duration.props.onChange({ target: { value: '10' } })
   await flush()
-  assert.equal(button('Create video').props.disabled, true, 'Changing duration requires fresh consent')
+  assert.equal(button('Generate video').props.disabled, true, 'Changing duration requires fresh consent')
   nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
   await flush()
   nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: `${prompt} ` } })
   await flush()
-  assert.equal(button('Create video').props.disabled, true, 'Editing the disclosed text requires fresh approval')
+  assert.equal(button('Generate video').props.disabled, true, 'Editing the disclosed text requires fresh approval')
   nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
   await flush()
-  button('Create video').props.onClick()
+  button('Generate video').props.onClick()
   await flush()
   assert.deepEqual(calls.map(item => item.action), ['availability', 'create', 'status', 'video'])
   assert.equal(calls[1].approved, true)
@@ -130,7 +143,7 @@ async function main() {
   button('Prepare another reel').props.onClick()
   await flush()
   assert.equal(storage.has('muse-heygen-reel:synthetic'), false)
-  assert.equal(button('Create video').props.disabled, true, 'Another paid reel needs fresh approval')
+  assert.equal(button('Generate video').props.disabled, true, 'Another paid reel needs fresh approval')
   console.log('PASS HeyGen reel requires consent, creates once, previews MP4 and supports another approved reel')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

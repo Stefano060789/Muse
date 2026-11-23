@@ -61,8 +61,8 @@ prompt from saved scenes and player choices; the reader reviews the exact text,
 removes private details, and explicitly agrees to send it and start paid
 generation. This is one generated scene, not a complete multi-scene film;
 character fidelity is not guaranteed. The finished video is previewed before
-manual download or sharing. Nothing is posted automatically. Local animated
-cards remain available separately and are not HeyGen videos.
+manual download or sharing. Nothing is posted automatically. The animated
+story-reel composer is no longer offered.
 The duration selector also shows 30 seconds and 1, 2 and 3 minutes, but those lengths cannot
 be generated yet: they require a separate integration and verified pricing
 and spending controls. Selecting one never submits the 10-second pilot instead.

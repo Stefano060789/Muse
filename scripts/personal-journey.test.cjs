@@ -288,6 +288,8 @@ async function main() {
       } else {
         assert.equal((failed.body.error.match(/No automatic retry was made/g) || []).length, 1,
           'Other failure copy explains the consumed attempt without repeating itself')
+        assert.match(failed.body.error, /This attempt may have been used.*another attempt may be used/,
+          'Other failures warn that retrying can consume another attempt')
       }
       assert.equal(failed.body.snapshot.revision, concurrency.snapshot.revision + 1)
       assert.equal(failed.body.snapshot.pending, false)

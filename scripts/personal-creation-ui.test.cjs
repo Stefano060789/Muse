@@ -469,6 +469,10 @@ async function main() {
   responseGate = undefined
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.', 'A completed response must not erase newer typing')
   respondSuccessfully = false
+  await click('Send response')
+  assert.equal(responseField().props.value, 'A newer draft typed while waiting.', 'A failed response keeps the answer')
+  const responseFailure = nodes().find(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure'))
+  assert.ok(responseFailure, 'A failed response is visible in the reading view')
   browserEvents.get('storage')()
   await flush()
   assert.equal(requests.at(-1).action, 'resume', 'Cross-tab changes trigger a safe progress check')
@@ -484,6 +488,8 @@ async function main() {
   assert.equal(requests.length, beforeRecovery + 1)
   assert.equal(requests.at(-1).action, 'resume', 'Automatic recovery never retries paid story generation')
   assert.equal(responseField().props.value, 'A newer draft typed while waiting.')
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('Synthetic generation failure')),
+    'Automatic reconciliation does not silently erase the failure message')
   assert.equal(find('button', 'Send response').props.disabled, false)
   assert.equal(timers.size, 0, 'Successful synchronization stops background retries')
   loadedStory = {

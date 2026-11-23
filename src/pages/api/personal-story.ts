@@ -205,7 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(error instanceof SharedStoryError ? error.status : 503).json({
           error: invalidResponse
             ? `The AI could not prepare a story reply this time. ${retryGuidance}`
-            : `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} ${automaticRetryAttempted ? 'One automatic retry was made, but no further retry was made.' : 'No automatic retry was made.'} Your draft and any saved scenes are kept.`,
+            : `${error instanceof SharedStoryError ? error.message : 'This story attempt could not complete.'} ${automaticRetryAttempted ? 'One automatic retry was made, but no further retry was made.' : 'No automatic retry was made.'} Your draft and any saved scenes are kept.${body.action === 'respond' ? ' This attempt may have been used. Check progress before trying again; another attempt may be used.' : ''}`,
           ...current
         })
       }

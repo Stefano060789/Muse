@@ -92,6 +92,7 @@ export default function StoryPage() {
   const romanceConfirmed = permissions.managed ? permissions.romance : localRomanceConfirmed
   const [reconciled, setReconciled] = useState(false)
   const [reconciliationBlocked, setReconciliationBlocked] = useState(false)
+  const [reconciliationError, setReconciliationError] = useState('')
   const [preparation, setPreparation] = useState<Preparation | null>(null)
   const [storyError, setStoryError] = useState('')
   const [storyNotice, setStoryNotice] = useState('')
@@ -131,6 +132,7 @@ export default function StoryPage() {
   const responseInput = useRef<HTMLTextAreaElement>(null)
   const creationSection = useRef<HTMLElement>(null)
   const modeControlRef = useRef<HTMLDivElement>(null)
+  const storyErrorRef = useRef<HTMLParagraphElement>(null)
   const sceneArticleRef = useRef<HTMLElement>(null)
   const sceneHeadingRef = useRef<HTMLHeadingElement>(null)
   const pendingSceneViewportKey = useRef<string | null>(null)
@@ -144,6 +146,11 @@ export default function StoryPage() {
     sceneMood: story?.scenes[story.currentStep]?.sceneMood
   })
   const stopSpeaking = narrator.stop
+  useEffect(() => {
+    if (!storyError || !storyErrorRef.current) return
+    storyErrorRef.current.scrollIntoView({ block: 'center', behavior: 'auto' })
+    storyErrorRef.current.focus({ preventScroll: true })
+  }, [storyError])
   const recapCopy = storyRecapCopy(interfaceLanguage)
   useEffect(() => {
     setStoryRecapOpen(false)
@@ -301,11 +308,12 @@ export default function StoryPage() {
     const saved = preparation || (story?.journey ? { id: story.id, capability: story.journey.capability } : null)
     if (!saved || requestLock.current || deletedOnServer.current === saved.id) return
     requestLock.current = true
-    setIsGenerating(true); setStoryError(''); setReconciled(false)
+    setIsGenerating(true); setReconciled(false)
     try {
       const data = await requestJourney({ action: 'resume', ...saved })
+      setReconciliationError('')
       if (!data.story) setStoryNotice('Your story is still being prepared. Progress is checked automatically without another AI request.')
-    } catch (error) { setStoryError(error instanceof Error ? error.message : 'Could not reconcile your story.') }
+    } catch (error) { setReconciliationError(error instanceof Error ? error.message : 'Could not reconcile your story.') }
     finally { requestLock.current = false; setIsGenerating(false) }
   }
 
@@ -322,9 +330,9 @@ export default function StoryPage() {
 
   useEffect(() => {
     if ((!story?.journey && !preparation) || deletedOnServer.current === story?.id || isGenerating || reconciliationBlocked || (reconciled && !story?.journey?.pending)) return
-    const timer = window.setTimeout(() => { void reconcileRef.current() }, storyError ? 15000 : 3000)
+    const timer = window.setTimeout(() => { void reconcileRef.current() }, (storyError || reconciliationError) ? 15000 : 3000)
     return () => window.clearTimeout(timer)
-  }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, reconciliationBlocked, isGenerating, storyError])
+  }, [story?.id, Boolean(story?.journey), story?.journey?.pending, preparation?.id, reconciled, reconciliationBlocked, isGenerating, storyError, reconciliationError])
 
   const savePersonalTouches = () => {
     interaction.cancelRecording()
@@ -670,7 +678,8 @@ export default function StoryPage() {
       <Head><title>{story ? `Muse - ${story.title}` : `Muse - ${pageText('personalStoryTitle', interfaceLanguage)}`}</title><meta name="description" content={story ? story.title : pageText('personalStoryMoodSubtitle', interfaceLanguage)} /></Head>
       <main className="atelier-page" lang={interfaceLanguage} dir={storyLanguage(interfaceLanguage).dir}>
         <div className="atelier-shell atelier-shell--narrow">
-          {storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
+          {!story && storyError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
+          {!story && reconciliationError ? <p role="alert">{reconciliationError}</p> : null}
           {storyNotice ? <p role="status">{storyNotice}</p> : null}
           {draftError ? <p role="alert">{draftError}</p> : null}
           {draftNotice && story && responseDraft ? <p role="status">{draftNotice}</p> : null}
@@ -802,6 +811,8 @@ export default function StoryPage() {
                   </article>)
                   : <p>{recapCopy.noRecap}</p>}
               </section> : null}
+              {storyError ? <p ref={storyErrorRef} tabIndex={-1} role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{storyError}{storyError.includes('Visit /billing') ? <> <Link href="/billing">See Muse Plus benefits and subscribe</Link>.</> : null}</p> : null}
+              {reconciliationError ? <p role="alert" style={{ color: '#a14329', background: '#f9e7df', borderRadius: 10, padding: '0.8rem 1rem' }}>{reconciliationError}</p> : null}
               <div ref={modeControlRef} tabIndex={-1}>
                 <StoryModeControl mode={storyMode} onChange={changeStoryMode} copy={interfaceCopy} language={interfaceLanguage} direction={storyLanguage(interfaceLanguage).dir} />
               </div>

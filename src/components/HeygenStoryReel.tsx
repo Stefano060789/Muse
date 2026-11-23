@@ -182,7 +182,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
   }
   return <section className="story-reel">
     <button type="button" className="atelier-button" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      {italian ? 'Crea video con HeyGen' : 'Create HeyGen video'}
+      {italian ? 'Crea video' : 'Create video'}
     </button>
     {open ? <div className="story-reel-panel">
       <h3>{italian ? 'Video verticale della tua storia' : 'Your vertical story video'}</h3>
@@ -221,7 +221,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage }: { story: R
           {italian ? 'Accetto di inviare questo testo a HeyGen e avviare la generazione a pagamento.' :
             'I agree to send this text to HeyGen and start paid generation.'}</label>
         <button type="button" className="atelier-button" disabled={duration !== 10 || !available || busy || uncertain || !consent || prompt.trim().length < 20}
-          onClick={() => void run()}>{busy ? (italian ? 'Creazione del reel…' : 'Creating reel…') : italian ? 'Crea video' : 'Create video'}</button>
+          onClick={() => void run()}>{busy ? (italian ? 'Creazione del video…' : 'Creating video…') : italian ? 'Genera video' : 'Generate video'}</button>
       </> : !clip ? <button type="button" disabled={busy} onClick={() => void run(token)}>{italian ? 'Controlla stato' : 'Check status'}</button> : null}
       {busy ? <p role="status">{italian ? 'Creazione del reel. Può richiedere qualche minuto.' : 'Creating your reel. This can take a few minutes.'}</p> : null}
       {clip ? <section className="story-reel-preview">
