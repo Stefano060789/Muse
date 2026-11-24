@@ -80,6 +80,42 @@ export async function consumeOperation(bucket: string, limit: number, expiresAt:
   }
 }
 
+export async function consumeOperationUnits(bucket: string, limit: number, expiresAt: string, units: number): Promise<OperationReservation> {
+  if (bucket !== 'heygen-reel-pilot-v1' || !Number.isInteger(limit) || limit < 1 || limit > 10000 ||
+      !Number.isInteger(units) || units < 1 || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+    throw new SharedStoryError('Invalid operational limit configuration.', 503)
+  }
+  try {
+    const filename = localPath()
+    if (filename) return local(filename, db => {
+      db.prepare('INSERT OR IGNORE INTO muse_operations_counters(bucket, used, expires_at) VALUES (?, 0, ?)').run(bucket, expiresAt)
+      const used = Number(db.prepare('SELECT used FROM muse_operations_counters WHERE bucket=?').get(bucket)!.used)
+      if (used + units > limit) return { allowed: false, used, notify: false }
+      db.prepare('UPDATE muse_operations_counters SET used=used+? WHERE bucket=?').run(units, bucket)
+      return { allowed: true, used: used + units, notify: false }
+    })
+    const client = await hosted()
+    const inserted = await client.from('muse_operations_counters').upsert({ bucket, used: 0, expires_at: expiresAt },
+      { onConflict: 'bucket', ignoreDuplicates: true })
+    if (inserted.error) return unavailable()
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const current = await client.from('muse_operations_counters').select('used,expires_at').eq('bucket', bucket).maybeSingle()
+      if (current.error || !current.data || !Number.isInteger(current.data.used) || current.data.used < 0 ||
+          !Number.isFinite(Date.parse(current.data.expires_at)) || Date.parse(current.data.expires_at) <= Date.now()) return unavailable()
+      const used = current.data.used
+      if (used + units > limit) return { allowed: false, used, notify: false }
+      const changed = await client.from('muse_operations_counters').update({ used: used + units })
+        .eq('bucket', bucket).eq('used', used).eq('expires_at', current.data.expires_at).select('used').maybeSingle()
+      if (changed.error) return unavailable()
+      if (changed.data) return { allowed: true, used: used + units, notify: false }
+    }
+    throw new SharedStoryError('Operational budget is busy. Try again shortly.', 503)
+  } catch (error) {
+    if (error instanceof SharedStoryError) throw error
+    return unavailable()
+  }
+}
+
 export async function storeOperationAlert(id: string, event: string): Promise<boolean> {
   try {
     const filename = localPath()

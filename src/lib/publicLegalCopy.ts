@@ -690,11 +690,20 @@ const copies = {
   }
 } satisfies Record<StoryLanguageCode, PublicLegalCopy>
 
+const chapterVideoPrivacy: Record<StoryLanguageCode, string> = {
+  'en-US': 'When enabled, chapter video creation sends the text you approve and any optional reference photos to HeyGen. Muse does not store the photos, but HeyGen creates public photo URLs that anyone with a URL may access. We attempt to delete provider photo assets after generation; failures or missing asset IDs may require manual intervention, and provider copies or backups may remain. Archived videos are private to the account, expire after seven days and are queued for physical deletion; cleanup can be delayed. Delete videos separately from their story. Downloaded or shared copies cannot be recalled.',
+  'it-IT': 'Quando disponibile, la creazione del video di capitolo invia a HeyGen il testo approvato e le eventuali foto di riferimento. Muse non salva le foto, ma HeyGen crea URL pubblici accessibili a chi li conosce. Cerchiamo di eliminare le foto dal provider dopo la generazione; errori o identificativi mancanti possono richiedere interventi manuali e copie o backup del provider possono rimanere. I video archiviati sono privati per l’account, scadono dopo sette giorni e sono messi in coda per la cancellazione fisica, che può subire ritardi. Elimina i video separatamente dalla storia. Le copie scaricate o condivise non possono essere richiamate.',
+  'es-ES': 'Cuando esté disponible, crear un vídeo de capítulo envía a HeyGen el texto aprobado y las fotos de referencia opcionales. Muse no guarda las fotos, pero HeyGen crea URL públicas accesibles para quien las conozca. Intentamos borrar las fotos del proveedor tras la generación; los fallos o identificadores ausentes pueden requerir intervención manual y pueden quedar copias o copias de seguridad del proveedor. Los vídeos archivados son privados para la cuenta, caducan a los siete días y quedan pendientes de eliminación física, que puede demorarse. Borra los vídeos por separado de la historia. No se pueden retirar copias descargadas o compartidas.',
+  'zh-CN': '启用后，创建章节视频会将你同意发送的文字和可选参考照片发送给 HeyGen。Muse 不保存这些照片，但 HeyGen 会生成公开照片链接，知道链接的人可能查看照片。我们会尝试在生成后删除供应商照片；失败或缺少素材标识时可能需要人工处理，供应商副本或备份可能仍然存在。存档视频仅供账户使用，七天后过期并进入实体删除队列；清理可能延迟。删除故事时需另行删除视频。已下载或分享的副本无法收回。',
+  'hi-IN': 'सुविधा उपलब्ध होने पर अध्याय वीडियो बनाने के लिए स्वीकृत पाठ और वैकल्पिक संदर्भ फ़ोटो HeyGen को भेजे जाते हैं। Muse फ़ोटो संग्रहीत नहीं करता, लेकिन HeyGen सार्वजनिक फ़ोटो URL बनाता है जिन्हें URL जानने वाला व्यक्ति देख सकता है। हम वीडियो बनने के बाद प्रदाता की फ़ोटो हटाने का प्रयास करते हैं; विफलता या एसेट ID खोने पर मैनुअल कार्रवाई की ज़रूरत हो सकती है और प्रदाता की प्रतियाँ या बैकअप रह सकते हैं। संग्रहित वीडियो खाते के लिए निजी हैं, सात दिन बाद समाप्त होते हैं और भौतिक हटाने की कतार में जाते हैं; सफ़ाई में देरी हो सकती है। कहानी से अलग वीडियो हटाएँ। डाउनलोड या साझा की गई प्रतियाँ वापस नहीं ली जा सकतीं।',
+  'uk-UA': 'Коли функція доступна, для створення відео розділу затверджений текст і необов’язкові довідкові фото надсилаються до HeyGen. Muse не зберігає фото, але HeyGen створює публічні URL, доступні тим, хто їх знає. Ми намагаємося видалити фото у провайдера після генерації; помилки чи втрачені ідентифікатори можуть потребувати ручного втручання, а копії або резервні копії провайдера можуть залишитися. Архівні відео приватні для облікового запису, спливають через сім днів і стають у чергу фізичного видалення, яке може затриматися. Видаляйте відео окремо від історії. Завантажені чи поширені копії відкликати неможливо.',
+  'ar-SA': 'عند إتاحة الميزة، يُرسل النص الذي توافق عليه والصور المرجعية الاختيارية إلى HeyGen لإنشاء فيديو الفصل. لا يخزّن Muse الصور، لكن HeyGen ينشئ روابط صور عامة قد يتمكن كل من يعرفها من الوصول إليها. نحاول حذف صور المزود بعد الإنشاء؛ وقد يتطلب الفشل أو فقدان معرّف الأصل تدخلاً يدوياً، وقد تبقى نسخ أو نسخ احتياطية لدى المزود. فيديوهات الأرشيف خاصة بالحساب وتنتهي بعد سبعة أيام وتوضع في قائمة الحذف الفعلي، وقد يتأخر التنظيف. احذف الفيديوهات بصورة منفصلة عن القصة. لا يمكن استرجاع النسخ التي تم تنزيلها أو مشاركتها.'
+}
+
 export function publicLegalCopy(language: StoryLanguageCode): PublicLegalCopy {
   const copy = copies[language]
   const media = copy.privacy.sections.media
-  const paragraphs = media.paragraphs.filter(paragraph => !paragraph.includes('ElevenLabs'))
-  if (paragraphs.length === media.paragraphs.length) return copy
+  const paragraphs = [...media.paragraphs.filter(paragraph => !paragraph.includes('ElevenLabs')), chapterVideoPrivacy[language]]
   return {
     ...copy,
     privacy: {

@@ -10,7 +10,7 @@ function flatten(node) {
 }
 const label = node => flatten(node.props.children).filter(value => typeof value === 'string').join('')
 async function main() {
-  let cursor = 0, tree
+  let cursor = 0, tree, referenceMode = false
   const slots = [], effects = [], calls = []
   const storage = new Map()
   const react = {
@@ -35,7 +35,9 @@ async function main() {
   const fetchAccount = async (_url, init) => {
     const body = JSON.parse(init.body)
     calls.push(body)
-    if (body.action === 'availability') return Response.json({ available: true })
+    if (body.action === 'availability') return Response.json({
+      available: true, archive: referenceMode, referenceReservation: referenceMode ? 72 : null
+    })
     if (body.action === 'create') return Response.json({ token: 'synthetic-signed-reference', status: 'pending' })
     if (body.action === 'status') return Response.json({ status: 'completed' })
     if (body.action === 'video') return new Response('synthetic video', { headers: { 'Content-Type': 'video/mp4' } })
@@ -46,6 +48,17 @@ async function main() {
   const module = { exports: {} }
   const sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   const window = { setTimeout, clearTimeout }
+  const document = { createElement: name => {
+    if (name !== 'canvas') throw new Error('Unexpected element')
+    return {
+      getContext: () => ({ fillRect() {}, drawImage() {} }),
+      toBlob: callback => callback(new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' }))
+    }
+  } }
+  class FileReader {
+    readAsDataURL(blob) { void blob.arrayBuffer().then(bytes => { this.result = `data:image/jpeg;base64,${Buffer.from(bytes).toString('base64')}`; this.onload() }) }
+  }
+  const createImageBitmap = async () => ({ width: 2000, height: 1000, close() {} })
   const fixture = { id: 'synthetic', title: 'The Lantern', currentStep: 1,
     journey: { status: 'concluded', pending: false, capability: 'a'.repeat(64) },
     responses: ['Follow the fox', 'Unseen choice'],
@@ -71,12 +84,13 @@ async function main() {
     assert.equal(composer.exports.default({ story, interfaceLanguage: 'it-IT' }).props.canCreate, false)
   }
   assert.equal(composer.exports.default({ story: { ...fixture, journey: undefined }, interfaceLanguage: 'it-IT' }).props.canCreate, false)
-  new Function('module', 'exports', 'require', 'sessionStorage', 'window', code)(module, module.exports, id => {
+  new Function('module', 'exports', 'require', 'sessionStorage', 'window', 'document', 'FileReader', 'createImageBitmap', code)(module, module.exports, id => {
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' }
     if (id === '../lib/accountClient') return { accountFetch: fetchAccount }
+    if (id === '../lib/chapterVideoClient') return { videoBlob: response => response.blob() }
     throw new Error(`Unexpected dependency ${id}`)
-  }, sessionStorage, window)
+  }, sessionStorage, window, document, FileReader, createImageBitmap)
   const flush = async () => {
     for (let i = 0; i < 4; i++) {
       cursor = 0; tree = module.exports.default({ story: fixture, interfaceLanguage: 'en-US', canCreate: true })
@@ -163,6 +177,30 @@ async function main() {
   }
   assert.ok(button('Check existing video'), 'An existing video remains accessible before chapter completion')
   assert.ok(!button('Create video'), 'An unfinished chapter cannot start a new video')
+  slots.length = 0; effects.length = 0; storage.clear(); calls.length = 0; referenceMode = true
+  await flush()
+  button('Create video').props.onClick()
+  await flush()
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('HeyGen creates public URLs')))
+  const photo = new File([new Uint8Array(2 * 1024 * 1024)], 'portrait.jpg', { type: 'image/jpeg' })
+  const input = nodes().find(node => node.type === 'input' && node.props.type === 'file')
+  input.props.onChange({ target: { files: [{ type: 'image/jpeg', size: 21 * 1024 * 1024 }], value: 'files' } })
+  await flush()
+  assert.ok(nodes().some(node => node.props.role === 'alert' && label(node).includes('at most 20 MB')))
+  input.props.onChange({ target: { files: [photo], value: 'files' } })
+  await flush()
+  assert.equal(button('Generate video').props.disabled, true)
+  nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+  await flush()
+  button('Generate video').props.onClick()
+  await flush()
+  const submission = calls.find(item => item.action === 'create')
+  assert.equal(submission.photoApproved, true)
+  assert.equal(submission.photos.length, 1)
+  assert.equal(submission.photos[0].mime, 'image/jpeg')
+  assert.equal(submission.photos[0].role, 'protagonist')
+  assert.equal(submission.photos[0].data, Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'))
+  assert.ok([...storage.values()].every(value => !value.includes(submission.photos[0].data)), 'Photo bytes are not saved in session storage')
   console.log('PASS HeyGen reel requires consent, creates once, previews MP4 and supports another approved reel')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

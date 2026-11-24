@@ -1,10 +1,50 @@
 import { useEffect, useRef, useState } from 'react'
 import { accountFetch } from '../lib/accountClient'
+import { videoBlob } from '../lib/chapterVideoClient'
 import type { PersonalStory } from '../lib/story'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
 
 type ReelStory = Pick<PersonalStory, 'id' | 'title' | 'scenes' | 'responses' | 'currentStep' | 'journey'>
 const consentVersion = 'heygen-reel-2026-11'
+
+async function photoData(photo: File): Promise<{ mime: string; data: string }> {
+  const image = await createImageBitmap(photo)
+  let encoded: Blob | null = null
+  try {
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context || !image.width || !image.height) throw new Error('Could not prepare the selected photo.')
+    for (const longest of [1600, 1200, 900, 675]) {
+      const scale = Math.min(1, longest / Math.max(image.width, image.height))
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      context.fillStyle = '#fff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      for (const quality of [0.85, 0.7, 0.55]) {
+        encoded = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+        if (encoded && encoded.type === 'image/jpeg' && encoded.size > 0 && encoded.size <= 700 * 1024) break
+      }
+      if (encoded && encoded.type === 'image/jpeg' && encoded.size > 0 && encoded.size <= 700 * 1024) break
+    }
+  } finally { image.close() }
+  if (!encoded || encoded.type !== 'image/jpeg' || !encoded.size || encoded.size > 700 * 1024) {
+    throw new Error('Could not resize the selected photo. Choose a smaller image.')
+  }
+  const blob = encoded
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read the selected photo.'))
+    reader.onload = () => {
+      if (typeof reader.result !== 'string' || !reader.result.startsWith('data:image/jpeg;base64,')) {
+        reject(new Error('Invalid photo. Choose a PNG or JPEG.'))
+        return
+      }
+      resolve({ mime: 'image/jpeg', data: reader.result.split(',')[1] })
+    }
+    reader.readAsDataURL(blob)
+  })
+}
 
 function excerpt(value: string, limit: number) {
   const text = value.replace(/\s+/g, ' ').trim()
@@ -43,15 +83,25 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [available, setAvailable] = useState<boolean | null>(null)
+  const [referenceReservation, setReferenceReservation] = useState<number | null>(null)
+  const [photoSlots, setPhotoSlots] = useState<(File | null)[]>([null, null, null])
+  const [archiveEnabled, setArchiveEnabled] = useState(false)
   const [uncertain, setUncertain] = useState(false)
   const operation = useRef<AbortController | null>(null)
   const active = useRef(false)
   const clipUrl = useRef('')
+  const photoInputs = useRef<(HTMLInputElement | null)[]>([])
   const storageKey = `muse-heygen-reel:${story.id}`
+  const photoFiles = photoSlots.filter((photo): photo is File => photo !== null)
+  function clearPhotos() {
+    setPhotoSlots([null, null, null])
+    for (const input of photoInputs.current) if (input) input.value = ''
+  }
 
   useEffect(() => {
     setPrompt(storyReelPrompt(story))
     setConsent(false)
+    clearPhotos()
   }, [story.id, story.currentStep])
 
   useEffect(() => {
@@ -74,6 +124,13 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
       const data: unknown = await response.json()
       if (!data || typeof data !== 'object' || !('available' in data) || typeof data.available !== 'boolean') throw new Error('Invalid reel availability response.')
       setAvailable(data.available)
+      setArchiveEnabled('archive' in data && data.archive === true)
+      const reservation = 'referenceReservation' in data && typeof data.referenceReservation === 'number'
+        ? data.referenceReservation : null
+      setReferenceReservation(reservation)
+      if (reservation === null) {
+        clearPhotos(); setConsent(false)
+      }
     }).catch(cause => {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Could not check reel availability.')
     })
@@ -95,7 +152,8 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
 
   async function loadVideo(reference: string, signal: AbortSignal) {
     const response = await request('video', { token: reference }, signal)
-    const blob = await response.blob()
+    const blob = await videoBlob(response, offset => request('video', { token: reference, offset }, signal),
+      /^[0-9a-f-]{36}$/i.test(reference))
     if (!blob.size || !blob.type.startsWith('video/mp4')) throw new Error('The downloaded reel is not a valid MP4.')
     if (signal.aborted) return
     const url = URL.createObjectURL(blob)
@@ -135,12 +193,18 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
       if (!reel) {
         const journey = story.journey
         if (!canCreate || !journey) throw new Error('Finish this chapter before creating a video.')
+        const photos = await Promise.all(photoSlots.flatMap((photo, index) => photo
+          ? [photoData(photo).then(data => ({ ...data, role: index === 0 ? 'protagonist' : 'element' }))]
+          : []))
+        if (controller.signal.aborted) return
         setUncertain(true)
-        const response = await request('create', {
+        const submission = request('create', {
           id: crypto.randomUUID(), created: Date.now(), prompt: prompt.trim(),
           storyId: story.id, storyCapability: journey.capability,
-          approved: true, consentVersion
+          approved: true, consentVersion, ...(photos.length ? { photos, photoApproved: true } : {})
         }, controller.signal)
+        clearPhotos()
+        const response = await submission
         const data: unknown = await response.json()
         if (!data || typeof data !== 'object' || !('token' in data) || typeof data.token !== 'string') throw new Error('HeyGen did not confirm the reel reference. Check usage before retrying.')
         reel = data.token
@@ -181,7 +245,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
     catch { setError('Could not remove the saved reel reference from this browser.'); return }
     if (clipUrl.current) URL.revokeObjectURL(clipUrl.current)
     clipUrl.current = ''
-    setToken(''); setClip(null); setViewed(false); setConsent(false); setUncertain(false); setError(''); setNotice('')
+    setToken(''); setClip(null); setViewed(false); setConsent(false); clearPhotos(); setUncertain(false); setError(''); setNotice('')
   }
   if (!canCreate && !token) return null
   return <section className="story-reel">
@@ -219,11 +283,39 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
           <textarea rows={10} maxLength={4000} value={prompt} onChange={event => { setPrompt(event.target.value); setConsent(false) }} />
         </label>
         <p>{italian ? 'Il testo include estratti della storia e delle tue scelte. Controlla e rimuovi dettagli privati prima di inviarlo.' : 'This includes excerpts from your story and choices. Review and remove private details before sending it.'}</p>
-        {duration === 10 ? <p>{italian ? 'Questo richiede una generazione a pagamento. La stima conservativa è $0,36; tasse escluse.' :
+        {archiveEnabled ? <p>{italian ? 'Il video sarà disponibile nel tuo archivio privato per 7 giorni, dopo il completamento.' :
+          'The video will be available in your private archive for 7 days after completion.'}</p> : null}
+        {referenceReservation ? <>
+          <p>{italian ? 'Foto di riferimento facoltative: PNG/JPEG, fino a 20 MB ciascuna.' :
+            'Optional reference photos: PNG/JPEG, up to 20 MB each.'}</p>
+          {[italian ? 'Protagonista' : 'Protagonist', italian ? 'Elemento 1' : 'Element 1', italian ? 'Elemento 2' : 'Element 2'].map((label, index) =>
+            <label key={index}>{label}
+              <input ref={element => { photoInputs.current[index] = element }} type="file" accept="image/png,image/jpeg" disabled={busy}
+                onChange={event => {
+                  const photo = event.target.files?.[0] ?? null
+                  setConsent(false)
+                  if (photo && (!['image/png', 'image/jpeg'].includes(photo.type) || photo.size > 20 * 1024 * 1024 || !photo.size)) {
+                    setPhotoSlots(current => current.map((item, slot) => slot === index ? null : item))
+                    event.target.value = ''
+                    setError(italian ? 'Scegli una foto PNG/JPEG di massimo 20 MB.' : 'Choose a PNG/JPEG photo of at most 20 MB.')
+                    return
+                  }
+                  setError('')
+                  setPhotoSlots(current => current.map((item, slot) => slot === index ? photo : item))
+                }} />
+            </label>)}
+          <p>{italian
+            ? 'Le foto vengono ridimensionate nel browser e inviate a HeyGen solo per creare il video; Muse non le salva. HeyGen crea URL pubblici: chi li conosce potrebbe vedere le foto. Cerchiamo di eliminare le copie dopo la generazione; errori possono richiedere un intervento manuale. Usa solo foto per cui hai il permesso delle persone ritratte.'
+            : 'Photos are resized in your browser and sent to HeyGen only to create the video; Muse does not save them. HeyGen creates public URLs: anyone with a URL may see the photo. We attempt to delete provider copies after generation; failures may require manual intervention. Only use photos you have permission to share, including permission from people pictured.'}</p>
+        </> : null}
+        {duration === 10 && photoFiles.length > 0 && referenceReservation !== null ? <p>{italian
+          ? `La prenotazione stimata è $${(referenceReservation / 100).toFixed(2)}; tasse escluse. Il costo effettivo può variare.`
+          : `The estimated reservation is $${(referenceReservation / 100).toFixed(2)}, excluding tax; actual charges may vary.`}</p>
+          : duration === 10 ? <p>{italian ? 'Questo richiede una generazione a pagamento. La stima conservativa è $0,36; tasse escluse.' :
           'This starts paid generation. The conservative reservation is $0.36, excluding tax; actual provider prices may change.'}</p> : null}
         <label><input type="checkbox" checked={consent} disabled={duration !== 10} onChange={event => setConsent(event.target.checked)} />
-          {italian ? 'Accetto di inviare questo testo a HeyGen e avviare la generazione a pagamento.' :
-            'I agree to send this text to HeyGen and start paid generation.'}</label>
+          {italian ? 'Accetto di inviare questo testo e le eventuali foto selezionate a HeyGen e avviare la generazione a pagamento.' :
+            'I agree to send this text and any selected photos to HeyGen and start paid generation.'}</label>
         <button type="button" className="atelier-button" disabled={duration !== 10 || !available || busy || uncertain || !consent || prompt.trim().length < 20}
           onClick={() => void run()}>{busy ? (italian ? 'Creazione del video…' : 'Creating video…') : italian ? 'Genera video' : 'Generate video'}</button>
       </> : !clip ? <button type="button" disabled={busy} onClick={() => void run(token)}>{italian ? 'Controlla stato' : 'Check status'}</button> : null}

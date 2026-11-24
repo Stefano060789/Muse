@@ -6,9 +6,9 @@ import { recipientShareDetails } from '../lib/sharedStorySharing'
 import GiftProgress from '../components/GiftProgress'
 import ShareGiftStory from '../components/ShareGiftStory'
 import GiftStoryPreview from '../components/GiftStoryPreview'
-import PersonalStoryShareCard from '../components/PersonalStoryShareCard'
 import StoryReelComposer from '../components/StoryReelComposer'
 import StoryArchiveButton from '../components/StoryArchiveButton'
+import ChapterVideoArchive from '../components/ChapterVideoArchive'
 import { parseSharedStoryProgress, type SharedStoryProgress } from '../lib/sharedStoryProgress'
 import { accountFetch, supabase } from '../lib/accountClient'
 import { archiveSyncNote, collectionCopy, interfacePageText as text } from '../lib/interfacePages'
@@ -147,6 +147,9 @@ export default function LibraryPage() {
             <summary>{text('privacyAndStorage', interfaceLanguage)}</summary>
             <p>{collectionText.storage}</p>
           </details>
+          <ChapterVideoArchive language={interfaceLanguage} titles={Object.fromEntries(
+            personalEntries.map(entry => [entry.id, entry.story.title])
+          )} />
           {error && <div role="alert"><p>{error} Unreadable entries are hidden, not deleted.</p><button onClick={refresh}>Retry</button></div>}
           {!ready && <p role="status">{text('loadingLibrary', interfaceLanguage)}</p>}
           {ready && !error && !entries.length && <p>{text('emptyLibrary', interfaceLanguage)} <Link href="/story">{text('personalStoryTitle', interfaceLanguage)}</Link> · <Link href="/shared#new">{text('createGift', interfaceLanguage)}</Link>.</p>}
@@ -173,7 +176,6 @@ export default function LibraryPage() {
                     ? `${collectionText.chapter(entry.story.chapter.number)} · ${collectionText.following(entry.story.chapter.parentTitle)}`
                     : collectionText.chapter(entry.story.chapter.number)}</p> : null}
                   <StoryReelComposer story={entry.story} interfaceLanguage={interfaceLanguage} />
-                  <PersonalStoryShareCard story={entry.story} interfaceLanguage={interfaceLanguage} />
                   <details>
                     <summary>{text('storyDetails', interfaceLanguage)}</summary>
                     {entry.story.journey && <p>About {entry.story.journey.duration} minutes · up to {entry.story.journey.maxTurns} story steps.</p>}

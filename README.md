@@ -89,10 +89,89 @@ November 2026 promotional price information, not a billing guarantee: confirm
 current provider pricing, taxes and retries, and set a separate hard spending
 limit with HeyGen if available. A maximum of two submissions per account per
 UTC day is enforced. Failed or uncertain submissions stay counted and
-are not automatically retried. The browser keeps an owner-bound reel reference
-for up to 24 hours in session storage; generated media and its retention are
-subject to HeyGen's terms. No provider video is stored by Muse. The permitted
-output hosts must match HeyGen's returned CDN host; unexpected hosts fail closed.
+are not automatically retried. Unless the optional chapter-video archive below
+is configured, the browser keeps an owner-bound reel reference for up to 24
+hours in session storage and Muse does not store the generated video. The
+permitted output hosts must match HeyGen's returned CDN host; unexpected hosts
+fail closed. Provider video retention is subject to HeyGen's terms.
+
+### Optional private chapter-video archive and photo references
+
+This implementation is **off by default and has not been verified against a
+hosted project or HeyGen**. When configured, a completed video is stored in a
+private Supabase bucket and linked to its account, story and chapter. In
+Archive, the signed-in owner can download, share manually or delete it. Muse
+blocks access seven days after the video is saved, shows a remaining-time
+counter and an in-app warning during the final 24 hours. Physical deletion is
+queued and depends on a working, monitored cleanup service; a failure or
+interruption can delay it. Existing browser-only HeyGen references are not
+automatically imported into the archive. Deleting a story does not delete its
+videos: delete those separately in Archive. A copy already downloaded or
+shared is outside Muse's control.
+
+Optional reference mode accepts a protagonist photo and up to two element
+photos, all PNG/JPEG and up to 20 MB each.
+The browser re-encodes and reduces them before sending at most 700 KB each.
+Muse does not intentionally persist photo bytes: they pass through memory and
+are sent to HeyGen. Users must have permission to share any person pictured.
+HeyGen documents **public URLs** for uploaded assets, so anyone with a URL may
+be able to view a photo. Muse records asset IDs and attempts to delete them
+when generation reaches a terminal state; failed cleanup is retried. If an
+upload or submission response is lost, an asset ID may be unknown, and manual
+operator review of HeyGen assets can be necessary. Known assets from uncertain
+submissions are queued for cleanup after 24 hours; this does not prove a
+possibly unconfirmed video job has finished. HeyGen's copies, logs,
+intermediates, backup deletion, training and retention are governed by its
+terms and have not been independently verified. Do not enable photo mode until
+the operator accepts and can manage these limitations, and has reviewed the
+provider's current DPA, transfers, retention and prices.
+
+**Operator prerequisites; do not apply or deploy without approval:**
+
+1. Review and test [chapter-videos.sql](supabase/chapter-videos.sql) in an
+   isolated Supabase project first. It creates Muse-only server-managed
+   metadata and a private bucket, with restrictive Storage policies. The
+   server alone uses the service key; browser roles have no direct access.
+   The [two-user pgTAP test](supabase/tests/chapter_videos_rls_test.sql)
+   temporarily adds permissive Storage policies and must **only** run in a
+   disposable local database, never on a shared or production project. It
+   has not been run here. Verify two-user isolation and policy-break tests
+   before production.
+2. Provide `MUSE_CHAPTER_VIDEO_CRON_SECRET` as a private random secret of at
+   least 32 characters. Configure an independently monitored scheduler to call
+   `GET /api/chapter-video-maintenance` every five minutes with
+   `Authorization: Bearer <secret>`. The scheduler and alerting are not
+   configured by this repository. A successful run refreshes a heartbeat; new
+   archived generation is blocked if the heartbeat is over 20 minutes old,
+   the bucket is public/misconfigured, or storage is unavailable. Each run
+   processes at most five due jobs. A backlog or failure returns 503 and does
+   not refresh the heartbeat; investigate and run again. Cleanup is still
+   callable when the creation feature flag is off. Do not remove the scheduler
+   or credentials while jobs/assets remain. Vercel Hobby's once-daily cron
+   cannot provide this five-minute schedule; use a suitable separately
+   configured scheduler. Verify host support for 180-second functions.
+3. Only after isolated tests, scheduler, access control, provider terms and
+   operation monitoring are verified, set
+   `MUSE_CHAPTER_VIDEO_ARCHIVE_ENABLED=true` on the server. With the flag off,
+   the existing 24-hour text-only pilot remains unchanged. Video download uses
+   authenticated 4 MiB chunks; verify private Supabase signed-URL range
+   responses and hosted Vercel delivery using synthetic videos before enabling.
+   Service-issued URLs stay on the server and are not returned to the browser.
+   Rotating the HeyGen API key while jobs are pending invalidates stored
+   provider references and can prevent automatic reconciliation.
+4. To enable photos separately, confirm the applicable reference-mode price and
+   set `HEYGEN_REEL_REFERENCE_APPROVED=true` plus
+   `HEYGEN_REEL_REFERENCE_RESERVATION_CENTS` to an operator-reviewed
+   conservative integer estimate from 50 to 1000 cents. The amount is rounded
+   **up** to multiples of 36 cents in the existing $10 pilot reservation. It is
+   not a    provider spending cap or proof of the actual price. Failed and
+   uncertain uploads count toward the reservation. Multi-unit reservations
+   are atomic and fail without consuming a partial reservation. Continue to enforce and monitor any actual
+   provider spending limit separately.
+
+Run the local synthetic tests with `npm run test:chapter-video`. They do not
+verify provider deletion, real database policies, scheduler execution, hosting,
+billing or legal compliance.
 
 Muse is a personalized storytelling prototype with three areas:
 
@@ -414,7 +493,7 @@ This does not migrate story-AI or adult permissions or grant microphone access.
 The server checks the current account permission before reserving an interaction;
 older consent versions require acceptance again. Existing accounts retain separate
 AI and speech opt-ins. Share the text through a device app, copy it, or download a
-PNG card from **My stories** or the Archive.
+PNG card from **My stories**.
 Sharing starts with a single **Share your story** button. Consent and card options
 appear only when opened; opening the controls does not use an AI interaction.
 Personal touches also remain optional inside story creation. Plans, sample,

@@ -95,6 +95,7 @@ try {
         if (name === '../components/PersonalStoryShareCard') return { __esModule: true, default: 'personal-story-share-card' }
         if (name === '../components/StoryReelComposer') return { __esModule: true, default: 'story-reel-composer' }
         if (name === '../components/StoryArchiveButton') return { __esModule: true, default: 'story-archive-button' }
+        if (name === '../components/ChapterVideoArchive') return { __esModule: true, default: 'chapter-video-archive' }
         if (name === '../lib/interfaceLanguage') return { useInterfaceLanguage: () => 'en-US' }
         if (name === '../lib/interfacePages') return {
           collectionCopy: () => ({
@@ -455,7 +456,8 @@ try {
       assert.ok(textOf(card).includes('Ending not completed · saved scenes kept'))
       assert.match(textOf(card), /Chapter 2\s+·\s+Following First story/)
       assert.ok(button(card, 'Read saved scenes'))
-      assert.ok(nodes(card).some(node => node.type === 'personal-story-share-card'), 'The card derives an in-progress milestone for unfinished chapters')
+      assert.ok(!nodes(card).some(node => node.type === 'personal-story-share-card'), 'Archive does not offer the old story-sharing card')
+      assert.ok(nodes(card).some(node => node.type === 'story-reel-composer'), 'Archive retains the separate video feature')
       assert.ok(!textOf(card).includes('Completed'))
     } finally { ui.cleanup() }
   })
