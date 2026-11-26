@@ -145,6 +145,12 @@ async function main() {
     const sql=fs.readFileSync(path.join(root,'supabase','operations.sql'),'utf8')
     assert.match(sql,/for update/i);assert.match(sql,/enable row level security/i);assert.match(sql,/from public, anon, authenticated/i)
     assert.ok(!sql.includes('action-evidence'))
+    const unitsSql=fs.readFileSync(path.join(root,'supabase','operations-units.sql'),'utf8')
+    assert.match(unitsSql,/create or replace function public\.muse_consume_operation_units/i)
+    assert.match(unitsSql,/for update/i)
+    assert.match(unitsSql,/grant execute on function public\.muse_consume_operation_units\(text,integer,timestamptz,integer\) to service_role/i)
+    const verifySql=fs.readFileSync(path.join(root,'supabase','verify-production.sql'),'utf8')
+    assert.match(verifySql,/muse_consume_operation_units/)
   })
   console.log(`${passed} operations checks passed; zero real provider requests.`)
 }

@@ -1711,6 +1711,8 @@ progress schema/RPC before using puzzle assistance.
 Apply `supabase/operations.sql` after the existing journey/media migrations
 **before deploying this release**. Missing operational storage fails closed:
 no provider call is made without a durable reservation.
+If photo reference mode will be enabled, apply `supabase/operations-units.sql`
+after `supabase/operations.sql` before turning photo mode on.
 
 - All paid story requests and generic cloud narration cache misses share
   `MUSE_AI_DAILY_ATTEMPT_CAP` (default 100, allowed 1-100) across instances.

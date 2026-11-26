@@ -94,22 +94,15 @@ export async function consumeOperationUnits(bucket: string, limit: number, expir
       db.prepare('UPDATE muse_operations_counters SET used=used+? WHERE bucket=?').run(units, bucket)
       return { allowed: true, used: used + units, notify: false }
     })
-    const client = await hosted()
-    const inserted = await client.from('muse_operations_counters').upsert({ bucket, used: 0, expires_at: expiresAt },
-      { onConflict: 'bucket', ignoreDuplicates: true })
-    if (inserted.error) return unavailable()
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const current = await client.from('muse_operations_counters').select('used,expires_at').eq('bucket', bucket).maybeSingle()
-      if (current.error || !current.data || !Number.isInteger(current.data.used) || current.data.used < 0 ||
-          !Number.isFinite(Date.parse(current.data.expires_at)) || Date.parse(current.data.expires_at) <= Date.now()) return unavailable()
-      const used = current.data.used
-      if (used + units > limit) return { allowed: false, used, notify: false }
-      const changed = await client.from('muse_operations_counters').update({ used: used + units })
-        .eq('bucket', bucket).eq('used', used).eq('expires_at', current.data.expires_at).select('used').maybeSingle()
-      if (changed.error) return unavailable()
-      if (changed.data) return { allowed: true, used: used + units, notify: false }
+    const { data, error } = await (await hosted()).rpc('muse_consume_operation_units', {
+      p_bucket: bucket, p_limit: limit, p_expires_at: expiresAt, p_units: units
+    })
+    if (error) {
+      console.error(JSON.stringify({ event: 'operations-units-rpc-error', code: String(error.code || 'unknown') }))
+      return unavailable()
     }
-    throw new SharedStoryError('Operational budget is busy. Try again shortly.', 503)
+    if (typeof data?.allowed !== 'boolean' || !Number.isInteger(data?.used) || typeof data?.notify !== 'boolean') return unavailable()
+    return data as OperationReservation
   } catch (error) {
     if (error instanceof SharedStoryError) throw error
     return unavailable()

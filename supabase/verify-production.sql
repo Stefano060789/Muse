@@ -39,6 +39,7 @@ required_functions(name, migration) as (values
   ('muse_personal_journey', 'personal-journeys.sql'),
   ('muse_delete_personal_journey', 'account-ownership.sql'),
   ('muse_consume_operation', 'operations.sql'),
+  ('muse_consume_operation_units', 'operations-units.sql'),
   ('reserve_shared_story_request', 'shared-stories.sql'),
   ('muse_reserve_billing_usage', 'billing.sql')
 ),

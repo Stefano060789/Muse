@@ -30,6 +30,7 @@ async function main() {
     counts.set(bucket, used + units)
     return { allowed: true, used: used + units, notify: false }
   }
+  const dayBucket = owner => `heygen-day:${new Date(Date.now()).toISOString().slice(0, 10)}:${crypto.createHmac('sha256', process.env.HEYGEN_API_KEY).update(`reel-owner:${owner}`).digest('hex')}`
   const reel = load('src/lib/heygenReel.ts', { './operationsStore': { consumeOperation, consumeOperationUnits }, './sharedStory': { SharedStoryError } })
   const chapterId = crypto.randomUUID(), capability = 'a'.repeat(64)
   let accountId = 'owner-a', providerCreates = 0, archiveEnabled = false
@@ -181,9 +182,11 @@ async function main() {
   assert.equal(parallel.filter(result => result.status === 'fulfilled').length, 1)
   assert.equal(parallel.filter(result => result.status === 'rejected').length, 1, 'Concurrent duplicates cannot create two jobs')
   const afterParallel = calls.length
+  const ownerADailyBefore = counts.get(dayBucket('owner-a')) || 0
   counts.set('heygen-reel-pilot-v1', 18)
   await assert.rejects(reel.createHeygenReel('owner-a', { ...input, id: crypto.randomUUID() }), /pilot reservation limit/)
   assert.equal(calls.length, afterParallel, 'Budget exhaustion prevents provider calls')
+  assert.equal(counts.get(dayBucket('owner-a')) || 0, ownerADailyBefore, 'Budget rejection does not consume the owner daily allowance')
   counts.set('heygen-reel-pilot-v1', 2)
   global.fetch = async () => { throw new Error('simulated connection failure') }
   const uncertain = { ...input, id: crypto.randomUUID() }
@@ -237,9 +240,37 @@ async function main() {
   await assert.rejects(reel.createHeygenReel('photo-owner', photoInput, async () => {}), /already submitted/)
   assert.equal(uploaded, 3, 'A duplicate request does not upload photos again')
   counts.set('heygen-reel-pilot-v1', 16)
+  const photoOwner2DailyBefore = counts.get(dayBucket('photo-owner-2')) || 0
   await assert.rejects(reel.createHeygenReel('photo-owner-2', { ...photoInput, id: crypto.randomUUID() }, async () => {}), /pilot reservation limit/)
   assert.equal(counts.get('heygen-reel-pilot-v1'), 16, 'Insufficient photo budget does not consume a partial reservation')
+  assert.equal(counts.get(dayBucket('photo-owner-2')) || 0, photoOwner2DailyBefore, 'Insufficient photo budget does not consume daily allowance')
   assert.equal(uploaded, 3, 'Insufficient budget blocks photo uploads')
+
+  const tracked = { request: 0, daily: 0, units: 0 }
+  const failingReel = load('src/lib/heygenReel.ts', {
+    './operationsStore': {
+      consumeOperation: async (bucket, limit) => {
+        const used = counts.get(bucket) || 0
+        if (used >= limit) return { allowed: false, used, notify: false }
+        counts.set(bucket, used + 1)
+        if (bucket.startsWith('heygen-request:')) tracked.request++
+        if (bucket.startsWith('heygen-day:')) tracked.daily++
+        return { allowed: true, used: used + 1, notify: false }
+      },
+      consumeOperationUnits: async () => {
+        tracked.units++
+        throw new SharedStoryError('Operational safety controls are unavailable. Check the server configuration and operations migration.', 503)
+      }
+    },
+    './sharedStory': { SharedStoryError }
+  })
+  await assert.rejects(
+    failingReel.createHeygenReel('photo-owner-3', { ...photoInput, id: crypto.randomUUID() }, async () => {}),
+    /Operational safety controls are unavailable/
+  )
+  assert.equal(tracked.request, 1)
+  assert.equal(tracked.units, 1)
+  assert.equal(tracked.daily, 0, 'Hosted unit RPC failure does not consume daily allowance before provider contact')
   console.log('PASS HeyGen consent, fixed video format, duplicate charge prevention, ownership, output safety and pilot limit')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => {

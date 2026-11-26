@@ -142,15 +142,15 @@ export async function createHeygenReel(owner: string, value: unknown, registerAs
   const requestKey = createHmac('sha256', key()).update(`${owner}:${body.id}`).digest('hex')
   const duplicate = await consumeOperation(`heygen-request:${requestKey}`, 1, new Date(Date.now() + TOKEN_AGE).toISOString())
   if (!duplicate.allowed) throw new SharedStoryError('This reel request was already submitted. Check your HeyGen usage; it was not submitted again.', 409)
-  const day = new Date(Date.now()).toISOString().slice(0, 10)
-  const accountHash = createHmac('sha256', key()).update(`reel-owner:${owner}`).digest('hex')
-  const daily = await consumeOperation(`heygen-day:${day}:${accountHash}`, 2, `${day}T23:59:59.999Z`)
-  if (!daily.allowed) throw new SharedStoryError('The daily reel limit for this account has been reached. Try again tomorrow (UTC).', 429)
   const units = photoReservation ? photoReservation / HEYGEN_REEL_RESERVATION_CENTS : 1
   const budget = units === 1
     ? await consumeOperation('heygen-reel-pilot-v1', PILOT_ATTEMPTS, '9999-12-31T23:59:59.000Z')
     : await consumeOperationUnits('heygen-reel-pilot-v1', PILOT_ATTEMPTS, '9999-12-31T23:59:59.000Z', units)
   if (!budget.allowed) throw new SharedStoryError('The $10 HeyGen pilot reservation limit has been reached.', 429)
+  const day = new Date(Date.now()).toISOString().slice(0, 10)
+  const accountHash = createHmac('sha256', key()).update(`reel-owner:${owner}`).digest('hex')
+  const daily = await consumeOperation(`heygen-day:${day}:${accountHash}`, 2, `${day}T23:59:59.999Z`)
+  if (!daily.allowed) throw new SharedStoryError('The daily reel limit for this account has been reached. Try again tomorrow (UTC).', 429)
   let registerQueue = Promise.resolve()
   const uploads = await Promise.allSettled(photos.map(async (photo, index) => {
     const form = new FormData()
