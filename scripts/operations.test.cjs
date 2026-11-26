@@ -117,20 +117,20 @@ async function main() {
     await check('weighted reel reservations are atomic and never consume partial budget',async()=>{
       process.env.MUSE_OPERATIONS_SQLITE_PATH=path.join(output,'weighted.sqlite')
       const bucket='heygen-reel-pilot-v1', expires='9999-12-31T23:59:59.000Z'
-      assert.equal((await store.consumeOperationUnits(bucket,27,expires,26)).used,26)
-      assert.equal((await store.consumeOperationUnits(bucket,27,expires,2)).allowed,false)
-      assert.equal((await store.operationStatus(bucket)).used,26)
-      assert.equal((await store.consumeOperation(bucket,27,expires)).used,27)
+      assert.equal((await store.consumeOperationUnits(bucket,18,expires,17)).used,17)
+      assert.equal((await store.consumeOperationUnits(bucket,18,expires,2)).allowed,false)
+      assert.equal((await store.operationStatus(bucket)).used,17)
+      assert.equal((await store.consumeOperation(bucket,18,expires)).used,18)
       process.env.MUSE_OPERATIONS_SQLITE_PATH=path.join(output,'weighted-concurrent.sqlite')
-      const code=`const s=require(${JSON.stringify(path.join(output,'lib','operationsStore.js'))});(async()=>{let accepted=0;for(let i=0;i<20;i++){if((await s.consumeOperationUnits('${bucket}',27,'${expires}',2)).allowed)accepted++}console.log(accepted)})().catch(()=>process.exit(1))`
+      const code=`const s=require(${JSON.stringify(path.join(output,'lib','operationsStore.js'))});(async()=>{let accepted=0;for(let i=0;i<20;i++){if((await s.consumeOperationUnits('${bucket}',18,'${expires}',2)).allowed)accepted++}console.log(accepted)})().catch(()=>process.exit(1))`
       const run=()=>new Promise((resolve,reject)=>{
         const child=spawn(process.execPath,['-e',code],{env:{...process.env},stdio:['ignore','pipe','pipe']})
         let out='',err='';child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b)
         child.on('error',reject);child.on('close',n=>n===0?resolve(Number(out.trim())):reject(new Error(err)))
       })
       const accepted=await Promise.all([run(),run(),run()])
-      assert.equal(accepted.reduce((a,b)=>a+b,0),13)
-      assert.equal((await store.operationStatus(bucket)).used,26)
+      assert.equal(accepted.reduce((a,b)=>a+b,0),9)
+      assert.equal((await store.operationStatus(bucket)).used,18)
     })
     const accepted=await Promise.all([run(),run(),run()])
     assert.equal(accepted.reduce((a,b)=>a+b,0),100)

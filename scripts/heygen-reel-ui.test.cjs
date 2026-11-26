@@ -36,7 +36,7 @@ async function main() {
     const body = JSON.parse(init.body)
     calls.push(body)
     if (body.action === 'availability') return Response.json({
-      available: true, archive: referenceMode, referenceReservation: referenceMode ? 72 : null
+      available: true, archive: referenceMode, referenceReservation: referenceMode ? 162 : null
     })
     if (body.action === 'create') return Response.json({ token: 'synthetic-signed-reference', status: 'pending' })
     if (body.action === 'status') return Response.json({ status: 'completed' })
@@ -108,6 +108,11 @@ async function main() {
   const prompt = nodes().find(node => node.type === 'textarea').props.value
   assert.match(prompt, /Follow the fox/)
   assert.match(prompt, /fox guides the traveler/)
+  assert.match(prompt, /Beat 1 \(0-5s\)/)
+  assert.match(prompt, /Beat 2 \(5-10s\)/)
+  assert.match(prompt, /Beat 3 \(10-15s\)/)
+  assert.match(prompt, /Most recent player choice\(s\): 1\. Follow the fox/)
+  assert.match(prompt, /Use ambient sound and sound effects only\. No music\./)
   assert.doesNotMatch(prompt, /Unseen choice|unseen final scene/i, 'Unvisited scenes and choices are not sent')
   const longPrompt = module.exports.storyReelPrompt({
     ...fixture, currentStep: 40,
@@ -115,20 +120,20 @@ async function main() {
     responses: Array.from({ length: 40 }, () => 'a'.repeat(100))
   })
   assert.ok(longPrompt.length <= 4000)
-  assert.match(longPrompt, /Some later story moments were omitted/)
-  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(longPrompt),
-    'Truncation preserves valid surrogate pairs')
+  assert.match(longPrompt, /Beat 3 \(10-15s\)/)
+  assert.match(longPrompt, /Most recent player choice\(s\): 1\./)
   const checkbox = nodes().find(node => node.type === 'input' && node.props.type === 'checkbox')
   checkbox.props.onChange({ target: { checked: true } })
   await flush()
   assert.equal(button('Generate video').props.disabled, false)
+  assert.ok(nodes().some(node => node.type === 'p' && label(node).includes('$0.54')), 'The 15-second reservation copy is shown')
   const selects = nodes().filter(node => node.type === 'select')
   const model = selects.find(node => node.props.defaultValue === 'heygen-video-1')
   assert.ok(model, 'Video 1 is the only selectable video model')
   assert.equal(model.props.children[1].props.value, 'video-agent')
   assert.equal(model.props.children[1].props.disabled, true, 'Video Agent is not implemented')
-  const duration = selects.find(node => node.props.value === 10)
-  assert.deepEqual(duration.props.children.map(option => option.props.value), [10, 30, 60, 120, 180])
+  const duration = selects.find(node => node.props.value === 15)
+  assert.deepEqual(duration.props.children.map(option => option.props.value), [15, 30, 60, 120, 180])
   for (const seconds of [30, 60, 120, 180]) {
     duration.props.onChange({ target: { value: String(seconds) } })
     await flush()
@@ -138,7 +143,7 @@ async function main() {
     await flush()
     assert.equal(calls.filter(item => item.action === 'create').length, 0)
   }
-  duration.props.onChange({ target: { value: '10' } })
+  duration.props.onChange({ target: { value: '15' } })
   await flush()
   assert.equal(button('Generate video').props.disabled, true, 'Changing duration requires fresh consent')
   nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })

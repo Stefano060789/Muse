@@ -3,7 +3,7 @@ import { consumeOperation, consumeOperationUnits } from './operationsStore'
 import { SharedStoryError } from './sharedStory'
 
 export const HEYGEN_REEL_CONSENT = 'heygen-reel-2026-11'
-export const HEYGEN_REEL_RESERVATION_CENTS = 36
+export const HEYGEN_REEL_RESERVATION_CENTS = 54
 const PILOT_ATTEMPTS = Math.floor(1000 / HEYGEN_REEL_RESERVATION_CENTS)
 const TOKEN_AGE = 24 * 60 * 60 * 1000
 
@@ -72,8 +72,11 @@ async function provider(path: string, init: RequestInit = {}) {
 
 export function heygenReferenceReservation() {
   const cents = Number(process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS)
-  return process.env.HEYGEN_REEL_REFERENCE_APPROVED === 'true' && Number.isInteger(cents) && cents >= 50 && cents <= 1000
-    ? Math.ceil(cents / HEYGEN_REEL_RESERVATION_CENTS) * HEYGEN_REEL_RESERVATION_CENTS : null
+  if (process.env.HEYGEN_REEL_REFERENCE_APPROVED !== 'true' || !Number.isInteger(cents) || cents < 150 || cents > 1000) {
+    return null
+  }
+  const units = Math.ceil(cents / HEYGEN_REEL_RESERVATION_CENTS)
+  return units <= PILOT_ATTEMPTS ? units * HEYGEN_REEL_RESERVATION_CENTS : null
 }
 
 function referencePhotos(value: unknown): { mime: string; bytes: Buffer; role: 'protagonist' | 'element' }[] {
@@ -175,13 +178,13 @@ export async function createHeygenReel(owner: string, value: unknown, registerAs
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey },
     body: JSON.stringify({
       model: 'heygen-video-1', mode: photos.length ? 'reference_to_video' : 'text_to_video',
-      prompt: `${body.prompt.trim()}\nVertical cinematic storybook scene. No text, captions, or logos.${photos.length
+      prompt: `${body.prompt.trim()}\nVertical cinematic storybook trailer. No text, captions, or logos.${photos.length
         ? ` ${photos.map((photo, index) => photo.role === 'protagonist'
           ? `Use <Picture ${index + 1}> as the protagonist's visual reference.`
           : `Use <Picture ${index + 1}> as a visual reference for an element in the scene.`).join(' ')}`
         : ' No identifiable real people.'}`,
       ...(assets.length ? { reference_images: assets.map(asset => ({ type: 'asset_id', asset_id: asset })) } : {}),
-      duration: 10, resolution: '768p', aspect_ratio: '9:16'
+      duration: 15, resolution: '768p', aspect_ratio: '9:16'
     })
   })
   if (typeof result.video_id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(result.video_id)) {

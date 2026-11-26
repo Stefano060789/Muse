@@ -55,17 +55,23 @@ function excerpt(value: string, limit: number) {
 
 export function storyReelPrompt(story: ReelStory) {
   const scenes = story.scenes.slice(0, Math.max(0, story.currentStep + 1))
-  const moments = scenes.map((scene, index) => {
-    const action = index > 0 && story.responses[index - 1]
-      ? `Player's choice: ${excerpt(story.responses[index - 1], 90)}\n` : ''
-    return `${action}Story moment ${index + 1}: ${excerpt(scene.body, 120)}`
-  })
+  const firstScene = scenes[0]?.body ? excerpt(scenes[0].body, 90) : 'Introduce the world and protagonist from the story context.'
+  const latestScene = scenes.at(-1)?.body ? excerpt(scenes.at(-1)!.body, 90) : firstScene
+  const recentChoices = story.responses.slice(0, Math.max(0, scenes.length - 1)).map(choice => excerpt(choice, 70)).filter(Boolean).slice(-2)
+  const choiceSummary = recentChoices.length ? recentChoices.map((choice, index) => `${index + 1}. ${choice}`).join(' | ') : 'No explicit player choice yet; infer a single pivotal decision from the latest scene.'
   const prompt = [
-    'Create a short, vertical cinematic story trailer, not an animated card or a presenter speaking to camera.',
-    'Use the story moments and player choices below to depict the actual characters, setting and consequences. Do not invent a completed ending.',
-    'Choose one clear, visually compelling action that captures the journey so far. Use a consistent cast, natural movement and atmospheric sound; no text, captions or logos.',
-    `Story: ${excerpt(story.title, 160)}`,
-    ...moments
+    'Create a ~15-second vertical cinematic trailer in exactly three beats (5 seconds each).',
+    'Keep the same protagonist and supporting cast consistent across all beats. Use a locked or gently moving camera.',
+    'Use ambient sound and sound effects only. No music. No text, captions, logos, or presenter to camera.',
+    'Do not show identifiable real people unless a provided protagonist photo explicitly authorizes one.',
+    'Do not invent a completed ending. Show where the journey stands now.',
+    `Story title: ${excerpt(story.title, 120)}`,
+    `First scene excerpt: ${firstScene}`,
+    `Most recent player choice(s): ${choiceSummary}`,
+    `Latest scene excerpt: ${latestScene}`,
+    `Beat 1 (0-5s): Opening and setting. Establish the protagonist in the story world using the title and first scene excerpt.`,
+    `Beat 2 (5-10s): The pivotal player choice. Show the decision moment using the recent choice(s).`,
+    `Beat 3 (10-15s): Consequence and current state. Show the immediate outcome and where the journey stands now, without finishing the story.`
   ].join('\n\n')
   return prompt.length <= 4000 ? prompt : `${excerpt(prompt, 3940)}\n\n[Some later story moments were omitted.]`
 }
@@ -73,7 +79,7 @@ export function storyReelPrompt(story: ReelStory) {
 export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }: { story: ReelStory; interfaceLanguage: StoryLanguageCode; canCreate: boolean }) {
   const italian = interfaceLanguage === 'it-IT'
   const [open, setOpen] = useState(false)
-  const [duration, setDuration] = useState(10)
+  const [duration, setDuration] = useState(15)
   const [prompt, setPrompt] = useState(() => storyReelPrompt(story))
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -183,7 +189,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
   }
 
   async function run(reference?: string) {
-    if (active.current || (!reference && (!canCreate || !story.journey || duration !== 10 || !consent || prompt.trim().length < 20))) return
+    if (active.current || (!reference && (!canCreate || !story.journey || duration !== 15 || !consent || prompt.trim().length < 20))) return
     const controller = new AbortController()
     active.current = true
     operation.current = controller
@@ -254,8 +260,8 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
     </button>
     {open ? <div className="story-reel-panel">
       <h3>{italian ? 'Video verticale della tua storia' : 'Your vertical story video'}</h3>
-      {duration === 10 ? <p>{italian ? 'HeyGen crea una scena video ispirata ai momenti e alle scelte salvate qui sotto. Non è un film completo e i personaggi potrebbero non essere rappresentati fedelmente. Nulla viene pubblicato automaticamente.' :
-        'HeyGen creates one video scene inspired by the saved moments and choices below. It is not a full movie, and characters may not be depicted faithfully. Nothing is posted automatically.'}</p> : null}
+      {duration === 15 ? <p>{italian ? 'HeyGen crea una breve scena video in tre parti ispirata ai momenti e alle scelte salvate qui sotto. Non è un film completo e i personaggi potrebbero non essere rappresentati fedelmente. Nulla viene pubblicato automaticamente.' :
+        'HeyGen creates one short three-part video scene inspired by the saved moments and choices below. It is not a full movie, and characters may not be depicted faithfully. Nothing is posted automatically.'}</p> : null}
       {available === false ? <p role="status">{italian ? 'HeyGen non è ancora configurato o approvato dall’operatore.' : 'HeyGen is not configured or approved by the operator yet.'}</p> : null}
       {!token ? <>
         <label>{italian ? 'Modello video' : 'Video model'}
@@ -269,14 +275,14 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
             setDuration(Number(event.target.value))
             setConsent(false)
           }}>
-            <option value={10}>{italian ? '10 secondi' : '10 seconds'}</option>
+            <option value={15}>{italian ? '15 secondi' : '15 seconds'}</option>
             <option value={30}>{italian ? '30 secondi' : '30 seconds'}</option>
             <option value={60}>{italian ? '1 minuto' : '1 minute'}</option>
             <option value={120}>{italian ? '2 minuti' : '2 minutes'}</option>
             <option value={180}>{italian ? '3 minuti' : '3 minutes'}</option>
           </select>
         </label>
-        {duration !== 10 ? <p role="status">{italian
+        {duration !== 15 ? <p role="status">{italian
           ? 'I video più lunghi non sono ancora disponibili. È necessaria una nuova integrazione HeyGen e la verifica dei costi.'
           : 'Longer videos are not available yet. They need a different HeyGen integration and a cost review.'}</p> : null}
         <label>{italian ? 'Testo inviato a HeyGen' : 'Text sent to HeyGen'}
@@ -308,15 +314,15 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
             ? 'Le foto vengono ridimensionate nel browser e inviate a HeyGen solo per creare il video; Muse non le salva. HeyGen crea URL pubblici: chi li conosce potrebbe vedere le foto. Cerchiamo di eliminare le copie dopo la generazione; errori possono richiedere un intervento manuale. Usa solo foto per cui hai il permesso delle persone ritratte.'
             : 'Photos are resized in your browser and sent to HeyGen only to create the video; Muse does not save them. HeyGen creates public URLs: anyone with a URL may see the photo. We attempt to delete provider copies after generation; failures may require manual intervention. Only use photos you have permission to share, including permission from people pictured.'}</p>
         </> : null}
-        {duration === 10 && photoFiles.length > 0 && referenceReservation !== null ? <p>{italian
+        {duration === 15 && photoFiles.length > 0 && referenceReservation !== null ? <p>{italian
           ? `La prenotazione stimata è $${(referenceReservation / 100).toFixed(2)}; tasse escluse. Il costo effettivo può variare.`
           : `The estimated reservation is $${(referenceReservation / 100).toFixed(2)}, excluding tax; actual charges may vary.`}</p>
-          : duration === 10 ? <p>{italian ? 'Questo richiede una generazione a pagamento. La stima conservativa è $0,36; tasse escluse.' :
-          'This starts paid generation. The conservative reservation is $0.36, excluding tax; actual provider prices may change.'}</p> : null}
-        <label><input type="checkbox" checked={consent} disabled={duration !== 10} onChange={event => setConsent(event.target.checked)} />
+          : duration === 15 ? <p>{italian ? 'Questo richiede una generazione a pagamento. La stima conservativa è $0,54; tasse escluse. Il costo effettivo può variare.' :
+          'This starts paid generation. The conservative reservation is $0.54, excluding tax; actual charges may vary.'}</p> : null}
+        <label><input type="checkbox" checked={consent} disabled={duration !== 15} onChange={event => setConsent(event.target.checked)} />
           {italian ? 'Accetto di inviare questo testo e le eventuali foto selezionate a HeyGen e avviare la generazione a pagamento.' :
             'I agree to send this text and any selected photos to HeyGen and start paid generation.'}</label>
-        <button type="button" className="atelier-button" disabled={duration !== 10 || !available || busy || uncertain || !consent || prompt.trim().length < 20}
+        <button type="button" className="atelier-button" disabled={duration !== 15 || !available || busy || uncertain || !consent || prompt.trim().length < 20}
           onClick={() => void run()}>{busy ? (italian ? 'Creazione del video…' : 'Creating video…') : italian ? 'Genera video' : 'Generate video'}</button>
       </> : !clip ? <button type="button" disabled={busy} onClick={() => void run(token)}>{italian ? 'Controlla stato' : 'Check status'}</button> : null}
       {busy ? <p role="status">{italian ? 'Creazione del reel. Può richiedere qualche minuto.' : 'Creating your reel. This can take a few minutes.'}</p> : null}

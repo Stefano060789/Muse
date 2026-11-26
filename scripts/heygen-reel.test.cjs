@@ -153,10 +153,13 @@ async function main() {
   assert.equal(created.status, 'pending')
   assert.equal(calls.length, 1)
   const sent = JSON.parse(calls[0].init.body)
-  assert.equal(sent.duration, 10)
+  assert.equal(reel.HEYGEN_REEL_RESERVATION_CENTS, 54)
+  assert.equal(sent.duration, 15)
   assert.equal(sent.resolution, '768p')
   assert.equal(sent.aspect_ratio, '9:16')
   assert.equal(sent.mode, 'text_to_video')
+  assert.match(sent.prompt, /Vertical cinematic storybook trailer\./)
+  assert.doesNotMatch(sent.prompt, /Vertical cinematic storybook scene\./)
   assert.equal(calls[0].init.headers['X-Api-Key'], 'synthetic-key')
   assert.ok(calls[0].init.headers['Idempotency-Key'])
   await assert.rejects(reel.createHeygenReel('owner-a', input), /already submitted/)
@@ -178,7 +181,7 @@ async function main() {
   assert.equal(parallel.filter(result => result.status === 'fulfilled').length, 1)
   assert.equal(parallel.filter(result => result.status === 'rejected').length, 1, 'Concurrent duplicates cannot create two jobs')
   const afterParallel = calls.length
-  counts.set('heygen-reel-pilot-v1', 27)
+  counts.set('heygen-reel-pilot-v1', 18)
   await assert.rejects(reel.createHeygenReel('owner-a', { ...input, id: crypto.randomUUID() }), /pilot reservation limit/)
   assert.equal(calls.length, afterParallel, 'Budget exhaustion prevents provider calls')
   counts.set('heygen-reel-pilot-v1', 2)
@@ -193,7 +196,18 @@ async function main() {
   delete process.env.HEYGEN_REEL_REFERENCE_APPROVED
   await assert.rejects(reel.createHeygenReel('photo-owner', photoInput, async () => {}), /unavailable/)
   process.env.HEYGEN_REEL_REFERENCE_APPROVED = 'true'
-  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '50'
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '149'
+  assert.equal(reel.heygenReferenceReservation(), null)
+  await assert.rejects(reel.createHeygenReel('photo-owner', photoInput, async () => {}), /unavailable/)
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '150'
+  assert.equal(reel.heygenReferenceReservation(), 162)
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '972'
+  assert.equal(reel.heygenReferenceReservation(), 972)
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '973'
+  assert.equal(reel.heygenReferenceReservation(), null)
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '1000'
+  assert.equal(reel.heygenReferenceReservation(), null)
+  process.env.HEYGEN_REEL_REFERENCE_RESERVATION_CENTS = '150'
   await assert.rejects(reel.createHeygenReel('photo-owner', { ...photoInput, photos: [...photos, photos[0]] }, async () => {}), /three/)
   await assert.rejects(reel.createHeygenReel('photo-owner', { ...photoInput, photos: [photos[0], photos[0]] }, async () => {}), /only one protagonist/)
   await assert.rejects(reel.createHeygenReel('photo-owner', { ...photoInput, photoApproved: false }, async () => {}), /unavailable/)
@@ -219,12 +233,12 @@ async function main() {
   assert.equal(photoBody.mode, 'reference_to_video')
   assert.deepEqual(photoBody.reference_images.map(item => item.asset_id), ['asset-1', 'asset-2', 'asset-3'])
   assert.match(photoBody.prompt, /<Picture 1>.*<Picture 3>/)
-  assert.equal(counts.get('heygen-reel-pilot-v1'), 2, 'Photo mode reserves the configured price rounded up to existing budget units')
+  assert.equal(counts.get('heygen-reel-pilot-v1'), 3, 'Photo mode reserves the configured price rounded up to existing budget units')
   await assert.rejects(reel.createHeygenReel('photo-owner', photoInput, async () => {}), /already submitted/)
   assert.equal(uploaded, 3, 'A duplicate request does not upload photos again')
-  counts.set('heygen-reel-pilot-v1', 26)
+  counts.set('heygen-reel-pilot-v1', 16)
   await assert.rejects(reel.createHeygenReel('photo-owner-2', { ...photoInput, id: crypto.randomUUID() }, async () => {}), /pilot reservation limit/)
-  assert.equal(counts.get('heygen-reel-pilot-v1'), 26, 'Insufficient photo budget does not consume a partial reservation')
+  assert.equal(counts.get('heygen-reel-pilot-v1'), 16, 'Insufficient photo budget does not consume a partial reservation')
   assert.equal(uploaded, 3, 'Insufficient budget blocks photo uploads')
   console.log('PASS HeyGen consent, fixed video format, duplicate charge prevention, ownership, output safety and pilot limit')
 }

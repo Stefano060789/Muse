@@ -56,7 +56,7 @@ Translated samples use browser-only speech in the selected interface language.
 ## HeyGen story reel pilot
 
 After a personal journey chapter is concluded, the personal-story reel can
-request one 10-second, vertical 768p HeyGen Video 1 MP4. The server verifies
+request one 15-second, vertical 768p HeyGen Video 1 MP4. The server verifies
 the chapter belongs to the account and has a saved conclusion before generation;
 active, exhausted and pending chapters cannot generate videos. Legacy browser-only
 stories cannot be verified as completed and cannot create new videos. Existing
@@ -69,10 +69,10 @@ manual download or sharing. Nothing is posted automatically. The animated
 story-reel composer is no longer offered.
 The duration selector also shows 30 seconds and 1, 2 and 3 minutes, but those lengths cannot
 be generated yet: they require a separate integration and verified pricing
-and spending controls. Selecting one never submits the 10-second pilot instead.
+and spending controls. Selecting one never submits the 15-second pilot instead.
 The pricing page describes the planned video allowances: one 10-second reel
 during the trial and 60 seconds per billing month for Plus (for example,
-six 10-second, two 30-second, or one 60-second reel). Planned add-on packs
+6 × 10 seconds, 2 × 30 seconds, or 1 × 1 minute). Planned add-on packs
 are 60 seconds for €3.99 and 120 seconds for €6.99; neither packs nor checkout
 are available. These allowances are not yet enforced or available as plan benefits. Video Agent is listed as
 planned and cannot be selected; it is not integrated.
@@ -83,8 +83,8 @@ set `HEYGEN_REEL_PROVIDER_APPROVED=true`. Never place the key in client code or
 send it in chat. Restart the server after changing these settings. Existing
 operations safety storage and its hosted migration must be configured.
 
-The pilot reserves $0.36 per request against the owner's $10 aggregate estimated
-budget (at most 27 submissions). This is a conservative estimate based on the
+The pilot reserves $0.54 per request against the owner's $10 aggregate estimated
+budget (at most 18 submissions). This is a conservative estimate based on the
 November 2026 promotional price information, not a billing guarantee: confirm
 current provider pricing, taxes and retries, and set a separate hard spending
 limit with HeyGen if available. A maximum of two submissions per account per
@@ -162,8 +162,10 @@ provider's current DPA, transfers, retention and prices.
 4. To enable photos separately, confirm the applicable reference-mode price and
    set `HEYGEN_REEL_REFERENCE_APPROVED=true` plus
    `HEYGEN_REEL_REFERENCE_RESERVATION_CENTS` to an operator-reviewed
-   conservative integer estimate from 50 to 1000 cents. The amount is rounded
-   **up** to multiples of 36 cents in the existing $10 pilot reservation. It is
+   conservative integer estimate from 150 to 1000 cents (for example, 150). The amount is rounded
+   **up** to multiples of 54 cents in the existing $10 pilot reservation. The effective
+   maximum is 972 cents because 973–1000 cents rounds to 19 units, which exceeds the
+   18-unit pilot budget. It is
    not a    provider spending cap or proof of the actual price. Failed and
    uncertain uploads count toward the reservation. Multi-unit reservations
    are atomic and fail without consuming a partial reservation. Continue to enforce and monitor any actual
