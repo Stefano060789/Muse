@@ -1942,7 +1942,7 @@ export default function SharedStoryPage() {
             <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
-                <h2>1. {giftFormText('whoFor', interfaceLanguage)}</h2>
+                <h2>{giftFormText('whoFor', interfaceLanguage)}</h2>
                 <fieldset aria-label={creation.participants} style={{ border: 0, padding: 0, marginBottom: '1.25rem' }}>
                   <legend>{creation.participants}</legend>
                   {(['recipient', 'together'] as const).map(value => <label key={value} style={{ display: 'flex', gap: '0.75rem', padding: '0.85rem', border: '1px solid var(--line)', borderRadius: 12, marginBlock: '0.5rem' }}>
@@ -1982,7 +1982,7 @@ export default function SharedStoryPage() {
               </fieldset>
               <fieldset hidden={creatorStep !== 1} disabled={busy || creatorStep !== 1} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>
-                <h2>2. {giftFormText('stepStory', interfaceLanguage)}</h2>
+                <h2>{giftFormText('stepStory', interfaceLanguage)}</h2>
                 {textField('setting', flow('giftStoryIdea'), '', 3000)}
                 {textField('goal', flow('giftGoal'), '', 600)}
                 <label htmlFor="puzzle-difficulty" style={{ fontWeight: 700 }}>{flow('storyDifficulty')}

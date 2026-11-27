@@ -86,6 +86,7 @@ async function main() {
   global.window = { location: { origin: 'https://muse.example' } }
   render()
   assert.equal(nodes.filter(node => node?.type === 'button').length, 1)
+  assert.equal(button('Share your story').props.className, 'atelier-secondary', 'Sharing is a secondary action beside reading')
   button('Share your story').props.onClick(); render()
   assert.match(preview(), /My story so far/)
   assert.match(preview(), /Chapter 2/)

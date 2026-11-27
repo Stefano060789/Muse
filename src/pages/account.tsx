@@ -198,9 +198,46 @@ export default function AccountPage() {
   return <>
     <Head><title>{`Muse — ${interfaceText('settingsTitle', interfaceLanguage)}`}</title><meta name="description" content={interfaceText('settingsSubtitle', interfaceLanguage)} /></Head>
     <main className="atelier-page" lang={interfaceLanguage} dir={STORY_LANGUAGES.find(option => option.code === interfaceLanguage)?.dir}>
-      <div className="atelier-shell atelier-shell--narrow">
-        <p className="atelier-eyebrow">{interfaceText('settingsEyebrow', interfaceLanguage)}</p>
+      <div className="atelier-shell atelier-shell--narrow muse-settings">
         <h1 className="atelier-title">{interfaceText('settingsTitle', interfaceLanguage)}</h1>
+        <section aria-labelledby="account-settings-heading">
+        <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>
+        {!supabase && localDevelopment ? <section className="atelier-card">
+          <p>{interfaceText('localAccount', interfaceLanguage)}</p>
+          <Link className="atelier-button" href="/story?new=1">Create a story</Link>
+        </section> : !supabase ? <p role="alert">Account sign-in is not configured for this deployment.</p> : account ? (
+          <section className="atelier-card">
+            <h2>{interfaceText('signedIn', interfaceLanguage)}</h2>
+            <p>{account.email}</p>
+            {account.displayName ? <p>{account.displayName}</p> : null}
+            <div className="atelier-actions">
+              <Link className="atelier-button" href="/library">{interfaceText('savedStories', interfaceLanguage)}</Link>
+              <button type="button" className="atelier-secondary" disabled={busy} onClick={() => void signOut()}>{interfaceText('signOut', interfaceLanguage)}</button>
+            </div>
+          </section>
+        ) : (
+          <form className="atelier-card" onSubmit={event => void submit(event)}>
+            <div role="group" aria-label="Account action" className="atelier-actions">
+              <button type="button" className={!registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={!registering} onClick={() => { setRegistering(false); setError(''); setNotice('') }}>{interfaceText('signIn', interfaceLanguage)}</button>
+              <button type="button" className={registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={registering} onClick={() => { setRegistering(true); setError(''); setNotice('') }}>{interfaceText('createAccount', interfaceLanguage)}</button>
+            </div>
+            <label className="atelier-field">{interfaceText('email', interfaceLanguage)}
+              <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} />
+            </label>
+            <label className="atelier-field">{interfaceText('password', interfaceLanguage)}
+              <input type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={8} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} />
+            </label>
+            {registering ? <>
+              <label><input type="checkbox" checked={registrationConsent} disabled={busy} onChange={event => setRegistrationConsent(event.target.checked)} /> {registrationText.services}</label>
+              <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
+              <label><input type="checkbox" checked={registrationRomance} disabled={busy} onChange={event => setRegistrationRomance(event.target.checked)} /> {registrationText.romance}</label>
+            </> : null}
+            <button type="submit" className="atelier-button" disabled={busy || (registering && !registrationConsent)}>{busy ? interfaceFlowText('accountBusy', interfaceLanguage) : registering ? interfaceText('createAccount', interfaceLanguage) : interfaceText('signIn', interfaceLanguage)}</button>
+          </form>
+        )}
+        {notice ? <p role="status">{notice}</p> : null}
+        {error ? <p role="alert">{error}</p> : null}
+        </section>
         <section className="atelier-card" aria-labelledby="profile-heading">
           <h2 id="profile-heading">{interfaceText('profileHeading', interfaceLanguage)}</h2>
           <form onSubmit={event => void saveProfile(event)}>
@@ -262,44 +299,6 @@ export default function AccountPage() {
           <details><summary>{registrationText.title}</summary><p>{audioPermissionText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
           {permissions.error ? <p role="alert">{permissions.error}</p> : null}
         </section> : null}
-        <section aria-labelledby="account-settings-heading">
-        <h2 id="account-settings-heading">{interfaceText('accountHeading', interfaceLanguage)}</h2>
-        {!supabase && localDevelopment ? <section className="atelier-card">
-          <p>{interfaceText('localAccount', interfaceLanguage)}</p>
-          <Link className="atelier-button" href="/story?new=1">Create a story</Link>
-        </section> : !supabase ? <p role="alert">Account sign-in is not configured for this deployment.</p> : account ? (
-          <section className="atelier-card">
-            <h2>{interfaceText('signedIn', interfaceLanguage)}</h2>
-            <p>{account.email}</p>
-            {account.displayName ? <p>{account.displayName}</p> : null}
-            <div className="atelier-actions">
-              <Link className="atelier-button" href="/library">{interfaceText('savedStories', interfaceLanguage)}</Link>
-              <button type="button" className="atelier-secondary" disabled={busy} onClick={() => void signOut()}>{interfaceText('signOut', interfaceLanguage)}</button>
-            </div>
-          </section>
-        ) : (
-          <form className="atelier-card" onSubmit={event => void submit(event)}>
-            <div role="group" aria-label="Account action" className="atelier-actions">
-              <button type="button" className={!registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={!registering} onClick={() => { setRegistering(false); setError(''); setNotice('') }}>{interfaceText('signIn', interfaceLanguage)}</button>
-              <button type="button" className={registering ? 'atelier-button' : 'atelier-secondary'} aria-pressed={registering} onClick={() => { setRegistering(true); setError(''); setNotice('') }}>{interfaceText('createAccount', interfaceLanguage)}</button>
-            </div>
-            <label className="atelier-field">{interfaceText('email', interfaceLanguage)}
-              <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} />
-            </label>
-            <label className="atelier-field">{interfaceText('password', interfaceLanguage)}
-              <input type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={8} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} />
-            </label>
-            {registering ? <>
-              <label><input type="checkbox" checked={registrationConsent} disabled={busy} onChange={event => setRegistrationConsent(event.target.checked)} /> {registrationText.services}</label>
-              <details><summary>{registrationText.title}</summary><p>{registrationText.details}</p><Link href="/privacy">{interfaceFlowText('privacy', interfaceLanguage)}</Link></details>
-              <label><input type="checkbox" checked={registrationRomance} disabled={busy} onChange={event => setRegistrationRomance(event.target.checked)} /> {registrationText.romance}</label>
-            </> : null}
-            <button type="submit" className="atelier-button" disabled={busy || (registering && !registrationConsent)}>{busy ? interfaceFlowText('accountBusy', interfaceLanguage) : registering ? interfaceText('createAccount', interfaceLanguage) : interfaceText('signIn', interfaceLanguage)}</button>
-          </form>
-        )}
-        </section>
-        {notice ? <p role="status">{notice}</p> : null}
-        {error ? <p role="alert">{error}</p> : null}
       </div>
     </main>
   </>

@@ -134,7 +134,6 @@ export default function LibraryPage() {
       <Head><title>{`Muse - ${text('archiveTitle', interfaceLanguage)}`}</title><meta name="description" content={text('archiveSubtitle', interfaceLanguage)} /></Head>
       <main className="atelier-page muse-collection-page" lang={interfaceLanguage} style={{ padding: 'clamp(1rem, 4vw, 1.5rem)' }}>
         <div className="muse-collection-layout">
-          <p className="atelier-eyebrow">{text('archiveEyebrow', interfaceLanguage)}</p>
           <h1 className="atelier-title">{text('archiveTitle', interfaceLanguage)}</h1>
           <p className="atelier-subtitle">{text('archiveSubtitle', interfaceLanguage)}</p>
           <p><Link href="/my-stories">{text('myStoriesTitle', interfaceLanguage)}</Link></p>

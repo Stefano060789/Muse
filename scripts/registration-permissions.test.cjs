@@ -116,6 +116,9 @@ async function main() {
     return nodes.filter(node => node && typeof node === 'object')
   }
   let nodes = await render()
+  assert.ok(nodes.findIndex(node => node.props['aria-labelledby'] === 'account-settings-heading') <
+    nodes.findIndex(node => node.props['aria-labelledby'] === 'profile-heading'),
+  'Account sign-in appears before profile preferences')
   nodes.find(node => node.type === 'button' && node.props.children === 'createAccount').props.onClick()
   nodes = await render()
   const form = nodes.find(node => node.type === 'form' && flatten(node).some(child => child?.type === 'input' && child.props.type === 'email'))

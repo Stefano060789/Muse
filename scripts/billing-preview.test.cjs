@@ -49,6 +49,8 @@ for (const locale of locales) {
   assert.ok(plans.find(plan => plan.id === 'annual').features.includes(copy.monthlyVideo))
   const html = renderToStaticMarkup(React.createElement(BillingPage))
   assert.ok(html.includes(textMarkup(copy.title)))
+  assert.ok(html.indexOf(`id="plan-monthly"`) < html.indexOf(textMarkup(copy.personalOptionDescription)),
+    `${locale} shows plans before the story option descriptions`)
   for (const plan of plans) {
     assert.ok(html.includes(textMarkup(plan.name)))
     assert.ok(html.includes(textMarkup(plan.price)))

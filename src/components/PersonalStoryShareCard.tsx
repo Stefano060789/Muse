@@ -267,7 +267,7 @@ export default function PersonalStoryShareCard({
   }
 
   return <section aria-label={copy('shareStoryTitle')} className="story-share">
-    <button type="button" className="atelier-button" aria-expanded={expanded} onClick={() => {
+    <button type="button" className="atelier-secondary" aria-expanded={expanded} onClick={() => {
       if (!expanded && !prepared.current) prepareHighlight()
       if (expanded) clearClip()
       setExpanded(value => !value)

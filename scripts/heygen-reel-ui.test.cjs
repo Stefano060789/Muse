@@ -101,6 +101,7 @@ async function main() {
   const nodes = () => flatten(tree).filter(node => node && typeof node === 'object')
   const button = text => nodes().find(node => node.type === 'button' && label(node) === text)
   await flush()
+  assert.equal(button('Create video').props.className, 'atelier-secondary', 'Video is a secondary action beside reading')
   button('Create video').props.onClick()
   await flush()
   assert.equal(calls.filter(item => item.action === 'create').length, 0, 'Opening the panel does not create a paid reel')

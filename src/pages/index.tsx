@@ -93,10 +93,7 @@ export default function Home() {
             <div>
               <p className="atelier-eyebrow">{activeStory ? pageText('continueStory', language) : pageText('storyCompleted', language)}</p>
               <h2>{returnStory.story.title}</h2>
-              <p className="atelier-note">{activeStory
-                ? `${Math.min(returnStory.story.currentStep + 1, returnStory.story.scenes.length)}/${returnStory.story.scenes.length}`
-                : pageText('storyCompleted', language)}
-              </p>
+              {activeStory ? <p className="atelier-note">{`${Math.min(returnStory.story.currentStep + 1, returnStory.story.scenes.length)}/${returnStory.story.scenes.length}`}</p> : null}
             </div>
             <button type="button" className="atelier-button" onClick={() => continueStory(returnStory)}>
               {activeStory ? pageText('continueStory', language) : pageText('readStory', language)}

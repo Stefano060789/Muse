@@ -255,7 +255,7 @@ export default function HeygenStoryReel({ story, interfaceLanguage, canCreate }:
   }
   if (!canCreate && !token) return null
   return <section className="story-reel">
-    <button type="button" className="atelier-button" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+    <button type="button" className="atelier-secondary" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       {canCreate ? (italian ? 'Crea video' : 'Create video') : (italian ? 'Controlla video esistente' : 'Check existing video')}
     </button>
     {open ? <div className="story-reel-panel">

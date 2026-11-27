@@ -94,6 +94,11 @@ export default function BillingPage() {
         <section aria-labelledby="package-heading" style={{ margin: '2rem 0' }}>
           <h2 id="package-heading">{copy.packageHeading}</h2>
           <p style={{ lineHeight: 1.7 }}>{copy.packageIntro}</p>
+          <h3>{copy.packageAccessHeading}</h3>
+          <p style={{ lineHeight: 1.7 }}>{copy.packageAccessIntro}</p>
+          <div aria-label={copy.planList} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1rem 0' }}>
+            {renderPlanCards(['trial', 'monthly'])}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1.25rem 0 2rem' }}>
             <article style={{ padding: '1.5rem', border: '1px solid #d9cfc5', borderRadius: 20, background: '#fffaf6' }}>
               <h3>{copy.personalOptionName}</h3>
@@ -105,11 +110,6 @@ export default function BillingPage() {
               <p style={{ lineHeight: 1.7 }}>{copy.sharedGiftOptionDescription}</p>
               <Link href="/shared#new">{copy.sharedGiftOptionName}</Link>
             </article>
-          </div>
-          <h3>{copy.packageAccessHeading}</h3>
-          <p style={{ lineHeight: 1.7 }}>{copy.packageAccessIntro}</p>
-          <div aria-label={copy.planList} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16, margin: '1rem 0' }}>
-            {renderPlanCards(['trial', 'monthly'])}
           </div>
         </section>
         <section aria-labelledby="other-options-heading" style={{ margin: '2rem 0' }}>

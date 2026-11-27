@@ -135,7 +135,6 @@ export default function MyselfPage() {
       <Head><title>{`Muse — ${text('myselfTitle', interfaceLanguage)}`}</title><meta name="description" content={text('myselfSubtitle', interfaceLanguage)} /></Head>
       <main className="atelier-page" lang={interfaceLanguage} dir={direction}>
         <div className="atelier-shell atelier-shell--narrow">
-          <p className="atelier-eyebrow">{text('myselfEyebrow', interfaceLanguage)}</p>
           <h1 className="atelier-title">{text('myselfTitle', interfaceLanguage)}</h1>
           <p className="atelier-note">{text('myselfPrivacy', interfaceLanguage)}</p>
           <section style={{ background: '#fffaf6', border: '1px solid #d9cfc5', borderRadius: 20, padding: '1.5rem', marginTop: '2rem' }}>

@@ -84,7 +84,6 @@ export default function MyStoriesPage() {
     <Head><title>{`Muse - ${text('myStoriesTitle', interfaceLanguage)}`}</title><meta name="description" content={text('myStoriesSubtitle', interfaceLanguage)} /></Head>
     <main className="atelier-page muse-collection-page" lang={interfaceLanguage}>
       <div className="atelier-shell atelier-shell--narrow">
-        <p className="atelier-eyebrow">{text('myStoriesEyebrow', interfaceLanguage)}</p>
         <h1 className="atelier-title">{text('myStoriesTitle', interfaceLanguage)}</h1>
         <p className="atelier-subtitle">{text('myStoriesSubtitle', interfaceLanguage)}</p>
         <Link href="/story?new=1" className="atelier-button">{text('startNewStory', interfaceLanguage)}</Link>

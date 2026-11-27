@@ -763,7 +763,6 @@ export default function StoryPage() {
               <p>{choiceMode === 'suggested' ? flow('suggestedReview') : flow('freeReview')} {useProfile && profileReady ? flow('memoryIncluded') : flow('memoryExcluded')}</p>
               {storyIdea ? <p><strong>{flow('storyIdea')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{storyIdea}</span></p> : null}
               {improvementGoal ? <p><strong>{flow('improvementGoal')}:</strong> <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{improvementGoal}</span></p> : null}
-              <p className="atelier-note">{flow('storyPriorityHelp')}</p>
               {romance ? <p>{romanceCopy(interfaceLanguage).title(romance)}. <button type="button" onClick={() => moveCreationStep(0)}>{flow('changeTheme')}</button></p> : null}
               <ExplicitConsent checked={aiConsent} onChange={setAiConsent} requireAccount={accountConsentRequired}>
                 {flow('aiConsent')} {flow('attemptNote')}
