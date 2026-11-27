@@ -43,6 +43,12 @@ type Preparation = { id: string; capability: string }
 const moods: Array<{ key: PersonalStoryMood }> = [
   { key: 'adventure' }, { key: 'relaxed' }, { key: 'curious' }, { key: 'hopeful' }
 ]
+const moodIcons: Record<PersonalStoryMood, string> = {
+  adventure: 'M12 3 19 20l-7-4-7 4L12 3Z',
+  relaxed: 'M18 5a8 8 0 1 0 1 13A7 7 0 0 1 18 5Z',
+  curious: 'M12 3v18M3 12h18M6 6l12 12M18 6 6 18',
+  hopeful: 'M12 20V9M12 15C7 15 5 12 5 8c4 0 7 2 7 7Zm0-3c0-4 3-6 7-6 0 4-2 6-7 6Z'
+}
 const difficultyCopyKeys: Record<PersonalStoryDifficulty, InterfaceFlowKey> = {
   gentle: 'difficultyGentle', easy: 'difficultyEasy', balanced: 'difficultyBalanced',
   challenging: 'difficultyChallenging', expert: 'difficultyExpert'
@@ -701,8 +707,11 @@ export default function StoryPage() {
               </ol>
               <fieldset hidden={creationStep !== 0} disabled={creationStep !== 0 || isGenerating || Boolean(preparation)} style={{ border: 0, margin: 0, padding: 0 }}>
               <legend className="atelier-eyebrow">{pageText('chooseMood', interfaceLanguage)}</legend>
-              <div data-responsive-grid="moods" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem', marginTop: '1rem' }}>
-                {moods.map((mood) => <button key={mood.key} disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }} style={{ textAlign: 'left', padding: '0.8rem', borderRadius: 16, border: selectedMood === mood.key ? '2px solid #2d2926' : '1px solid #d9cfc5', background: selectedMood === mood.key ? '#fffaf6' : 'transparent', cursor: 'pointer', color: '#2d2926' }}><strong>{moodTitle(mood.key)}</strong><span style={{ display: 'block', fontSize: '0.9rem' }}>{moodDescription(mood.key)}</span></button>)}
+              <div data-responsive-grid="moods" className="muse-moods">
+                {moods.map((mood) => <button key={mood.key} type="button" className="muse-mood" disabled={isGenerating || Boolean(preparation)} aria-pressed={selectedMood === mood.key} onClick={() => { setSelectedMood(mood.key); setAiConsent(false) }}>
+                  <span className="muse-mood__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d={moodIcons[mood.key]} /></svg></span>
+                  <strong>{moodTitle(mood.key)}</strong><span className="muse-mood__description">{moodDescription(mood.key)}</span>
+                </button>)}
               </div>
               <RomanceOptions value={romance} onChange={value => { setRomance(value); setAiConsent(false) }} confirmed={romanceConfirmed} onConfirm={setRomanceConfirmed} disabled={isGenerating || Boolean(preparation)} language={interfaceLanguage} />
               </fieldset>

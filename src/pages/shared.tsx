@@ -1932,13 +1932,13 @@ export default function SharedStoryPage() {
                 setDraftStatus('Unreadable draft discarded.')
               } catch { setDraftStatus('Could not discard the saved draft. Check browser storage access.') }
             }}>Discard unreadable draft</button> : null}
-            <ol aria-label="Story creation steps" style={{ display: 'flex', gap: '0.5rem', listStyle: 'none', padding: 0, margin: '1.5rem 0 0.75rem' }}>
+            <ol aria-label="Story creation steps" className="atelier-progress">
               {(['stepFor', 'stepStory', 'stepSurprise'] as const).map((key, index) => {
                 const label = index === 2 ? creation.stepEnding : giftFormText(key, interfaceLanguage)
-                return <li key={key} aria-current={creatorStep === index ? 'step' : undefined} style={{ flex: 1, borderTop: `3px solid ${creatorStep === index ? '#70566d' : '#e4dcd4'}`, paddingTop: '0.65rem', color: creatorStep === index ? '#202c42' : '#70566d', fontSize: '0.85rem', fontWeight: creatorStep === index ? 700 : 400 }}>{index + 1}. {label}</li>
+                return <li key={key} aria-current={creatorStep === index ? 'step' : undefined}>{index + 1}. {label}</li>
               })}
             </ol>
-            <p className="atelier-eyebrow" aria-live="polite">{creatorStep + 1}/3 · {creatorStep === 2 ? creation.stepEnding : giftFormText((['stepFor', 'stepStory'] as const)[creatorStep], interfaceLanguage)}</p>
+            <p className="muse-visually-hidden" aria-live="polite">{creatorStep + 1}/3 · {creatorStep === 2 ? creation.stepEnding : giftFormText((['stepFor', 'stepStory'] as const)[creatorStep], interfaceLanguage)}</p>
             <form ref={creatorForm} onSubmit={generate} className="gift-story-form">
               <fieldset hidden={creatorStep !== 0} disabled={busy || creatorStep !== 0} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={cardStyle}>

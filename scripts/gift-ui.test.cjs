@@ -298,6 +298,10 @@ async function main() {
   assert.ok(!wizard.nodes().some(node => node.props['aria-label'] === 'Five minutes together'),
     'The creator uses the single three-step wizard instead of the removed quick-together form')
   assert.equal(wizard.nodes().filter(node => node.type === 'ol' && node.props['aria-label'] === 'Story creation steps').length, 1)
+  const creationProgress = wizard.nodes().find(node => node.type === 'ol' && node.props['aria-label'] === 'Story creation steps')
+  assert.equal(flatten(creationProgress).filter(node => node?.type === 'li' && node.props['aria-current'] === 'step').length, 1)
+  assert.ok(wizard.nodes().some(node => node.props['aria-live'] === 'polite' && node.props.className === 'muse-visually-hidden'),
+    'Step changes remain announced without repeating the visible progress')
   let participantRadios = wizard.nodes().filter(node => node.type === 'input' && node.props.name === 'story-participants')
   assert.deepEqual(participantRadios.map(radio => radio.props.value), ['recipient', 'together'])
   const participantsStep = wizard.nodes().find(node => node.type === 'fieldset' && !node.props.hidden && !node.props['aria-label'])

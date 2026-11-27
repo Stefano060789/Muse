@@ -191,6 +191,11 @@ async function main() {
   await flush()
   assert.equal(visible().length, 1)
   assert.equal(visible()[0].props.disabled, false)
+  const moodButtons = flatten(visible()[0]).filter(node => node?.type === 'button' && node.props.className === 'muse-mood')
+  assert.equal(moodButtons.length, 4)
+  assert.equal(moodButtons.filter(node => node.props['aria-pressed']).length, 1, 'One mood is selected')
+  assert.ok(moodButtons.every(node => flatten(node).some(child => child?.type === 'span' && child.props['aria-hidden'] === 'true')),
+    'Mood illustrations are decorative and keep their text labels')
   assert.equal(requests.length, 0)
   await click('Continue')
   assert.equal(visible().length, 1)

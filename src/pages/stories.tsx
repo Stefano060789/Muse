@@ -15,16 +15,18 @@ export default function StoriesPage() {
       <div className="atelier-shell atelier-shell--narrow">
         <p className="atelier-eyebrow">{copy.subtitle}</p>
         <h1 className="atelier-title">{copy.title}</h1>
-        <section aria-label={copy.title} style={{ display: 'grid', gap: '1rem', marginTop: '1.5rem' }}>
-          <article className="atelier-card">
+        <section aria-label={copy.title} className="muse-story-paths">
+          <article className="atelier-card muse-story-path">
+            <span className="muse-story-path__mark" aria-hidden="true">I</span>
             <h2>{copy.personalTitle}</h2>
-            <p style={{ lineHeight: 1.7 }}>{copy.personalDescription}</p>
+            <p>{copy.personalDescription}</p>
             <Link href="/my-stories" className="atelier-button">{copy.personalAction}</Link>
           </article>
-          <article className="atelier-card">
+          <article className="atelier-card muse-story-path muse-story-path--shared">
+            <span className="muse-story-path__mark" aria-hidden="true">II</span>
             <h2>{copy.sharedTitle}</h2>
-            <p style={{ lineHeight: 1.7 }}>{copy.sharedDescription}</p>
-            <p style={{ lineHeight: 1.7 }}>{copy.sharedAllowance}</p>
+            <p>{copy.sharedDescription}</p>
+            <p className="muse-story-path__note">{copy.sharedAllowance}</p>
             <Link href="/shared#new" className="atelier-button">{copy.sharedAction}</Link>
           </article>
         </section>
