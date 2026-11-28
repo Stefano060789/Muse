@@ -568,7 +568,7 @@ try {
   })
   check('shared navigation exposes saved stories and shared persistence remains canonical', () => {
     const navigation = fs.readFileSync(path.join(root, 'src', 'components', 'SiteNavigation.tsx'), 'utf8')
-    assert.ok(navigation.includes("href: '/library', key: 'navArchive'"))
+    assert.ok(navigation.includes("href: '/library', label: interfaceText('navArchive', language)"))
     const page = fs.readFileSync(path.join(root, 'src', 'pages', 'library.tsx'), 'utf8')
     assert.ok(page.includes("window.location.assign('/story?read=1')"), 'Archive opens a reading-only personal story')
     assert.ok(!page.includes("'Continue story'"), 'Continuation belongs to My stories, not the archive')

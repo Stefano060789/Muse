@@ -179,7 +179,8 @@ function main() {
       && node.props['aria-labelledby'] === 'shared-story-title'), 'The whole Shared Story card is an accessible creation link')
     assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/myself'), 'Personal touches remain available')
     assert.ok(nodes(tree).some(node => node.type === 'Link' && node.props.href === '/demo'), 'The free sample remains available')
-    assert.equal(nodes(tree).find(node => node.type === 'source').props.media, '(max-width: 700px)', 'Phones use the panoramic composition')
+    assert.ok(nodes(tree).some(node => node.type === 'img' && node.props.src === '/illustrations/v0-renaissance-landscape.webp'
+      && node.props.alt === ''), 'The supplied landscape is decorative')
     assert.ok(text(tree).includes('Story newer-active'))
     assert.ok(text(tree).includes('2/3'))
     assert.equal(button(tree, 'Continue story').props.type, 'button')

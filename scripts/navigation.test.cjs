@@ -28,11 +28,11 @@ const Navigation = load('src/components/SiteNavigation.tsx').default
 const App = load('src/pages/_app.tsx').default
 const StoriesPage = load('src/pages/stories.tsx').default
 const render = element => renderToStaticMarkup(element)
-const expected = ['Home', 'Myself', 'Stories', 'Archive', 'Pricing', 'Settings']
+const expected = ['Myself', 'My Story', 'Shared Story', 'Archive', 'Pricing']
 for (const [pathname, selected] of [
-  ['/', 'Home'], ['/story', 'Stories'], ['/my-stories', 'Stories'], ['/myself', 'Myself'],
-  ['/stories', 'Stories'], ['/shared', 'Stories'], ['/couples', 'Stories'], ['/library', 'Archive'],
-  ['/demo', null], ['/billing', 'Pricing'], ['/account', 'Settings'], ['/privacy', null], ['/creator', null]
+  ['/', null], ['/story', 'My Story'], ['/my-stories', 'My Story'], ['/myself', 'Myself'],
+  ['/stories', null], ['/shared', 'Shared Story'], ['/couples', 'Shared Story'], ['/library', 'Archive'],
+  ['/demo', null], ['/billing', 'Pricing'], ['/account', null], ['/privacy', null], ['/creator', null]
 ]) {
   const html = render(React.createElement(Navigation, { pathname }))
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/)[1]
@@ -42,6 +42,8 @@ for (const [pathname, selected] of [
   assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(match => match[1]), expected)
   const active = [...nav.matchAll(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/g)].map(match => match[1])
   assert.deepEqual(active, selected ? [selected] : [], pathname)
+  assert.match(html, /href="\/account"[^>]*aria-label="Settings"/, 'The account icon links to settings')
+  if (pathname === '/account') assert.match(html, /href="\/account"[^>]*aria-current="page"/)
   assert.ok(!/creator|operations/.test(nav), 'Private tools are not primary destinations')
 }
 const recipient = render(React.createElement(Navigation, { pathname: '/shared', recipient: true }))
@@ -51,7 +53,7 @@ assert.ok(!recipient.includes('<button'), 'Recipients have no empty menu toggle'
 const italianNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'it-IT' }))
 assert.ok(italianNavigation.includes('Impostazioni'), 'Interface language updates navigation labels')
 assert.ok(italianNavigation.includes('Prezzi'), 'Plans are visible in the localized primary navigation')
-assert.ok(italianNavigation.includes('Storie'), 'Stories is the localized hub destination')
+assert.ok(italianNavigation.includes('La mia storia') && italianNavigation.includes('Storia condivisa'), 'Story destinations are localized')
 const arabicNavigation = render(React.createElement(Navigation, { pathname: '/', interfaceLanguage: 'ar-SA' }))
 assert.ok(arabicNavigation.includes('aria-label="القائمة"'), 'The mobile menu has a localized accessible name')
 const storiesHub = render(React.createElement(StoriesPage))

@@ -1,16 +1,8 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { interfaceText, type InterfaceCopyKey } from '../lib/interfaceLanguage'
+import { interfaceText } from '../lib/interfaceLanguage'
+import { storiesHubCopy } from '../lib/storiesHubCopy'
 import type { StoryLanguageCode } from '../lib/storyLanguage'
-
-const destinations: { href: string; key: InterfaceCopyKey; routes: readonly string[] }[] = [
-  { href: '/', key: 'navHome', routes: ['/'] },
-  { href: '/myself', key: 'navMyself', routes: ['/myself'] },
-  { href: '/stories', key: 'navStories', routes: ['/stories', '/my-stories', '/story', '/shared', '/couples'] },
-  { href: '/library', key: 'navArchive', routes: ['/library'] },
-  { href: '/billing', key: 'navPlans', routes: ['/billing'] },
-  { href: '/account', key: 'navSettings', routes: ['/account'] }
-]
 
 export default function SiteNavigation({ pathname, recipient = false, interfaceLanguage = 'en-US' }: {
   pathname: string
@@ -18,6 +10,14 @@ export default function SiteNavigation({ pathname, recipient = false, interfaceL
   interfaceLanguage?: StoryLanguageCode
 }) {
   const language = interfaceLanguage
+  const stories = storiesHubCopy(language)
+  const destinations = [
+    { href: '/myself', label: interfaceText('navMyself', language), routes: ['/myself'] },
+    { href: '/my-stories', label: stories.personalTitle, routes: ['/my-stories', '/story'] },
+    { href: '/shared#new', label: stories.sharedTitle, routes: ['/shared', '/couples'] },
+    { href: '/library', label: interfaceText('navArchive', language), routes: ['/library'] },
+    { href: '/billing', label: interfaceText('navPlans', language), routes: ['/billing'] }
+  ]
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
   useEffect(() => { setMenuOpen(false) }, [pathname, recipient])
@@ -41,11 +41,19 @@ export default function SiteNavigation({ pathname, recipient = false, interfaceL
             <span aria-hidden="true" />
           </button>
           <nav id="muse-primary-navigation" aria-label="Main navigation" data-open={menuOpen}>
-            {destinations.map(({ href, key, routes }) => (
+            {destinations.map(({ href, label, routes }) => (
               <Link key={href} href={href} onClick={() => setMenuOpen(false)}
-                aria-current={routes.includes(pathname) ? 'page' : undefined}>{interfaceText(key, language)}</Link>
+                aria-current={routes.includes(pathname) ? 'page' : undefined}>{label}</Link>
             ))}
           </nav>
+          <Link href="/my-stories" className="muse-nav-begin">{stories.personalAction}</Link>
+          <Link href="/account" className="muse-nav-account" aria-label={interfaceText('navSettings', language)}
+            aria-current={pathname === '/account' ? 'page' : undefined}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M4.5 20c.5-4.3 3-6.5 7.5-6.5s7 2.2 7.5 6.5" />
+            </svg>
+          </Link>
         </> : null}
       </div>
     </header>

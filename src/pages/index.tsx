@@ -81,11 +81,8 @@ export default function Home() {
           </div>
           <figure className="muse-home-art" aria-hidden="true">
             <div className="muse-home-art__mount">
-              <picture>
-                <source media="(max-width: 700px)" srcSet="/illustrations/garden-of-stories-panorama.webp" width="960" height="418" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/illustrations/garden-of-stories-portrait.webp" width="960" height="1120" alt="" fetchPriority="high" />
-              </picture>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/illustrations/v0-renaissance-landscape.webp" width="1264" height="848" alt="" fetchPriority="high" />
             </div>
           </figure>
         </section>
@@ -102,8 +99,20 @@ export default function Home() {
         {libraryError && <p role="alert">{libraryError}</p>}
         {continueError && <p role="alert">{continueError}</p>}
         <section className="muse-home-paths" aria-label={stories.subtitle}>
+          <Link href="/myself" className="muse-home-choice muse-home-choice--myself">
+            <span className="muse-home-choice__number" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7" r="3.5" /><path d="M5 20c.5-4.5 2.8-7 7-7s6.5 2.5 7 7" /></svg>
+            </span>
+            <div>
+              <p className="atelier-eyebrow">{pageText('myselfEyebrow', language)}</p>
+              <h2>{interfaceText('homeMyself', language)}</h2>
+            </div>
+            <span className="muse-home-arrow" aria-hidden="true">&rarr;</span>
+          </Link>
           <Link href="/my-stories" className="muse-home-choice" aria-labelledby="personal-story-title">
-            <span className="muse-home-choice__number" aria-hidden="true">I</span>
+            <span className="muse-home-choice__number" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 20c6-3 6-12 15-17-1.5 10-6 15-13 16M5 20l5-4m1-6 3 2" /></svg>
+            </span>
             <div>
               <p className="atelier-eyebrow">{interfaceText('homeJustForYou', language)}</p>
               <h2 id="personal-story-title">{stories.personalTitle}</h2>
@@ -112,7 +121,9 @@ export default function Home() {
             <span className="muse-home-arrow" aria-hidden="true">&rarr;</span>
           </Link>
           <Link href="/shared#new" className="muse-home-choice muse-home-choice--shared" aria-labelledby="shared-story-title">
-            <span className="muse-home-choice__number" aria-hidden="true">II</span>
+            <span className="muse-home-choice__number" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M3 13c4-7 11-8 16-3l3-2-1 7c-1 6-10 8-16 3l-2 2v-7Z" /><circle cx="15" cy="12" r="1" /></svg>
+            </span>
             <div>
               <p className="atelier-eyebrow">{interfaceText('homeForSomeone', language)}</p>
               <h2 id="shared-story-title">{stories.sharedTitle}</h2>
@@ -121,10 +132,6 @@ export default function Home() {
             <span className="muse-home-arrow" aria-hidden="true">&rarr;</span>
           </Link>
         </section>
-        <div className="muse-home-personal">
-          <p>{pageText('myselfEyebrow', language)}</p>
-          <Link href="/myself">{interfaceText('homeMyself', language)}<span aria-hidden="true" className="muse-home-arrow">&rarr;</span></Link>
-        </div>
         <aside className="atelier-home-more"><InstallApp /></aside>
       </div>
     </main>

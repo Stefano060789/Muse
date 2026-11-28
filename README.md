@@ -2,11 +2,18 @@
 
 ## Visual theme
 
-Muse takes its visual direction from Leonardo da Vinci's *Annunciation*:
+Muse combines its original visual direction inspired by Leonardo da Vinci's *Annunciation*
+with the owner-provided v0 prototype: ivory surfaces, blue, sage and terracotta,
+compact story cards, and the supplied Renaissance-inspired landscape on Home.
+The prototype's sample stories and controls are not used; the existing Muse
+flows and privacy disclosures remain in place. The v0 image's provenance and
+commercial usage terms still need owner review before public launch.
+
+The original direction uses
 warm ivory and limestone surfaces, cypress green, terracotta accents, soft
 daylight and quiet architectural framing. Home uses a restrained editorial
 layout, fully linked story choices and a compact, keyboard-accessible mobile
-navigation. The Home artwork, "The Garden of Stories", is an original
+navigation. The earlier Home artwork, "The Garden of Stories", is an original
 composition inspired by Leonardo's palette and sfumato (not a reproduction): a
 glowing book on a stone pedestal releasing swallows over a misty Tuscan garden.
 It is generated from code by `node scripts/render-home-art.cjs` into a desktop
